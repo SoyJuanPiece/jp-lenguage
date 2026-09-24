@@ -202,6 +202,38 @@ jp-lang/
 └── pyproject.toml       # para instalar el comando jp
 ```
 
+## Los cuatro motores
+
+JP trae cuatro formas de ejecutar el mismo código, con la misma semántica
+(la paridad está garantizada por tests):
+
+| Motor | Bandera | Cómo ejecuta tu código | Fuerte | Límite |
+|---|---|---|---|---|
+| Árbol | `--interprete` | Recorre el AST sentencia a sentencia | Es el "código fuente" del lenguaje; la referencia de verdad | El más lento |
+| **VM** | *(por defecto)* | Bytecode + threaded code (cierres compilados) | Todo el lenguaje, siempre correcto | Vive dentro de Python |
+| **JIT** | `--nativo` | Compila funciones numéricas a **x86-64 real** | 19–73x más rápido que Python en cálculo | Solo enteros/decimales; ≤3 parámetros; lo demás va a la VM |
+| **Turbo** | `--turbo` | Evalúa todo en compilación y cachea la salida | Microsegundos en corridas repetidas | Solo programas puros (sin `leer`, `azar`, red, archivos, `reloj`) |
+
+### Números medidos (misma máquina, Linux x86-64, Python 3.12)
+
+| Programa | Árbol | VM | JIT | Turbo | Python |
+|---|---|---|---|---|---|
+| `benchmark.jp` (while 1M + fib(22)) | 11,3 s | **6,7 s** | parcial: fib nativo, bucle en VM (no medido) | 1ª ≈ VM → luego µs | 0,29 s |
+| `benchmark-grande.jp` (while 5M + fib(25)) | — | ≈35 s (1ª) | — | 1ª ≈35 s → **0,0086 ms** después | 1,32 s |
+| `benchmark-nativo.jp` (5M + fib(25) + armónica 2M) | — | 39,9 s | **0,104 s** | no aplica (usa `reloj()`) | 2,16 s |
+| Micro in-process: suma 10M / fib(32) / armónica 10M | — | — | 44,7 / 36,2 / 63,9 ms | — | 3.274 / 694 / 2.908 ms |
+
+Lecturas honestas: el JIT **le gana a Python en raw loop numérico** (19–73x);
+el turbo le gana en *runtime* a todo (el trabajo se hace una sola vez);
+y en cadenas/colecciones Python sigue adelante (30 años de C optimizado).
+
+```bash
+python -m jp archivo.jp                      # VM (recomendado para todo)
+python -m jp --interprete archivo.jp         # árbol (referencia)
+python -m jp --nativo archivo.jp             # JIT para cálculo numérico
+python -m jp --turbo archivo.jp              # cache total para programas puros
+```
+
 ## Próximos pasos posibles
 
 - Strings interpolados `"hola {nombre}"`

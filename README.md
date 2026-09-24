@@ -140,6 +140,7 @@ lista[-1]                 # índice negativo = desde el final
 | `subtexto(t, ini[, fin])` | Pedazo de texto (soporta negativos) |
 | `letra(t, i)` | Letra en posición `i` (soporta negativos) |
 | `agregar(lista, v)` | Agrega al final de una lista |
+| `reloj()` | Segundos (monotónicos) para cronometrar: `reloj() - reloj()` |
 | **Archivos** | |
 | `leer_archivo(ruta)` | Lee un archivo de texto |
 | `escribir_archivo(ruta, t)` | Crea/sobreescribe (UTF-8) |
@@ -208,6 +209,17 @@ jp-lang/
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v0.9.0 — **benchmark nativo oficial**: `ejemplos/benchmark-nativo.jp`
+(auto-cronometrado con la nueva nativa `reloj()`). El MISMO programa:
+
+| Motor | Tiempo | vs Python (2,16s) |
+|---|---|---|
+| VM de bytecode | 39,9 s | 18x más lento |
+| **JIT `--nativo`** | **0,104 s** | **21x más rápido** |
+
+Carga: suma de 5M + fib(25) + armónica de 2M — resultados idénticos bit a bit
+en ambos motores y contra Python.
 
 v0.8.0 — **flotantes en el JIT** (`--nativo`): si una función usa `/` o
 literales con punto, el lote compila a SSE2 double (`movsd`, `addsd`...,

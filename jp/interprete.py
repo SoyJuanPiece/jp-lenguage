@@ -9,6 +9,7 @@ Diseño:
 from __future__ import annotations
 
 import random
+import time
 
 from .arbol import (
     Nodo,
@@ -689,6 +690,10 @@ def _instalar_nativas(entorno: Entorno) -> None:
             )
         return t[i]
 
+    def reloj() -> float:
+        """Segundos (monotónicos) para medir tiempos: reloj() - reloj()."""
+        return time.monotonic()
+
     def agregar(lista: object, valor: object) -> list:
         """Agrega un elemento al final de la lista (y la devuelve)."""
         if not isinstance(lista, list):
@@ -717,6 +722,7 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "subtexto": FuncionNativa("subtexto", subtexto),
         "letra": FuncionNativa("letra", letra, aridad=2),
         "agregar": FuncionNativa("agregar", agregar, aridad=2),
+        "reloj": FuncionNativa("reloj", reloj, aridad=0),
     }
     for nombre, funcion in nativas.items():
         entorno.definir(nombre, funcion)

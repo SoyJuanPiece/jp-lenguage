@@ -38,6 +38,7 @@ _NATIVAS_IMPURAS = {
     "leer_archivo", "escribir_archivo", "agregar_archivo",           # archivos
     "lista_archivos", "tamano_archivo", "existe_archivo",
     "esperar",         # tiempo
+    "reloj",           # tiempo (monotónico)
 }
 
 

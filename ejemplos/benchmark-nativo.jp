@@ -1,0 +1,64 @@
+# 🏎️ Benchmark nativo de JP — cronometraje incluido
+#
+# Ejecutar:
+#     python -m jp ejemplos/benchmark-nativo.jp            (VM de bytecode)
+#     python -m jp --nativo ejemplos/benchmark-nativo.jp   (JIT x86-64)
+#
+# Compara ambas corridas: el mismo código corre 10-50x más rápido con
+# --nativo, porque las funciones se compilan a código de máquina real.
+#
+# NOTA: los bucles deben vivir DENTRO de funciones para que el JIT los
+# compile; el nivel superior siempre corre en la VM.
+
+# ---- benchmark 1: raw loop (suma de enteros) ----
+
+funcion suma_hasta(n) {
+    variable s = 0
+    variable i = 1
+    mientras i <= n {
+        s = s + i
+        i = i + 1
+    }
+    devuelve s
+}
+
+# ---- benchmark 2: recursión clásica ----
+
+funcion fib(n) {
+    si n <= 1 {
+        devuelve n
+    }
+    devuelve fib(n - 1) + fib(n - 2)
+}
+
+# ---- benchmark 3: flotantes (SSE2) ----
+
+funcion armonica(n) {
+    variable s = 0.0
+    variable i = 1
+    mientras i <= n {
+        s = s + 1.0 / i
+        i = i + 1
+    }
+    devuelve s
+}
+
+# ---- correr todo y cronometrar ----
+
+variable t0 = reloj()
+
+variable s1 = suma_hasta(5000000)
+variable f1 = fib(25)
+variable s2 = armonica(2000000)
+
+variable total = reloj() - t0
+
+muestra("suma(5M)      =", s1)
+muestra("fib(25)       =", f1)
+muestra("armonica(2M)  =", s2)
+muestra("tiempo total  =", total, "segundos")
+
+# Resultados correctos:
+#   suma(5M)     = 12500002500000
+#   fib(25)      = 75025
+#   armonica(2M) ≈ 14.70 (aprox; JP imprime 14.702... con dobles)

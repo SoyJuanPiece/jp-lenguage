@@ -533,6 +533,11 @@ class TestTexto(unittest.TestCase):
         with self.assertRaises(ErrorEjecucion):
             ejecutar('muestra(letra("hola", 99))')
 
+    def test_reloj_monotonico(self):
+        # reloj() da segundos crecientes (con margen generoso por el GIL)
+        salida = ejecutar('variable a = reloj()\nmuestra(reloj() >= a)')
+        self.assertEqual(salida, "verdadero\n")
+
     def test_agregar(self):
         self.assertEqual(ejecutar('variable l = []\nagregar(l, 1)\nagregar(l, 2)\nmuestra(l)'), "[1, 2]\n")
         self.assertEqual(ejecutar('muestra(longitud(agregar(agregar([], "a"), "b")))'), "2\n")

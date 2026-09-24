@@ -1,0 +1,236 @@
+# 🌀 El problema del ESPIRAL en JP puro — dos espirales entrelazadas
+#
+# Ejecutar:  python -m jp ejemplos/espiral.jp
+#
+# El espiral es el problema clásico que NO se puede resolver con una recta:
+# hay que curvar la frontera de decisión. La red aprende a separarlas y al
+# final dibuja la frontera que aprendió, en ASCII.
+#
+# Novedades vs red-profunda.jp:
+#   - Dataset generado EN JP con seno()/coseno() (14 puntos, 2 espirales)
+#   - Momentum en el descenso de gradiente (clave para converger aquí)
+#   - Precisión de entrenamiento y mapa ASCII de la frontera
+
+# ---------- utilidades ----------
+
+funcion sigmoide(x) {
+    devuelve 1.0 / (1.0 + exp(-x))
+}
+
+funcion azar_peso() {
+    devuelve azar(2000) / 1000.0 - 1.0
+}
+
+# ---------- arquitectura genérica ----------
+
+variable capas = [2, 10, 10, 1]
+
+variable pesos = []
+variable sesgos = []
+variable vel_p = []     # velocidad del momentum para pesos
+variable vel_s = []     # ... para sesgos
+
+para i en 1..longitud(capas) - 1 {
+    variable matriz = []
+    variable sesgos_l = []
+    variable matriz_v = []
+    variable sesgos_v = []
+    para j en 1..capas[i] {
+        variable fila = []
+        variable fila_v = []
+        para k en 1..capas[i - 1] {
+            agregar(fila, azar_peso())
+            agregar(fila_v, 0.0)
+        }
+        agregar(matriz, fila)
+        agregar(matriz_v, fila_v)
+        agregar(sesgos_l, 0.0)
+        agregar(sesgos_v, 0.0)
+    }
+    agregar(pesos, matriz)
+    agregar(sesgos, sesgos_l)
+    agregar(vel_p, matriz_v)
+    agregar(vel_s, sesgos_v)
+}
+
+# ---------- dataset: dos espirales generadas con trigonometría ----------
+
+variable datos = []
+variable por_brazo = 8
+variable PI = 3.14159265
+
+para i en 1..por_brazo {
+    variable t = i * 1.05
+    variable r = (i - 0.5) / por_brazo
+    # espiral A (clase 0) y su gemela rotada 180° (clase 1)
+    variable pa = { entrada: [r * seno(t), r * coseno(t)], deseado: [0.0] }
+    variable pb = { entrada: [r * seno(t + PI), r * coseno(t + PI)], deseado: [1.0] }
+    agregar(datos, pa)
+    agregar(datos, pb)
+}
+
+# ---------- forward ----------
+
+funcion forward(entrada) {
+    variable activs = []
+    agregar(activs, entrada)
+    variable actual = entrada
+    para i en 1..longitud(pesos) {
+        variable matriz = pesos[i - 1]
+        variable sesgos_l = sesgos[i - 1]
+        variable nueva = []
+        para j en 1..capas[i] {
+            variable suma = sesgos_l[j - 1]
+            variable fila = matriz[j - 1]
+            para k en 1..longitud(actual) {
+                suma = suma + fila[k - 1] * actual[k - 1]
+            }
+            agregar(nueva, sigmoide(suma))
+        }
+        agregar(activs, nueva)
+        actual = nueva
+    }
+    devuelve activs
+}
+
+# ---------- entrenamiento con momentum ----------
+
+variable tasa = 0.8
+variable impulso = 0.9
+
+funcion entrenar_epoca() {
+    variable error_total = 0.0
+    para d en datos {
+        variable activs = forward(d["entrada"])
+        variable ultima = longitud(capas) - 1
+        variable salidas = activs[ultima]
+        variable deseado = d["deseado"]
+
+        variable error_capa = []
+        variable e_total = 0.0
+        para j en 1..capas[ultima] {
+            variable e = deseado[j - 1] - salidas[j - 1]
+            e_total = e_total + e * e
+            agregar(error_capa, e)
+        }
+        error_total = error_total + e_total
+
+        # deltas por capa
+        variable deltas = []
+        para c en 1..longitud(capas) {
+            agregar(deltas, [])
+        }
+        para j en 1..capas[ultima] {
+            variable a = salidas[j - 1]
+            agregar(deltas[ultima], error_capa[j - 1] * a * (1.0 - a))
+        }
+        variable i = longitud(pesos) - 1
+        mientras i >= 1 {
+            variable deltas_sig = deltas[i + 1]
+            variable matriz_sig = pesos[i]
+            variable act = activs[i]
+            variable delta_nueva = []
+            para j en 1..capas[i] {
+                variable retro = 0.0
+                para k en 1..capas[i + 1] {
+                    retro = retro + matriz_sig[k - 1][j - 1] * deltas_sig[k - 1]
+                }
+                variable a2 = act[j - 1]
+                agregar(delta_nueva, retro * a2 * (1.0 - a2))
+            }
+            deltas[i] = delta_nueva
+            i = i - 1
+        }
+
+        # actualizar con momentum: v = impulso*v + tasa*grad; w = w + v
+        variable i2 = longitud(pesos) - 1
+        mientras i2 >= 0 {
+            variable deltas_sig = deltas[i2 + 1]
+            variable act = activs[i2]
+            variable matriz = pesos[i2]
+            variable vel_matriz = vel_p[i2]
+            variable sesgos_l = sesgos[i2]
+            variable vel_sesgos = vel_s[i2]
+            para j en 1..capas[i2 + 1] {
+                variable dj = deltas_sig[j - 1]
+                para k en 1..capas[i2] {
+                    variable v = vel_matriz[j - 1][k - 1] * impulso + tasa * dj * act[k - 1]
+                    vel_matriz[j - 1][k - 1] = v
+                    matriz[j - 1][k - 1] = matriz[j - 1][k - 1] + v
+                }
+                variable vs = vel_sesgos[j - 1] * impulso + tasa * dj
+                vel_sesgos[j - 1] = vs
+                sesgos_l[j - 1] = sesgos_l[j - 1] + vs
+            }
+            i2 = i2 - 1
+        }
+    }
+    devuelve error_total
+}
+
+# ---------- precisión ----------
+
+funcion precision() {
+    variable aciertos = 0
+    para d en datos {
+        variable activs = forward(d["entrada"])
+        variable salida = activs[longitud(capas) - 1][0]
+        variable pred = 0.0
+        si salida >= 0.5 {
+            pred = 1.0
+        }
+        si pred == d["deseado"][0] {
+            aciertos = aciertos + 1
+        }
+    }
+    devuelve aciertos / longitud(datos)
+}
+
+# ---------- entrenar ----------
+
+muestra("=== Espiral en JP: red", capas, "con momentum ===")
+muestra("dataset:", longitud(datos), "puntos (2 espirales de", por_brazo, ")")
+
+variable t0 = reloj()
+variable epoca = 0
+variable err = 1.0
+variable listo = falso
+mientras epoca < 3000 {
+    err = entrenar_epoca()
+    epoca = epoca + 1
+    si epoca % 200 == 0 {
+        variable p = precision()
+        muestra("época", epoca, "· error:", err, "· precisión:", p)
+        si p == 1.0 {
+            listo = verdadero
+            romper
+        }
+    }
+}
+
+variable p_final = precision()
+variable segundos = reloj() - t0
+muestra("")
+muestra("Épocas:", epoca, "· precisión:", p_final, "·", segundos, "segundos")
+
+# ---------- mapa ASCII de la frontera de decisión ----------
+
+muestra("")
+muestra("Frontera aprendida (× = clase 1, · = clase 0):")
+
+para gy en 1..15 {
+    variable fy = 1.2 - (gy - 1) * 0.17
+    variable linea = "  "
+    para gx en 1..15 {
+        variable fx = -1.2 + (gx - 1) * 0.17
+        variable punto = [fx, fy]
+        variable activs = forward(punto)
+        variable salida = activs[longitud(capas) - 1][0]
+        si salida >= 0.5 {
+            linea = linea + "×"
+        } sino {
+            linea = linea + "·"
+        }
+    }
+    muestra(linea)
+}

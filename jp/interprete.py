@@ -697,6 +697,16 @@ def _instalar_nativas(entorno: Entorno) -> None:
             raise ErrorEjecucion("exp() espera un número")
         return math.exp(x)
 
+    def seno(x: object) -> float:
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            raise ErrorEjecucion("seno() espera un número")
+        return math.sin(x)
+
+    def coseno(x: object) -> float:
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            raise ErrorEjecucion("coseno() espera un número")
+        return math.cos(x)
+
     def reloj() -> float:
         """Segundos (monotónicos) para medir tiempos: reloj() - reloj()."""
         return time.monotonic()
@@ -731,6 +741,8 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "agregar": FuncionNativa("agregar", agregar, aridad=2),
         "reloj": FuncionNativa("reloj", reloj, aridad=0),
         "exp": FuncionNativa("exp", exp, aridad=1),
+        "seno": FuncionNativa("seno", seno, aridad=1),
+        "coseno": FuncionNativa("coseno", coseno, aridad=1),
     }
     for nombre, funcion in nativas.items():
         entorno.definir(nombre, funcion)

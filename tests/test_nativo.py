@@ -107,10 +107,42 @@ class TestNativo(unittest.TestCase):
     def test_tipos_rechazados_con_mensaje(self):
         fns = self._compilar("funcion doble(x) { devuelve x * 2 }\n")
         with self.assertRaises(Exception) as ctx:
-            fns["doble"](1.5)
-        self.assertIn("entero", str(ctx.exception))
+            fns["doble"]("hola")
+        self.assertIn("número", str(ctx.exception))
         with self.assertRaises(Exception):
             fns["doble"](1, 2)  # aridad
+
+    # ---------- flotantes (SSE2) ----------
+
+    def test_flotantes_basicos(self):
+        fns = self._compilar(
+            "funcion promedio(a, b) { devuelve (a + b) / 2 }\n"
+            "funcion circulo(r) { devuelve 3.14159 * r * r }\n"
+            "funcion negativo(x) { devuelve -x + 1 }\n"
+        )
+        self.assertEqual(fns["promedio"](3, 8), 5.5)
+        self.assertAlmostEqual(fns["circulo"](2), 12.56636)
+        self.assertEqual(fns["negativo"](4), -3)
+
+    def test_flotantes_ramas_y_bucles(self):
+        fns = self._compilar(
+            "funcion mezcla(x) {\n  variable z = x / 3\n  si z > 2.5 { devuelve z * 2 }\n  devuelve z\n}\n"
+            "funcion escala(n) {\n  variable s = 0.0\n  variable i = 1\n"
+            "  mientras i <= n { s = s + 0.5; i = i + 1 }\n  devuelve s\n}\n"
+        )
+        self.assertEqual(fns["mezcla"](12), 8)   # 4.0 * 2, entero de vuelta
+        self.assertEqual(fns["mezcla"](3), 1)    # 1.0, no entra a la rama
+        self.assertEqual(fns["escala"](10), 5)   # 5.0 -> entero
+
+    def test_modo_flotante_por_lote(self):
+        # si UNA función usa '/', TODO el lote es flotante (ABI uniforme)
+        fns = self._compilar(
+            "funcion con_div(a, b) { devuelve a / b }\n"
+            "funcion solo_enteros(a, b) { devuelve a * b + a - b }\n"
+        )
+        self.assertEqual(fns["con_div"](7, 2), 3.5)
+        self.assertEqual(fns["solo_enteros"](3, 4), 11)
+        self.assertEqual(fns["solo_enteros"](3.0, 4.0), 11)  # pero acepta floats
 
 
 if __name__ == "__main__":

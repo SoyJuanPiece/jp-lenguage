@@ -189,7 +189,7 @@ jp-lang/
 │   ├── bytecode.py      # opcodes + chunk
 │   ├── compilador.py    # AST -> bytecode
 │   ├── vm.py            # máquina virtual (threaded code)
-│   ├── nativo.py        # JIT: mini-ensamblador x86-64 + mmap RWX
+│   ├── nativo.py        # JIT: mini-ensamblador x86-64 + mmap RWX (SSE2 incl.)
 │   ├── turbo.py         # evaluación total + cache .jpc
 │   ├── interprete.py    # AST -> ejecución (modo --interprete)
 │   ├── red.py           # HTTP, JSON, bots (urllib estándar)
@@ -209,18 +209,18 @@ jp-lang/
 
 ## Estado
 
+v0.8.0 — **flotantes en el JIT** (`--nativo`): si una función usa `/` o
+literales con punto, el lote compila a SSE2 double (`movsd`, `addsd`...,
+constantes en pool RIP-relativo, args SysV por `xmm0-2`). Suma armónica de
+10M: **JP 63,9 ms vs Python 2.907,9 ms = 45x más rápido**, resultado
+idéntico al dígito.
+
 v0.7.0 — **JIT nativo** (`--nativo`): compila funciones numéricas JP a código
 de máquina x86-64 (ensamblador propio, mmap RWX, llamadas SysV, recursión
-nativa) y las ejecuta la CPU directamente. Medido in-process, verificado
-contra Python:
+nativa) y las ejecuta la CPU directamente. fib(32): 19x · suma 10M: 73x.
 
-| Benchmark | JP --nativo | Python | Ratio |
-|---|---|---|---|
-| fib(32) recursivo | 36,2 ms | 693,8 ms | **19x** |
-| suma de 10M (raw loop) | 44,7 ms | 3.273,8 ms | **73x** |
-
-**JP le gana a Python en raw loop.** Lo que no califica (strings, I/O,
-demasiadas variables) corre en la VM normal, siempre correcta. 149 tests.
+**JP le gana a Python en raw loop numérico.** Lo que no califica (strings,
+I/O, demasiadas variables) corre en la VM normal, siempre correcta. 152 tests.
 
 v0.6.0 — **modo turbo** (`--turbo`): si un programa es puro (sin teclado, red,
 archivos ni azar), JP lo evalúa completo una vez, cachea la salida (`.jpc`)

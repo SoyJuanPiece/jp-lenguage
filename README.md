@@ -12,13 +12,17 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - 🌐 Internet incluido: `http_get`, `json_leer`, bots de Telegram en 10 líneas
 
 ```
-código .jp → [Lexer] → tokens → [Parser] → AST → [Compilador] → bytecode → [VM] → resultado
-                                                            └─ (modo --interprete: AST → ejecución)
+                                  ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
+código → Lexer → Parser → AST → [Compilador] → bytecode → [VM] → resultado
+                            └─ [--turbo: evalúa todo y cachea]
+                            └─ (--interprete: AST → ejecución)
 ```
 
 Desde la v0.4 el programa se **compila a bytecode** y se ejecuta en una máquina
-virtual (threaded code por cierres). El intérprete de árbol original sigue
-disponible con `python -m jp --interprete archivo.jp`.
+virtual (threaded code por cierres). Con `--nativo`, las funciones numéricas
+se compilan además a **código de máquina x86-64** y la CPU las ejecuta
+directamente (con recursión nativa y convención SysV). El intérprete de árbol
+original sigue disponible con `python -m jp --interprete archivo.jp`.
 
 ## Uso
 
@@ -185,6 +189,8 @@ jp-lang/
 │   ├── bytecode.py      # opcodes + chunk
 │   ├── compilador.py    # AST -> bytecode
 │   ├── vm.py            # máquina virtual (threaded code)
+│   ├── nativo.py        # JIT: mini-ensamblador x86-64 + mmap RWX
+│   ├── turbo.py         # evaluación total + cache .jpc
 │   ├── interprete.py    # AST -> ejecución (modo --interprete)
 │   ├── red.py           # HTTP, JSON, bots (urllib estándar)
 │   └── cli.py           # CLI + REPL
@@ -203,21 +209,22 @@ jp-lang/
 
 ## Estado
 
+v0.7.0 — **JIT nativo** (`--nativo`): compila funciones numéricas JP a código
+de máquina x86-64 (ensamblador propio, mmap RWX, llamadas SysV, recursión
+nativa) y las ejecuta la CPU directamente. Medido in-process, verificado
+contra Python:
+
+| Benchmark | JP --nativo | Python | Ratio |
+|---|---|---|---|
+| fib(32) recursivo | 36,2 ms | 693,8 ms | **19x** |
+| suma de 10M (raw loop) | 44,7 ms | 3.273,8 ms | **73x** |
+
+**JP le gana a Python en raw loop.** Lo que no califica (strings, I/O,
+demasiadas variables) corre en la VM normal, siempre correcta. 149 tests.
+
 v0.6.0 — **modo turbo** (`--turbo`): si un programa es puro (sin teclado, red,
 archivos ni azar), JP lo evalúa completo una vez, cachea la salida (`.jpc`)
-y las ejecuciones siguientes son microsegundos. Medido con el mismo programa
-en ambos runtimes (while 5M + fib(25)):
-
-| Runtime | Tiempo |
-|---|---|
-| Python (mismo runtime, in-process) | 1.315,7 ms |
-| **JP --turbo (cache en memoria)** | **0,0086 ms** |
-| Ratio | **≈ 152.000x más rápido** |
-
-La primera corrida paga el costo (compila y ejecuta una vez); las siguientes
-no vuelven a ejecutar el programa: imprimen el resultado cacheado, como el
-`constexpr` de C++ llevado al programa entero. Si el programa usa algo impuro,
-el turbo se rinde con gracia y corre en la VM normal.
+y las ejecuciones siguientes son microsegundos (≈152.000x en runtime).
 
 v0.5.0 — `romper`/`continuar`, nativas de **texto** y de **archivos** (agenda
 persistente incluida como ejemplo), con paridad total VM↔árbol.

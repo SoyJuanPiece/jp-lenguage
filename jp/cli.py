@@ -20,6 +20,7 @@ from .vm import MaquinaVM
 
 _USA_VM = "--interprete" not in sys.argv[1:]
 _TURBO = "--turbo" in sys.argv[1:]
+_NATIVO = "--nativo" in sys.argv[1:]
 
 _BANNER = r"""
      ██╗██╗
@@ -42,6 +43,12 @@ def ejecutar_fuente(fuente: str, interprete: Interprete | MaquinaVM, ruta: str =
     try:
         tokens = tokenizar(fuente)
         programa = parsear(tokens)
+        if _NATIVO and _USA_VM:
+            # JIT: compila a código de máquina las funciones numéricas que
+            # califican (falla en silencio y quedan en la VM las demás).
+            from .nativo import instalar
+
+            instalar(programa, interprete)
         interprete.ejecutar(programa)
         return True
     except (ErrorLexico, ErrorSintaxis, ErrorEjecucion) as error:
@@ -174,10 +181,11 @@ def _llaves_desbalanceadas(fuente: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    global _USA_VM, _TURBO
+    global _USA_VM, _TURBO, _NATIVO
     argumentos = argv if argv is not None else sys.argv[1:]
     _USA_VM = "--interprete" not in argumentos
     _TURBO = "--turbo" in argumentos
+    _NATIVO = "--nativo" in argumentos
     parser = argparse.ArgumentParser(
         prog="jp",
         description="JP — un pequeño lenguaje de programación en español.",
@@ -192,6 +200,11 @@ def main(argv: list[str] | None = None) -> int:
         "--turbo",
         action="store_true",
         help="cache total: programas puros corren en microsegundos (ver jp/turbo.py)",
+    )
+    parser.add_argument(
+        "--nativo",
+        action="store_true",
+        help="JIT: compila funciones numéricas a código de máquina x86-64",
     )
     parser.add_argument("-c", "--codigo", help="ejecuta una línea de código JP")
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")

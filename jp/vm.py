@@ -93,6 +93,9 @@ class MaquinaVM:
         self.frames: list[list] = []  # [cierre_de_reanudación, ámbito_previo]
         self.ambito: Ambito | None = None
         self.ultimo_valor: object = None
+        # Nombres globales instalados por el JIT (jp.nativo): DECLARAR no los
+        # pisa para que la versión nativa siga viva durante la ejecución.
+        self.resguardadas: set[str] = set()
 
     # ---------------- API pública ----------------
 
@@ -237,10 +240,12 @@ class MaquinaVM:
             # (igual que en el árbol, donde definir no produce valor).
             def op():
                 nombre = operando
+                valor = pila.pop()
                 if self.ambito is None:
-                    self.globals[nombre] = pila.pop()
+                    if nombre not in self.resguardadas:  # el JIT la reemplazó
+                        self.globals[nombre] = valor
                 else:
-                    self.ambito.vars[nombre] = pila.pop()
+                    self.ambito.vars[nombre] = valor
                 return lista[sig]
             return op
 

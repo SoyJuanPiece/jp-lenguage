@@ -168,6 +168,9 @@ class Interprete:
         from .archivos import instalar as _instalar_archivos
         _instalar_archivos(self.global_env)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
+        # Nombres globales instalados por el JIT (jp.nativo): la declaración
+        # JP no los pisa para que la versión nativa siga viva.
+        self.resguardadas: set[str] = set()
         # Despachos por tipo: un dict.get(type(nodo)) es más rápido que una
         # cadena larga de isinstance en el camino caliente del intérprete.
         self._ejecutores = {
@@ -264,6 +267,8 @@ class Interprete:
                 continue
 
     def _ej_funcion(self, nodo: NodoFuncion, entorno: Entorno) -> None:
+        if entorno is self.global_env and nodo.nombre in self.resguardadas:
+            return  # el JIT ya puso una versión nativa con este nombre
         entorno.definir(nodo.nombre, FuncionJP(nodo, entorno))
 
     def _ej_retorna(self, nodo: NodoRetorna, entorno: Entorno) -> None:

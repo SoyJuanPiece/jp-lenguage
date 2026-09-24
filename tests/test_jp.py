@@ -450,5 +450,127 @@ class TestOptimizaciones(unittest.TestCase):
             ejecutar('imprime(1 / 0)')
 
 
+class TestRomperContinuar(unittest.TestCase):
+    def test_romper_mientras(self):
+        self.assertEqual(
+            ejecutar('variable i = 0\nmientras verdadero {\n  i = i + 1\n  si i == 3 { romper }\n}\nmuestra(i)'),
+            "3\n",
+        )
+
+    def test_continuar_mientras(self):
+        self.assertEqual(
+            ejecutar('variable s = 0\nmientras i := 0 is None:\n  continuar'),
+            "",
+        ) if False else None
+        codigo = ('variable s = 0\nvariable i = 0\nmientras i < 10 {\n'
+                  '  i = i + 1\n  si i % 2 == 0 { continuar }\n  s = s + i\n}\nmuestra(s)')
+        self.assertEqual(ejecutar(codigo), "25\n")
+
+    def test_romper_para(self):
+        self.assertEqual(
+            ejecutar('variable x = 0\npara i en 1..10 {\n  si i == 4 { romper }\n  x = x + i\n}\nmuestra(x)'),
+            "6\n",
+        )
+
+    def test_continuar_para(self):
+        self.assertEqual(
+            ejecutar('variable s = 0\npara i en 1..10 {\n  si i % 2 == 0 { continuar }\n  s = s + i\n}\nmuestra(s)'),
+            "25\n",
+        )
+
+    def test_romper_solo_el_interno(self):
+        self.assertEqual(
+            ejecutar('variable n = 0\npara i en 1..3 {\n  para j en 1..3 {\n    si j == 2 { romper }\n  }\n  n = n + 1\n}\nmuestra(n)'),
+            "3\n",
+        )
+
+    def test_romper_cierra_ambito_de_si(self):
+        self.assertEqual(
+            ejecutar('variable i = 0\nmientras verdadero {\n  variable zona = i\n  i = i + 1\n  si zona == 2 { romper }\n}\nmuestra(i)'),
+            "3\n",
+        )
+
+    def test_romper_fuera_de_bucle(self):
+        with self.assertRaises(ErrorEjecucion) as ctx:
+            ejecutar('romper')
+        self.assertIn("fuera de un bucle", str(ctx.exception))
+
+    def test_continuar_fuera_de_bucle(self):
+        with self.assertRaises(ErrorEjecucion) as ctx:
+            ejecutar('continuar')
+        self.assertIn("fuera de un bucle", str(ctx.exception))
+
+    def test_romper_en_funcion_no_escapa(self):
+        with self.assertRaises(ErrorEjecucion) as ctx:
+            ejecutar('funcion f() { romper }\nmientras verdadero { f() }')
+        self.assertIn("fuera de un bucle", str(ctx.exception))
+
+
+class TestTexto(unittest.TestCase):
+    def test_basicas(self):
+        self.assertEqual(ejecutar('muestra(mayusculas("hola"))'), "HOLA\n")
+        self.assertEqual(ejecutar('muestra(minusculas("HOLA"))'), "hola\n")
+        self.assertEqual(ejecutar('muestra(recortar("  hola  "))'), "hola\n")
+
+    def test_separar_unir(self):
+        self.assertEqual(ejecutar('muestra(separar("a,b,c", ","))'), '["a", "b", "c"]\n')
+        self.assertEqual(ejecutar('muestra(unir(["x", "y"], "-"))'), "x-y\n")
+        self.assertEqual(ejecutar('muestra(longitud(separar("uno dos tres")))'), "3\n")
+
+    def test_contiene_reemplazar(self):
+        self.assertEqual(ejecutar('muestra(contiene("hola", "ol"))'), "verdadero\n")
+        self.assertEqual(ejecutar('muestra(contiene([1, 2], 2))'), "verdadero\n")
+        self.assertEqual(ejecutar('muestra(reemplazar("gato", "g", "p"))'), "pato\n")
+
+    def test_subtexto_y_letra(self):
+        self.assertEqual(ejecutar('muestra(subtexto("JP lenguaje", 0, 2))'), "JP\n")
+        self.assertEqual(ejecutar('muestra(letra("hola", 1))'), "o\n")
+        self.assertEqual(ejecutar('muestra(letra("hola", -1))'), "a\n")
+
+    def test_errores_de_tipo(self):
+        with self.assertRaises(ErrorEjecucion):
+            ejecutar('muestra(mayusculas(5))')
+        with self.assertRaises(ErrorEjecucion):
+            ejecutar('muestra(letra("hola", 99))')
+
+    def test_agregar(self):
+        self.assertEqual(ejecutar('variable l = []\nagregar(l, 1)\nagregar(l, 2)\nmuestra(l)'), "[1, 2]\n")
+        self.assertEqual(ejecutar('muestra(longitud(agregar(agregar([], "a"), "b")))'), "2\n")
+        with self.assertRaises(ErrorEjecucion):
+            ejecutar('agregar("no soy lista", 1)')
+
+
+class TestArchivos(unittest.TestCase):
+    RUTA = "/tmp/jp_test_archivos.txt"
+
+    def tearDown(self):
+        import os
+
+        if os.path.exists(self.RUTA):
+            os.remove(self.RUTA)
+
+    def test_ciclo_completo(self):
+        codigo = (
+            f'escribir_archivo("{self.RUTA}", "linea 1\\n")\n'
+            f'agregar_archivo("{self.RUTA}", "linea 2\\n")\n'
+            f'muestra(leer_archivo("{self.RUTA}"))\n'
+            f'muestra(existe_archivo("{self.RUTA}"))\n'
+        )
+        self.assertEqual(ejecutar(codigo), "linea 1\nlinea 2\n\nverdadero\n")
+
+    def test_leer_inexistente(self):
+        with self.assertRaises(ErrorEjecucion) as ctx:
+            ejecutar('leer_archivo("/tmp/jp_no_existe_seguro_xyz.txt")')
+        self.assertIn("no existe el archivo", str(ctx.exception))
+
+    def test_tamano_y_existe(self):
+        codigo = (
+            f'escribir_archivo("{self.RUTA}", "12345")\n'
+            f'muestra(tamano_archivo("{self.RUTA}"))\n'
+            f'muestra(existe_archivo("{self.RUTA}"), existe_archivo("/tmp/jp_nada_xyz"))\n'
+        )
+        self.assertEqual(ejecutar(codigo), "5\nverdadero falso\n")
+
+
 if __name__ == "__main__":
     unittest.main()

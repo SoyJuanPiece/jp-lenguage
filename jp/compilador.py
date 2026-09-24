@@ -3,15 +3,15 @@
 Recorre el árbol una única vez y emite instrucciones (jp.bytecode). Ideas
 principales:
 
-    - Ámbitos como diccionarios (igual que Entorno en el intérprete): la
-      recursión anidada sigue siendo correcta sin reservar slots.
-    - Sentencias compilan a expresiones seguidas de POP; si el cuerpo termina
-      en expresión, se deja como valor (ULTIMO_VALOR en el programa, RETORNAR
-      implícito en las funciones).
-    - `para x en ...` usa ITERAR/ITERAR_SIGUIENTE con el estado del bucle en
-      la propia pila de la VM: nada de celdas compartidas, seguro en
-      recursión y en bucles anidados.
+    - INVARIANTE "netas-0": cada sentencia deja la pila en el mismo nivel en
+      que la encontró (el valor para el REPL lo guarda EXPR_SENT). Esto hace
+      que romper/continuar solo tengan que cerrar ámbitos, no apilar POPs.
+    - Ámbitos como dicts en una pila (misma semántica léxica que el árbol);
+      la cadena "SENTINELA" marca hasta dónde puede saltar un romper/continuar
+      (los cuerpos de si abren posibles ámbitos que el salto aún no cruza).
     - muestra()/imprime() con constantes se compilan a IMPRIMIR directo.
+    - Las funciones aíslan la pila de bucles: un 'romper' jamás salta a un
+      bucle del llamador (otro chunk).
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from .arbol import (
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoContinuar,
     NodoDeclaracionVar,
     NodoDiccionario,
     NodoExpresion,
@@ -40,12 +41,15 @@ from .arbol import (
     NodoPrograma,
     NodoRango,
     NodoRetorna,
+    NodoRomper,
     NodoSi,
     NodoUnario,
     NodoVariable,
 )
 from .bytecode import Chunk, Codigo
 from .errores import ErrorEjecucion
+
+_SENTINELA = "SENTINELA"  # marca el límite de salto de romper/continuar
 
 
 @dataclass
@@ -61,16 +65,21 @@ class FunCerrada:
 class Compilador:
     def __init__(self) -> None:
         self.global_chunk = Chunk()
-        # Pila de ámbitos de COMPILACIÓN (cada uno es {nombre: True}); sirve
-        # para decidir si un nombre se compila como local (LEER_LOCAL) o
-        # global (LEER_GLOBAL). En tiempo de ejecución la VM mantiene su
-        # propia cadena de Ambito con la misma forma.
-        self.ambitos: list[dict[str, bool]] = []
+        # Pila de ámbitos de COMPILACIÓN (dicts) con "SENTINELA" como frontera
+        # de romper/continuar. En tiempo de ejecución la VM mantiene su propia
+        # cadena de Ambito con la misma forma.
+        self.ambitos: list[dict[str, bool] | str] = []
+        # Bucles activos: {"vuelta", "fin", "c_pops", "r_pops"}. Los POPs
+        # son los extras que 'para' deja en la pila alrededor del cuerpo
+        # ([iter, valor]): 'continuar' popea el valor (conserva el iterador)
+        # y 'romper' popea ambos; en 'mientras' son 0.
+        self.bucles: list[dict[str, int]] = []
 
     # ---------------- API ----------------
 
     def compilar(self, programa: NodoPrograma) -> Chunk:
         self.ambitos = []
+        self.bucles = []
         self._cuerpo(programa.sentencias, self.global_chunk, es_fun=False)
         return self.global_chunk
 
@@ -78,43 +87,38 @@ class Compilador:
 
     @property
     def en_fun(self) -> bool:
-        """¿Estamos compilando dentro de una función? (los 'para' de nivel
-        superior abren su ámbito solo durante el cuerpo del bucle)."""
         return bool(self.ambitos)
 
     def _emitir(self, chunk: Chunk, codigo: Codigo, operando: object = None, linea: int = 0) -> int:
         return chunk.emitir(codigo, operando, linea)
 
-    def _parchar_aqui(self, chunk: Chunk, direccion: int) -> None:
-        codigo, _, linea = chunk.codigo[direccion]
-        chunk.codigo[direccion] = (codigo, direccion + 1, linea)
-
     def _es_local(self, nombre: str) -> bool:
         for ambito in reversed(self.ambitos):
-            if nombre in ambito:
+            if ambito is _SENTINELA:
+                break  # frontera: lo que sigue pertenece a otro camino de ejecución
+            if isinstance(ambito, dict) and nombre in ambito:
                 return True
         return False
 
+    # ---------- centinela de romper/continuar ----------
+
+    def _marcar(self) -> None:
+        """Abre una frontera de salto (inicio de una rama de si, p. ej.)."""
+        if self.bucles:
+            self.ambitos.append(_SENTINELA)
+
+    def _desmarcar(self) -> None:
+        if self.ambitos and self.ambitos[-1] is _SENTINELA:
+            self.ambitos.pop()
+
+    # ---------------- cuerpos ----------------
+
     def _cuerpo(self, sentencias: list[Nodo], chunk: Chunk, es_fun: bool) -> None:
-        """Compila un cuerpo y garantiza un final correcto.
-
-        Cada sentencia deja exactamente 1 valor en la pila (o none con
-        POP/DECLARAR/RETORNAR). Al cerrar:
-
-        - Función: SIEMPRE debe acabar en RETORNAR (si no, la VM se quedaría
-          sin instrucciones a mitad de llamada).
-            * termina en expresión -> RETORNAR a secas (usa ese valor).
-            * termina en var/POP   -> NULO + RETORNAR (retorno implícito).
-            * ya termina en RETORNAR -> no se toca.
-        - Programa: si termina en expresión -> ULTIMO_VALOR (para el REPL).
-        """
-        inicio = len(chunk.codigo)
+        """Compila un cuerpo. Las sentencias son netas-0; solo las funciones
+        necesitan cierre: garantizar que acaban en RETORNAR."""
         for sentencia in sentencias:
             self._sentencia(sentencia, chunk)
 
-        # Toda sentencia deja la pila en su nivel de entrada (netas 0);
-        # el valor para el REPL lo guarda EXPR_SENT. Solo las funciones
-        # necesitan cierre: garantizar que acaban en RETORNAR.
         if es_fun:
             if not chunk.codigo or chunk.codigo[-1][0] is not Codigo.RETORNAR:
                 self._emitir(chunk, Codigo.NULO, linea=0)
@@ -130,7 +134,7 @@ class Compilador:
                 self._expresion(nodo.inicializador, chunk)
             else:
                 self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
-            if self.ambitos:
+            if self.ambitos and self.ambitos[-1] is not _SENTINELA:
                 self.ambitos[-1][nodo.nombre] = True
             self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
             return
@@ -158,14 +162,19 @@ class Compilador:
         if tipo is NodoSi:
             self._expresion(nodo.condicion, chunk)
             si_falso = self._emitir(chunk, Codigo.SALTAR_SI_FALSO, 0, nodo.linea)
-            # El cuerpo (NodoBloque) abre su propio ámbito si declara variables.
+            # La frontera evita que un romper dentro de la rama cierre ámbitos
+            # de la OTRA rama (que no llegó a abrirse).
+            self._marcar()
             self._sentencia(nodo.entonces, chunk)
+            self._desmarcar()
             self._emitir(chunk, Codigo.NULO, linea=nodo.linea)   # valor del 'entonces'
             al_final = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
-            # El falso salta AQUÍ: al inicio del 'sino' (o del NULO si no hay)
+            # El falso salta AQUÍ: al inicio del 'sino' (o del NULO)
             chunk.codigo[si_falso] = (Codigo.SALTAR_SI_FALSO, len(chunk.codigo), nodo.linea)
+            self._marcar()
             if nodo.sino is not None:
                 self._sentencia(nodo.sino, chunk)
+            self._desmarcar()
             self._emitir(chunk, Codigo.NULO, linea=nodo.linea)   # valor del 'sino' (AMBAS ramas empujan 1)
             fin = len(chunk.codigo)
             chunk.codigo[al_final] = (Codigo.SALTAR, fin, nodo.linea)  # salta AL FINAL
@@ -184,7 +193,7 @@ class Compilador:
             fun_cerrada = self._compilar_funcion(nodo)
             indice = chunk.agregar_constante(fun_cerrada)
             self._emitir(chunk, Codigo.CONSTANTE, indice, nodo.linea)
-            if self.ambitos:
+            if self.ambitos and self.ambitos[-1] is not _SENTINELA:
                 self.ambitos[-1][nodo.nombre] = True
             self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
             return
@@ -197,31 +206,41 @@ class Compilador:
             self._emitir(chunk, Codigo.RETORNAR, linea=nodo.linea)
             return
 
+        if tipo is NodoRomper:
+            self._saltar_bucle(chunk, nodo.linea, "fin", "romper")
+            return
+
+        if tipo is NodoContinuar:
+            self._saltar_bucle(chunk, nodo.linea, "vuelta", "continuar")
+            return
+
         raise ErrorEjecucion(f"sentencia desconocida para el compilador: {tipo.__name__}", getattr(nodo, "linea", 0))
 
     # ---------------- bucles ----------------
 
     def _bucle(self, condicion: Nodo, cuerpo: NodoBloque, chunk: Chunk) -> None:
         linea = getattr(condicion, "linea", 0)
-        # Si el cuerpo declara variables, cada iteración recibe un ámbito
-        # fresco (igual que el Entorno nuevo por vuelta del intérprete árbol).
-        con_ambito = cuerpo.declara
         inicio = len(chunk.codigo)
         self._expresion(condicion, chunk)
         salir = self._emitir(chunk, Codigo.SALTAR_SI_FALSO, 0, linea)
+        # Si el cuerpo declara variables, cada iteración recibe un ámbito
+        # fresco (igual que el Entorno nuevo por vuelta del intérprete árbol).
+        base = len(self.ambitos)  # los scopes previos NO se cierran con romper
+        con_ambito = cuerpo.declara
         if con_ambito:
             self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)
             self.ambitos.append({})
+        marco = {"vuelta": inicio, "base": base, "c_pops": 0, "r_pops": 0, "pendientes": []}
+        self.bucles.append(marco)
         self._sentencia(cuerpo, chunk)
+        self.bucles.pop()
         if con_ambito:
             self.ambitos.pop()
             self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
-        # Sin POP extra: si el cuerpo es un bloque no declarativo, su última
-        # expresión quedó con EXPR_SENT (ya popeado). Si fue POP/DECLARAR,
-        # la pila está al nivel de entrada del bucle.
         self._emitir(chunk, Codigo.SALTAR, inicio, linea)
         fin = len(chunk.codigo)  # salida del bucle: tras el SALTAR, NO el cuerpo
         chunk.codigo[salir] = (Codigo.SALTAR_SI_FALSO, fin, linea)
+        self._parchar_pendientes(chunk, marco, fin, linea)
         self._emitir(chunk, Codigo.NULO, linea=linea)
         self._emitir(chunk, Codigo.POP, linea=linea)
 
@@ -230,31 +249,63 @@ class Compilador:
 
         pila: [iter] -> ITERAR_SIGUIENTE -> [iter, valor] -> cuerpo ->
         [iter, valor, cuerpo] -> POP POP -> [iter] -> repetir.
-        Al agotarse el iterable, ITERAR_SIGUIENTE salta a 'fin' donde el
-        centinela se descarta y la sentencia deja NULO.
-
-        Cada vuelta abre un ámbito fresco (AMBITO_PUSH) que contiene la
-        variable del bucle y las declaraciones del cuerpo: los closures
-        capturan SU vuelta, igual que el Entorno nuevo del intérprete árbol,
-        y 'para' anidados con el mismo nombre no se pisan.
+        Cada vuelta abre un ámbito fresco (AMBITO_PUSH) con la variable del
+        bucle y las declaraciones del cuerpo: los closures capturan SU vuelta,
+        igual que el Entorno nuevo del intérprete árbol, y 'para' anidados con
+        el mismo nombre no se pisan. romper/continuar cierran ese ámbito antes
+        de saltar (los salta _cerrar_hasta_sentinela).
         """
         linea = nodo.linea
+        base = len(self.ambitos)
         self._expresion(nodo.iterable, chunk)   # se evalúa en el ámbito exterior
         self._emitir(chunk, Codigo.ITERAR, linea=linea)           # pila: iter
         self.ambitos.append({nodo.variable: True})  # el cuerpo ve la var como local
         vuelta = len(chunk.codigo)  # tras ITERAR se cae AQUÍ (sin salto de entrada)
         self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)      # ámbito de la vuelta
         ix_iter = self._emitir(chunk, Codigo.ITERAR_SIGUIENTE, (nodo.variable, 0), linea)
+        marco = {"vuelta": vuelta, "base": base, "c_pops": 1, "r_pops": 1, "pendientes": []}
+        self.bucles.append(marco)
         self._sentencia(nodo.cuerpo, chunk)                       # el cuerpo deja 0 neto
+        self.bucles.pop()
         self._emitir(chunk, Codigo.POP, linea=linea)              # descarta 'valor' -> pila: iter
         self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
         self._emitir(chunk, Codigo.SALTAR, vuelta, linea)
         fin = len(chunk.codigo)  # aquí se salta al agotarse el iterable
         chunk.codigo[ix_iter] = (Codigo.ITERAR_SIGUIENTE, (nodo.variable, fin), linea)
+        self._parchar_pendientes(chunk, marco, fin, linea)
         self._emitir(chunk, Codigo.POP, linea=linea)              # quita el centinela
         self._emitir(chunk, Codigo.NULO, linea=linea)             # valor de la sentencia
         self._emitir(chunk, Codigo.POP, linea=linea)              # ... y lo descarta (netas 0)
         self.ambitos.pop()
+
+    # ---------------- romper / continuar ----------------
+
+    def _parchar_pendientes(self, chunk: Chunk, marco: dict, fin: int, linea: int) -> None:
+        """Resuelve los saltos de romper/continuar ya que 'fin' es conocido."""
+        for ix, destino in marco["pendientes"]:
+            destino_idx = fin if destino == "fin" else marco["vuelta"]
+            chunk.codigo[ix] = (Codigo.SALTAR, destino_idx, linea)
+
+    def _saltar_bucle(self, chunk: Chunk, linea: int, destino: str, palabra: str) -> None:
+        """Solo afecta al bucle MÁS INTERNO. Cierra los ámbitos abiertos hasta
+        la frontera más cercana, popea los extras del 'para' y deja el salto
+        PENDIENTE (el destino 'fin' se conoce al cerrar el bucle)."""
+        if not self.bucles:
+            raise ErrorEjecucion(f"'{palabra}' fuera de un bucle", linea)
+        marco = self.bucles[-1]
+        # Cerrar SOLO los ámbitos abiertos desde la base de este bucle (los suyos
+        # y los de bloques/si anidados en el camino actual); los bucles externos
+        # conservan los suyos porque siguen vivos.
+        base = marco["base"]
+        for _ in range(sum(1 for a in self.ambitos[base:] if isinstance(a, dict))):
+            self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
+        # Extras del 'para' en pila: continuar popea el valor (el iterador
+        # queda para ITERAR_SIGUIENTE); romper popea solo el valor porque el
+        # POP del destino 'fin' ya se lleva el iterador (centinela).
+        for _ in range(marco["c_pops" if destino == "vuelta" else "r_pops"]):
+            self._emitir(chunk, Codigo.POP, linea=linea)
+        ix = self._emitir(chunk, Codigo.SALTAR, 0, linea)
+        marco["pendientes"].append((ix, destino))
 
     # ---------------- expresiones ----------------
 
@@ -404,7 +455,12 @@ class Compilador:
         # Un nuevo ámbito por llamada: las funciones recursivas ven solo sus
         # parámetros y sus propias locales, nunca las de la llamada anterior.
         self.ambitos.append({parametro: True for parametro in nodo.parametros})
+        # Aislamiento: dentro de la función no existen los bucles del llamador
+        # (un 'romper' no puede saltar a otro chunk).
+        bucles_externos = self.bucles
+        self.bucles = []
         self._cuerpo(nodo.cuerpo.sentencias, chunk, es_fun=True)
+        self.bucles = bucles_externos
         self.ambitos.pop()
         return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros))
 

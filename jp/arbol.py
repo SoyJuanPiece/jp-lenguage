@@ -172,3 +172,13 @@ class NodoFuncion(Nodo):
 class NodoRetorna(Nodo):
     valor: Nodo | None
     linea: int = 0
+
+
+@dataclass
+class NodoRomper(Nodo):
+    linea: int = 0
+
+
+@dataclass
+class NodoContinuar(Nodo):
+    linea: int = 0

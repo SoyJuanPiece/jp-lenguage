@@ -66,7 +66,7 @@ si edad >= 18 {
 sino: imprime("niño")
 ```
 
-### Bucles — rangos inclusivos `1..10`
+### Bucles — rangos inclusivos `1..10`, con `romper` y `continuar`
 
 ```jp
 para i en 1..5 { imprime(i) }     # 1,2,3,4,5 (¡inclusivo!)
@@ -74,6 +74,13 @@ para i en 5..1: imprime(i)        # 5,4,3,2,1 (¡al revés también!)
 para f en ["a", "b"]: imprime(f)  # listas
 variable cuenta = 0
 mientras cuenta > 0: cuenta = cuenta - 1
+
+mientras verdadero {                # menús y juegos
+    variable opcion = leer("> ")
+    si opcion == "salir": romper
+    si opcion == "": continuar
+    imprime("dijiste:", opcion)
+}
 ```
 
 ### Funciones
@@ -116,6 +123,23 @@ lista[-1]                 # índice negativo = desde el final
 | `json_leer(t)` / `json_texto(v)` | Leer/generar JSON |
 | `telegram_leer(token)` | Mensajes nuevos de Telegram |
 | `telegram_responder(token, de, texto)` | Responder en Telegram |
+| **Texto** | |
+| `mayusculas(t)` / `minusculas(t)` | Mayúsculas / minúsculas |
+| `recortar(t)` | Quita espacios de los extremos |
+| `separar(t[, sep])` | Divide en lista: `separar("a,b", ",")` → `["a", "b"]` |
+| `unir(lista[, sep])` | Une una lista en texto |
+| `contiene(donde, que)` | ¿Está? (texto, lista o dict) |
+| `reemplazar(t, a, b)` | Reemplaza en texto |
+| `subtexto(t, ini[, fin])` | Pedazo de texto (soporta negativos) |
+| `letra(t, i)` | Letra en posición `i` (soporta negativos) |
+| `agregar(lista, v)` | Agrega al final de una lista |
+| **Archivos** | |
+| `leer_archivo(ruta)` | Lee un archivo de texto |
+| `escribir_archivo(ruta, t)` | Crea/sobreescribe (UTF-8) |
+| `agregar_archivo(ruta, t)` | Añade al final |
+| `existe_archivo(ruta)` | ¿Existe? |
+| `tamano_archivo(ruta)` | Tamaño en bytes |
+| `lista_archivos(carpeta)` | Lista de nombres |
 
 ## Conectada a internet (v0.3)
 
@@ -170,16 +194,18 @@ jp-lang/
 
 ## Próximos pasos posibles
 
-- `romper` y `continuar` para bucles
 - Strings interpolados `"hola {nombre}"`
 - Websockets (bots de Discord en vivo)
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
 
+v0.5.0 — `romper`/`continuar`, nativas de **texto** y de **archivos** (agenda
+persistente incluida como ejemplo), con paridad total VM↔árbol
+(137 tests en verde).
+
 v0.4.0 — **máquina virtual de bytecode**: el programa se compila una vez y se
-ejecuta sobre pila con frames iterativos, closures reales y threaded code
-(109 tests en verde: 81 del lenguaje + 32 de paridad VM↔árbol).
+ejecuta sobre pila con frames iterativos, closures reales y threaded code.
 Rendimiento medido en `ejemplos/benchmark.jp` (while de 1M + fib(22) recursivo):
 
 | Versión | Tiempo | Nota |

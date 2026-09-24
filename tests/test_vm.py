@@ -200,6 +200,38 @@ class TestParidadVM(unittest.TestCase):
         vm, arbol = paridad('retorna 42')
         self.assertEqual(vm, arbol)
 
+    # ---------- romper / continuar (paridad VM vs árbol) ----------
+
+    def test_romper_continuar_mientras(self):
+        self._par('variable i = 0\nmientras verdadero {\n  i = i + 1\n  si i == 3 { romper }\n}\nmuestra(i)')
+        self._par('variable s = 0\nvariable i = 0\nmientras i < 10 {\n  i = i + 1\n  si i % 2 == 0 { continuar }\n  s = s + i\n}\nmuestra(s)')
+
+    def test_romper_continuar_para(self):
+        self._par('variable x = 0\npara i en 1..10 {\n  si i == 4 { romper }\n  x = x + i\n}\nmuestra(x)')
+        self._par('variable s = 0\npara i en 1..10 {\n  si i % 2 == 0 { continuar }\n  s = s + i\n}\nmuestra(s)')
+
+    def test_romper_anidados_y_ambitos(self):
+        self._par('variable n = 0\npara i en 1..3 {\n  para j en 1..3 {\n    si j == 2 { romper }\n  }\n  n = n + 1\n}\nmuestra(n)')
+        self._par('variable i = 0\nmientras verdadero {\n  variable zona = i\n  i = i + 1\n  si zona == 2 { romper }\n}\nmuestra(i)')
+
+    def test_menu_con_romper(self):
+        self._par('variable opcion = 0\nmientras verdadero {\n  opcion = opcion + 1\n'
+                  '  si opcion == 2 { continuar }\n  si opcion == 4 { romper }\n'
+                  '  muestra("paso", opcion)\n}\nmuestra("fin")')
+
+    def test_romper_fuera_de_bucle_igual(self):
+        for maquina in (MaquinaVM(), Interprete()):
+            with self.assertRaises(Exception) as ctx:
+                ejecutar_en(maquina, 'romper')
+            self.assertIn("fuera de un bucle", str(ctx.exception))
+
+    def test_romper_en_funcion_igual(self):
+        codigo = 'funcion f() { romper }\nmientras verdadero { f() }'
+        for maquina in (MaquinaVM(), Interprete()):
+            with self.assertRaises(Exception) as ctx:
+                ejecutar_en(maquina, codigo)
+            self.assertIn("fuera de un bucle", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

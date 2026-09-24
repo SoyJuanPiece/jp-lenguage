@@ -65,6 +65,8 @@ class Codigo(Enum):
     # Ámbitos de bloque (para que 'var' dentro de { } no se escape del bloque)
     AMBITO_PUSH = auto()      # ambito = Ambito(padre=ambito)
     AMBITO_POP = auto()       # ambito = ambito.padre
+    # (romper/continuar no necesitan opcode: el compilador emite los
+    #  AMBITO_POP necesarios y un SALTAR normal)
 
     # Sentencias
     POP = auto()            # descarta el tope de la pila

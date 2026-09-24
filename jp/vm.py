@@ -85,6 +85,9 @@ class MaquinaVM:
         from .red import instalar as _instalar_red
 
         _instalar_red(entorno_global)
+        from .archivos import instalar as _instalar_archivos
+
+        _instalar_archivos(entorno_global)
         self.globals: dict[str, object] = entorno_global.variables
         self.pila: list[object] = []
         self.frames: list[list] = []  # [cierre_de_reanudación, ámbito_previo]

@@ -31,6 +31,8 @@ from .arbol import (
     NodoPara,
     NodoPrograma,
     NodoRango,
+    NodoRomper,
+    NodoContinuar,
     NodoRetorna,
     NodoSi,
     NodoUnario,
@@ -46,6 +48,20 @@ class Retornar(Exception):
 
     def __init__(self, valor: object):
         self.valor = valor
+
+
+class _Romper(Exception):
+    """Señal interna de 'romper' (lleva la línea para el error amigable)."""
+
+    def __init__(self, linea: int = 0):
+        self.linea = linea
+
+
+class _Continuar(Exception):
+    """Señal interna de 'continuar'."""
+
+    def __init__(self, linea: int = 0):
+        self.linea = linea
 
 
 # ----------------- Entornos -----------------
@@ -149,6 +165,8 @@ class Interprete:
         _instalar_nativas(self.global_env)
         from .red import instalar as _instalar_red
         _instalar_red(self.global_env)
+        from .archivos import instalar as _instalar_archivos
+        _instalar_archivos(self.global_env)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
         # Despachos por tipo: un dict.get(type(nodo)) es más rápido que una
         # cadena larga de isinstance en el camino caliente del intérprete.
@@ -162,6 +180,8 @@ class Interprete:
             NodoPara: self._ejecutar_para,
             NodoFuncion: self._ej_funcion,
             NodoRetorna: self._ej_retorna,
+            NodoRomper: self._ej_romper,
+            NodoContinuar: self._ej_continuar,
         }
         self._evaluadores = {
             NodoNumero: self._ev_literal,
@@ -190,6 +210,10 @@ class Interprete:
             # 'retorna' en el nivel superior termina el programa en paz
             # (antes se escapaba la excepción interna y tumbaba el REPL).
             self.ultimo_valor = retorno.valor
+        except _Romper as senal:
+            raise ErrorEjecucion("'romper' fuera de un bucle", senal.linea) from None
+        except _Continuar as senal:
+            raise ErrorEjecucion("'continuar' fuera de un bucle", senal.linea) from None
 
     # ---------- sentencias ----------
 
@@ -232,7 +256,12 @@ class Interprete:
 
     def _ej_mientras(self, nodo: NodoMientras, entorno: Entorno) -> None:
         while es_verdad(self._evaluar(nodo.condicion, entorno)):
-            self._ejecutar(nodo.cuerpo, entorno)
+            try:
+                self._ejecutar(nodo.cuerpo, entorno)
+            except _Romper:
+                break
+            except _Continuar:
+                continue
 
     def _ej_funcion(self, nodo: NodoFuncion, entorno: Entorno) -> None:
         entorno.definir(nodo.nombre, FuncionJP(nodo, entorno))
@@ -242,6 +271,12 @@ class Interprete:
         if nodo.valor is not None:
             valor = self._evaluar(nodo.valor, entorno)
         raise Retornar(valor)
+
+    def _ej_romper(self, nodo, entorno) -> None:
+        raise _Romper(nodo.linea)
+
+    def _ej_continuar(self, nodo, entorno) -> None:
+        raise _Continuar(nodo.linea)
 
     def _ejecutar_para(self, nodo: NodoPara, entorno: Entorno) -> None:
         iterable = self._evaluar(nodo.iterable, entorno)
@@ -261,7 +296,12 @@ class Interprete:
         for elemento in elementos:
             cuerpo_env = Entorno(padre=entorno)
             cuerpo_env.definir(nodo.variable, elemento)
-            self._ejecutar_bloque(nodo.cuerpo.sentencias, cuerpo_env)
+            try:
+                self._ejecutar_bloque(nodo.cuerpo.sentencias, cuerpo_env)
+            except _Romper:
+                break
+            except _Continuar:
+                continue
 
     # ---------- expresiones ----------
 
@@ -487,6 +527,11 @@ class Interprete:
             self._ejecutar_bloque(declaracion.cuerpo.sentencias, entorno_local)
         except Retornar as retorno:
             return retorno.valor
+        except _Romper as senal:
+            # Un 'romper' no puede cruzar el límite de la función.
+            raise ErrorEjecucion("'romper' fuera de un bucle", senal.linea) from None
+        except _Continuar as senal:
+            raise ErrorEjecucion("'continuar' fuera de un bucle", senal.linea) from None
         return None
 
     # ---------- helpers ----------
@@ -574,6 +619,78 @@ def _instalar_nativas(entorno: Entorno) -> None:
             return list(range(valores[0], valores[1], valores[2]))
         raise ErrorEjecucion("rango() espera 1, 2 o 3 argumentos")
 
+    # ---------- texto ----------
+
+    def _cadena(v: object, nombre: str) -> str:
+        if not isinstance(v, str):
+            raise ErrorEjecucion(f"{nombre}() espera texto, no {jp_a_texto(v)!r}")
+        return v
+
+    def mayusculas(v: object) -> str:
+        return _cadena(v, "mayusculas").upper()
+
+    def minusculas(v: object) -> str:
+        return _cadena(v, "minusculas").lower()
+
+    def recortar(v: object) -> str:
+        return _cadena(v, "recortar").strip()
+
+    def separar(texto: object, separador: object = None) -> list:
+        t = _cadena(texto, "separar")
+        if separador is None:
+            return t.split()
+        return t.split(_cadena(separador, "separar"))
+
+    def unir(partes: object, separador: object = "") -> str:
+        if not isinstance(partes, list):
+            raise ErrorEjecucion(f"unir() espera una lista, no {jp_a_texto(partes)!r}")
+        sep = _cadena(separador, "unir")
+        return sep.join(jp_a_texto(p) for p in partes)
+
+    def contiene(contenedor: object, pieza: object) -> bool:
+        if isinstance(contenedor, str):
+            return isinstance(pieza, str) and pieza in contenedor
+        if isinstance(contenedor, list):
+            return pieza in contenedor
+        if isinstance(contenedor, dict):
+            return isinstance(pieza, str) and pieza in contenedor
+        raise ErrorEjecucion(
+            f"contiene() espera texto, lista o diccionario, no {jp_a_texto(contenedor)!r}"
+        )
+
+    def reemplazar(texto: object, viejo: object, nuevo: object) -> str:
+        return _cadena(texto, "reemplazar").replace(
+            _cadena(viejo, "reemplazar"), _cadena(nuevo, "reemplazar")
+        )
+
+    def subtexto(texto: object, inicio: object, fin: object = None) -> str:
+        t = _cadena(texto, "subtexto")
+        if isinstance(inicio, bool) or not isinstance(inicio, (int, float)):
+            raise ErrorEjecucion("subtexto() espera números para inicio y fin")
+        i = int(inicio)
+        f = len(t) if fin is None else int(fin)  # type: ignore[call-overload]
+        return t[i:f] if i >= 0 and f >= 0 else t[i:f]  # soporta negativos como listas
+
+    def letra(texto: object, posicion: object) -> str:
+        t = _cadena(texto, "letra")
+        if isinstance(posicion, bool) or not isinstance(posicion, (int, float)):
+            raise ErrorEjecucion("letra() espera una posición numérica")
+        i = int(posicion)
+        if i < 0:
+            i += len(t)
+        if i < 0 or i >= len(t):
+            raise ErrorEjecucion(
+                f"índice fuera de rango: {i} (cadena de {len(t)} caracteres)"
+            )
+        return t[i]
+
+    def agregar(lista: object, valor: object) -> list:
+        """Agrega un elemento al final de la lista (y la devuelve)."""
+        if not isinstance(lista, list):
+            raise ErrorEjecucion(f"agregar() espera una lista, no {jp_a_texto(lista)!r}")
+        lista.append(valor)
+        return lista
+
     nativas = {
         "muestra": FuncionNativa("muestra", muestra),
         "imprime": FuncionNativa("imprime", muestra),  # alias en español
@@ -584,6 +701,17 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "rango": FuncionNativa("rango", rango),
         "leer": FuncionNativa("leer", leer),
         "azar": FuncionNativa("azar", azar, aridad=1),
+        # texto
+        "mayusculas": FuncionNativa("mayusculas", mayusculas, aridad=1),
+        "minusculas": FuncionNativa("minusculas", minusculas, aridad=1),
+        "recortar": FuncionNativa("recortar", recortar, aridad=1),
+        "separar": FuncionNativa("separar", separar),
+        "unir": FuncionNativa("unir", unir),
+        "contiene": FuncionNativa("contiene", contiene, aridad=2),
+        "reemplazar": FuncionNativa("reemplazar", reemplazar, aridad=3),
+        "subtexto": FuncionNativa("subtexto", subtexto),
+        "letra": FuncionNativa("letra", letra, aridad=2),
+        "agregar": FuncionNativa("agregar", agregar, aridad=2),
     }
     for nombre, funcion in nativas.items():
         entorno.definir(nombre, funcion)

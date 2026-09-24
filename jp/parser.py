@@ -27,6 +27,8 @@ from .arbol import (
     NodoPara,
     NodoPrograma,
     NodoRango,
+    NodoRomper,
+    NodoContinuar,
     NodoRetorna,
     NodoSi,
     NodoUnario,
@@ -98,6 +100,10 @@ class Parser:
                 return self._sentencia_fun()
             if self._coincide(TToken.RETORNA):
                 return self._sentencia_retorna()
+            if (token := self._coincide(TToken.ROMPER)):
+                return NodoRomper(linea=token.linea)
+            if (token := self._coincide(TToken.CONTINUAR)):
+                return NodoContinuar(linea=token.linea)
             if self._coincide(TToken.SI):
                 return self._sentencia_si()
             if self._coincide(TToken.MIENTRAS):

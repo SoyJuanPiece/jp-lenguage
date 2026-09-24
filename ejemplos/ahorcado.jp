@@ -1,0 +1,65 @@
+# 🎯 Ahorcado en JP — palabra secreta con 6 vidas
+# Ejecuta: python -m jp ejemplos/ahorcado.jp
+
+variable palabra = "programacion"
+variable usadas = []
+variable aciertos = []
+variable vidas = 6
+
+# el tablero: guiones por cada letra que falta
+funcion tablero() {
+    variable linea = ""
+    para letra en palabra {
+        si contiene(aciertos, letra) {
+            linea = linea + letra + " "
+        } sino {
+            linea = linea + "_ "
+        }
+    }
+    devuelve linea
+}
+
+muestra("=== AHORCADO ===")
+muestra("La palabra tiene", longitud(palabra), "letras. Tienes", vidas, "vidas.")
+
+mientras verdadero {
+    muestra("")
+    muestra(tablero())
+    si longitud(aciertos) > 0: muestra("Usadas:", unir(usadas, ", "))
+
+    variable letra = minusculas(recortar(leer("Letra: ")))
+    si longitud(letra) != 1 {
+        muestra("Escribe UNA letra.")
+        continuar
+    }
+    si contiene(usadas, letra) {
+        muestra("Ya probaste", letra, "...")
+        continuar
+    }
+    agregar(usadas, letra)
+
+    si contiene(palabra, letra) {
+        agregar(aciertos, letra)
+        muestra("¡Bien! La", letra, "está.")
+    } sino {
+        vidas = vidas - 1
+        muestra("La", letra, "no está. Te quedan", vidas, "vidas.")
+        si vidas == 0 {
+            muestra("💀 Sin vidas. La palabra era:", palabra)
+            romper
+        }
+    }
+
+    # ¿ganó? todas las letras de la palabra están en aciertos
+    variable completa = verdadero
+    para l en palabra {
+        si no contiene(aciertos, l) {
+            completa = falso
+            romper
+        }
+    }
+    si completa {
+        muestra("🎉 ¡GANASTE! La palabra era:", palabra)
+        romper
+    }
+}

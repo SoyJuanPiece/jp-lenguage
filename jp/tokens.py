@@ -54,6 +54,8 @@ class TToken(Enum):
     Y = auto()            # y
     O = auto()            # o
     NO = auto()           # no
+    ROMPER = auto()       # romper
+    CONTINUAR = auto()    # continuar
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -87,6 +89,8 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "y": TToken.Y,
     "o": TToken.O,
     "no": TToken.NO,
+    "romper": TToken.ROMPER,
+    "continuar": TToken.CONTINUAR,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -130,5 +134,7 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.Y: "'y'",
     TToken.O: "'o'",
     TToken.NO: "'no'",
+    TToken.ROMPER: "'romper'",
+    TToken.CONTINUAR: "'continuar'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

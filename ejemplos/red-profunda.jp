@@ -1,0 +1,170 @@
+# 🧠 Red neuronal PROFUNDA en JP puro — capas configurables (2-4-4-1)
+#
+# Ejecutar:  python -m jp ejemplos/red-profunda.jp
+#
+# A diferencia de red-neuronal.jp (capas hardcodeadas), esta red es GENÉRICA:
+# - La arquitectura se define en la lista `capas` (prueba cambiarla).
+# - Los pesos viven en matrices construidas en tiempo de ejecución.
+# - El forward y la backpropagation recorren CUALQUIER cantidad de capas.
+
+# ---------- utilidades ----------
+
+funcion sigmoide(x) {
+    devuelve 1.0 / (1.0 + exp(-x))
+}
+
+funcion azar_peso() {
+    # pesos pequeños al azar en [-1, 1]
+    devuelve azar(2000) / 1000.0 - 1.0
+}
+
+# ---------- arquitectura: entradas -> ocultas -> ... -> salida ----------
+
+variable capas = [2, 4, 4, 1]     # ¡cámbiala! ej: [2, 8, 6, 3, 1]
+
+variable pesos = []               # pesos[i] conecta capa i con capa i+1
+variable sesgos = []              # sesgos[i] = sesgos de la capa i+1
+
+variable t0 = reloj()
+
+para i en 1..longitud(capas) - 1 {
+    variable matriz = []
+    variable sesgos_l = []
+    para j en 1..capas[i] {
+        variable fila = []
+        para k en 1..capas[i - 1] {
+            agregar(fila, azar_peso())
+        }
+        agregar(matriz, fila)
+        agregar(sesgos_l, 0.0)
+    }
+    agregar(pesos, matriz)
+    agregar(sesgos, sesgos_l)
+}
+
+# ---------- forward: guarda las activaciones de TODAS las capas ----------
+
+funcion forward(entrada) {
+    variable activs = []
+    agregar(activs, entrada)
+    variable actual = entrada
+    para i en 1..longitud(pesos) {
+        variable matriz = pesos[i - 1]
+        variable sesgos_l = sesgos[i - 1]
+        variable nueva = []
+        para j en 1..capas[i] {
+            variable suma = sesgos_l[j - 1]
+            variable fila = matriz[j - 1]
+            para k en 1..longitud(actual) {
+                suma = suma + fila[k - 1] * actual[k - 1]
+            }
+            agregar(nueva, sigmoide(suma))
+        }
+        agregar(activs, nueva)
+        actual = nueva
+    }
+    devuelve activs
+}
+
+# ---------- entrenamiento (backpropagation general) ----------
+
+variable tasa = 0.5
+
+variable datos = []
+variable d1 = { entrada: [0.0, 0.0], deseado: [0.0] }; agregar(datos, d1)
+variable d2 = { entrada: [0.0, 1.0], deseado: [1.0] }; agregar(datos, d2)
+variable d3 = { entrada: [1.0, 0.0], deseado: [1.0] }; agregar(datos, d3)
+variable d4 = { entrada: [1.0, 1.0], deseado: [0.0] }; agregar(datos, d4)
+
+funcion entrenar_epoca() {
+    variable error_total = 0.0
+    para d en datos {
+        variable activs = forward(d["entrada"])
+        variable ultima = longitud(capas) - 1
+        variable salidas = activs[ultima]
+        variable deseado = d["deseado"]
+
+        # error de la capa de salida
+        variable error_capa = []
+        variable e_total = 0.0
+        para j en 1..capas[ultima] {
+            variable e = deseado[j - 1] - salidas[j - 1]
+            e_total = e_total + e * e
+            agregar(error_capa, e)
+        }
+        error_total = error_total + e_total
+
+        # deltas: delta[i] corresponde a la capa i (mismo tamaño que activs[i])
+        variable deltas = []
+        para c en 1..longitud(capas) {
+            agregar(deltas, [])
+        }
+        para j en 1..capas[ultima] {
+            variable a = salidas[j - 1]
+            agregar(deltas[ultima], error_capa[j - 1] * a * (1.0 - a))
+        }
+
+        # hacia atrás: deltas[i] desde deltas[i+1] usando pesos[i]
+        variable i = longitud(pesos) - 1
+        mientras i >= 1 {
+            variable deltas_sig = deltas[i + 1]
+            variable matriz_sig = pesos[i]
+            variable act = activs[i]
+            variable delta_nueva = []
+            para j en 1..capas[i] {
+                variable retro = 0.0
+                para k en 1..capas[i + 1] {
+                    retro = retro + matriz_sig[k - 1][j - 1] * deltas_sig[k - 1]
+                }
+                variable a = act[j - 1]
+                agregar(delta_nueva, retro * a * (1.0 - a))
+            }
+            deltas[i] = delta_nueva
+            i = i - 1
+        }
+
+        # actualizar pesos y sesgos con los deltas
+        variable i2 = longitud(pesos) - 1
+        mientras i2 >= 0 {
+            variable deltas_sig = deltas[i2 + 1]
+            variable act = activs[i2]
+            variable matriz = pesos[i2]
+            variable sesgos_l = sesgos[i2]
+            para j en 1..capas[i2 + 1] {
+                variable dj = deltas_sig[j - 1]
+                para k en 1..capas[i2] {
+                    matriz[j - 1][k - 1] = matriz[j - 1][k - 1] + tasa * dj * act[k - 1]
+                }
+                sesgos_l[j - 1] = sesgos_l[j - 1] + tasa * dj
+            }
+            i2 = i2 - 1
+        }
+    }
+    devuelve error_total
+}
+
+# ---------- entrenar ----------
+
+muestra("=== Red PROFUNDA", capas, "aprendiendo XOR (JP puro) ===")
+
+variable epoca = 0
+variable err = 1.0
+mientras err > 0.01 y epoca < 6000 {
+    err = entrenar_epoca()
+    epoca = epoca + 1
+    si epoca % 1000 == 0 {
+        muestra("época", epoca, "· error:", err)
+    }
+}
+
+variable segundos = reloj() - t0
+
+muestra("")
+muestra("Entrenada en", epoca, "épocas · error:", err, "·", segundos, "segundos")
+muestra("Predicciones:")
+para d en datos {
+    variable activs = forward(d["entrada"])
+    variable salida = activs[longitud(capas) - 1][0]
+    variable e = d["entrada"]
+    muestra("  ", e[0], " xor ", e[1], "= ", salida, " (quería ", d["deseado"][0], ")")
+}

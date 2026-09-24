@@ -1,0 +1,8 @@
+# Tablas de multiplicar — bucles anidados
+para tabla en 1..5 {
+    imprime("== Tabla del", tabla, "==")
+    para i en 1..10 {
+        imprime(tabla, "x", i, "=", tabla * i)
+    }
+    imprime("")
+}

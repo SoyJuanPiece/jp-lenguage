@@ -1,0 +1,30 @@
+# JP fácil — sin paréntesis, sin llaves de una línea, todo en español 🇪🇸
+
+# Variables y cadenas (comillas simples o dobles)
+variable nombre = 'JP'
+imprime('Hola', nombre)
+
+# Condiciones sin paréntesis y con ':' para una sola línea
+variable edad = 20
+si edad >= 18: imprime('Eres mayor de edad')
+
+# Rangos inclusivos 1..10 (¡y al revés!)
+para i en 1..5 {
+    imprime('i vale', i)
+}
+
+# Funciones con alias en español
+funcion doble(n) {
+    devuelve n * 2
+}
+imprime('el doble de 7 es', doble(7))
+
+# Mientras fácil
+variable cuenta = 3
+mientras cuenta > 0: cuenta = cuenta - 1
+imprime('cuenta a cero:', cuenta)
+
+# Listas e índices
+variable frutas = ['manzana', 'banana']
+imprime('Primera fruta:', frutas[0])
+imprime('Total:', longitud(frutas))

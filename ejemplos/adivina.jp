@@ -1,0 +1,17 @@
+# Adivina el número — mini juego con leer() y azar()
+imprime("Estoy pensando en un número del 1 al 100 🎯")
+
+variable secreto = azar(100)
+variable adivinado = falso
+variable intentos = 0
+
+mientras no adivinado {
+    variable intento = entero(leer("Tu intento: "))
+    intentos = intentos + 1
+
+    si intento == secreto {
+        imprime("¡Correcto! Era", secreto, "y lo lograste en", intentos, "intentos 🎉")
+        adivinado = verdadero
+    } sino si intento > secreto: imprime("Muy alto ↓")
+    sino: imprime("Muy bajo ↑")
+}

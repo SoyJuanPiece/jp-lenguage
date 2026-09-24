@@ -1,0 +1,11 @@
+# Mi primer programa en JP
+muestra("¡Hola, mundo!")
+
+var nombre = "JP"
+muestra("Bienvenido a", nombre)
+
+var a = 10
+var b = 4
+muestra("10 + 4 =", a + b)
+muestra("10 / 4 =", a / b)
+muestra("10 % 4 =", a % b)

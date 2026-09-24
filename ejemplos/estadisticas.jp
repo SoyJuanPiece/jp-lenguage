@@ -1,0 +1,17 @@
+# Estadísticas con listas: suma, mayor, menor y promedio
+variable notas = [7, 3, 9, 5]
+variable suma = 0
+variable mayor = notas[0]
+variable menor = notas[0]
+
+para n en notas {
+    suma = suma + n
+    si n > mayor: mayor = n
+    si n < menor: menor = n
+}
+
+imprime("Notas:   ", notas)
+imprime("Suma:    ", suma)
+imprime("Promedio:", suma / longitud(notas))
+imprime("Mayor:   ", mayor)
+imprime("Menor:   ", menor)

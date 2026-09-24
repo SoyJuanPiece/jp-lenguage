@@ -1,0 +1,28 @@
+# Bot de Telegram en JP — ¡tu primer bot funcionando!
+#
+# Cómo conseguir tu token (2 minutos, gratis):
+#   1. Abre Telegram y busca a @BotFather
+#   2. Escríbele /newbot y sigue las instrucciones
+#   3. Copia el token que te dé y pégalo abajo
+#   4. Ejecuta:  python -m jp ejemplos/bot-telegram.jp
+#   5. Escríbele a tu bot: /hola, /ayuda, /numero o cualquier cosa
+
+variable token = "PEGA_AQUI_TU_TOKEN"
+
+imprime("🤖 Bot JP conectado a Telegram (Ctrl+C para parar)")
+
+variable escuchando = verdadero
+mientras escuchando {
+    para m en telegram_leer(token) {
+        si m.texto == "/hola" {
+            telegram_responder(token, m.de, "¡Hola! Hablas con un bot hecho en JP 🇪🇸")
+        } sino si m.texto == "/ayuda" {
+            telegram_responder(token, m.de, "Comandos: /hola /ayuda /numero  (o dime lo que quieras)")
+        } sino si m.texto == "/numero" {
+            telegram_responder(token, m.de, "Tu número al azar: " + texto(azar(100)))
+        } sino {
+            telegram_responder(token, m.de, "Echo: " + m.texto)
+        }
+    }
+    esperar(1)   # esperamos 1s entre consultas para no saturar la API
+}

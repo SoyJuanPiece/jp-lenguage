@@ -1,0 +1,11 @@
+# Aviso a un canal de Discord vía webhook (1 sola línea de red)
+#
+# Crea el webhook: Discord -> Ajustes del canal -> Integraciones -> Webhooks
+# -> Nuevo webhook -> Copiar URL -> pégala abajo
+#
+# Nota: Discord recibe mensajes con http_post (enviar); recibir en vivo
+# requiere websockets, que llegará en una versión futura de JP.
+
+variable url = "https://discord.com/api/webhooks/PEGA_AQUI_TU_WEBHOOK"
+
+imprime(http_post(url, {content: "¡Hola desde JP! 🇪🇸"}))

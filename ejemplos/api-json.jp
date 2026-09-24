@@ -1,0 +1,27 @@
+# JSON y diccionarios — la base de cualquier API (funciona sin internet)
+
+variable config = {servidor: "mimotor", puerto: 8080, tags: ["web", "bot"]}
+imprime("Config:  ", config)
+imprime("Servidor:", config.servidor)
+imprime("Puerto:  ", config["puerto"])
+
+# Simulamos la respuesta real de Telegram a getUpdates
+variable update = json_leer('{"ok": true, "result": [{"update_id": 1, "message": {"chat": {"id": 99}, "text": "¡buenas!"}}]}')
+
+si tiene(update, "ok") {
+    para u en update["result"] {
+        imprime("Mensaje de", u.message.chat.id, ":", u.message.text)
+    }
+}
+
+# Ida y vuelta JSON (esto es lo que hace http_post/http_get por dentro)
+variable vuelta = json_leer(json_texto({respuesta: [1, 2, 3], ok: verdadero}))
+imprime("Ida y vuelta:", vuelta)
+imprime("Último valor:", vuelta["respuesta"][2])
+
+# Diccionarios son mutables y se pueden iterar
+variable contador = {}
+si no tiene(contador, "visitas") {
+    contador.visitas = 1
+}
+imprime("Contador:", contador, "· claves:", claves(contador))

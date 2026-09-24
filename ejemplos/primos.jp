@@ -1,0 +1,21 @@
+# Números primos hasta 50 — funciones y bucles
+funcion es_primo(n) {
+    si n < 2: devuelve falso
+    variable divisor = 2
+    mientras divisor * divisor <= n {
+        si n % divisor == 0: devuelve falso
+        divisor = divisor + 1
+    }
+    devuelve verdadero
+}
+
+variable cantidad = 0
+variable numero = 1
+mientras numero <= 50 {
+    si es_primo(numero) {
+        imprime(numero)
+        cantidad = cantidad + 1
+    }
+    numero = numero + 1
+}
+imprime("Total de primos hasta 50:", cantidad)

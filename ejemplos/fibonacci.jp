@@ -1,0 +1,11 @@
+# Fibonacci en JP
+fun fibonacci(n) {
+    si (n <= 1) {
+        retorna n
+    }
+    retorna fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+para (i en rango(0, 15)) {
+    muestra("fib(" + texto(i) + ") =", fibonacci(i))
+}

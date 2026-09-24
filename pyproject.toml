@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jp-lang"
+version = "0.4.0"
+description = "JP — un pequeño lenguaje de programación en español, hecho desde cero"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Tú" }]
+
+[project.scripts]
+jp = "jp.cli:main"

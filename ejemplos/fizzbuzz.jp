@@ -1,0 +1,12 @@
+# FizzBuzz clásico en JP
+para (i en rango(1, 21)) {
+    si (i % 15 == 0) {
+        muestra("FizzBuzz")
+    } sino si (i % 3 == 0) {
+        muestra("Fizz")
+    } sino si (i % 5 == 0) {
+        muestra("Buzz")
+    } sino {
+        muestra(i)
+    }
+}

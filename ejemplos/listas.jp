@@ -1,0 +1,24 @@
+# Listas e índices en JP
+var frutas = ["manzana", "banana", "cereza"]
+muestra("Lista:", frutas)
+muestra("Primera:", frutas[0])
+muestra("Última:", frutas[-1])
+muestra("Cantidad:", longitud(frutas))
+
+para (f en frutas) {
+    muestra("-", f)
+}
+
+var suma = 0
+para (n en [1, 2, 3, 4]) {
+    suma = suma + n
+}
+muestra("Suma 1..4 =", suma)
+
+# Mientras
+var cuenta = 3
+mientras (cuenta > 0) {
+    muestra("cuenta atrás:", cuenta)
+    cuenta = cuenta - 1
+}
+muestra("¡Despegue! 🚀")

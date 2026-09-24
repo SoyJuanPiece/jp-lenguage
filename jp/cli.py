@@ -19,6 +19,7 @@ from .parser import parsear
 from .vm import MaquinaVM
 
 _USA_VM = "--interprete" not in sys.argv[1:]
+_TURBO = "--turbo" in sys.argv[1:]
 
 _BANNER = r"""
      ██╗██╗
@@ -59,11 +60,20 @@ def _modo_archivo(ruta: str) -> int:
         with open(ruta, "r", encoding="utf-8") as archivo:
             fuente = archivo.read()
     except FileNotFoundError:
+        run_turbo = False
         print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
         return 66
     except IsADirectoryError:
+        run_turbo = False
         print(f"jp: es un directorio: {ruta}", file=sys.stderr)
         return 66
+
+    # Modo turbo: cache total del programa si es puro (ver jp/turbo.py)
+    if run_turbo := (_TURBO and _USA_VM):
+        from .turbo import ejecutar_turbo
+
+        ok = ejecutar_turbo(ruta, fuente)
+        return 0 if ok else 65
 
     interprete: Interprete | MaquinaVM = MaquinaVM() if _USA_VM else Interprete()
     try:
@@ -164,8 +174,10 @@ def _llaves_desbalanceadas(fuente: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    global _USA_VM
-    _USA_VM = "--interprete" not in (argv if argv is not None else sys.argv[1:])
+    global _USA_VM, _TURBO
+    argumentos = argv if argv is not None else sys.argv[1:]
+    _USA_VM = "--interprete" not in argumentos
+    _TURBO = "--turbo" in argumentos
     parser = argparse.ArgumentParser(
         prog="jp",
         description="JP — un pequeño lenguaje de programación en español.",
@@ -175,6 +187,11 @@ def main(argv: list[str] | None = None) -> int:
         "--interprete",
         action="store_true",
         help="usa el intérprete de árbol en vez de la VM de bytecode",
+    )
+    parser.add_argument(
+        "--turbo",
+        action="store_true",
+        help="cache total: programas puros corren en microsegundos (ver jp/turbo.py)",
     )
     parser.add_argument("-c", "--codigo", help="ejecuta una línea de código JP")
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")

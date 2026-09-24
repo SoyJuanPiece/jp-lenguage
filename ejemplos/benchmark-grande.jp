@@ -1,0 +1,14 @@
+# Benchmark grande de JP — while de 5M + fib(25) recursivo
+variable i = 0
+variable s = 0
+mientras i < 5000000 {
+    s = s + i
+    i = i + 1
+}
+imprime("suma:", s)
+
+funcion fib(n) {
+    si n <= 1 { devuelve n }
+    devuelve fib(n - 1) + fib(n - 2)
+}
+imprime("fib(25):", fib(25))

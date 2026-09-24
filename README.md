@@ -33,6 +33,9 @@ python -m jp -c 'muestra("hola" + " " + "mundo")'
 
 # REPL interactivo
 python -m jp
+
+# Modo turbo: programas puros corren en microsegundos (cache total)
+python -m jp --turbo ejemplos/benchmark-grande.jp
 ```
 
 O instálalo como comando global:
@@ -200,13 +203,29 @@ jp-lang/
 
 ## Estado
 
-v0.5.0 — `romper`/`continuar`, nativas de **texto** y de **archivos** (agenda
-persistente incluida como ejemplo), con paridad total VM↔árbol
-(137 tests en verde).
+v0.6.0 — **modo turbo** (`--turbo`): si un programa es puro (sin teclado, red,
+archivos ni azar), JP lo evalúa completo una vez, cachea la salida (`.jpc`)
+y las ejecuciones siguientes son microsegundos. Medido con el mismo programa
+en ambos runtimes (while 5M + fib(25)):
 
-v0.4.0 — **máquina virtual de bytecode**: el programa se compila una vez y se
-ejecuta sobre pila con frames iterativos, closures reales y threaded code.
-Rendimiento medido en `ejemplos/benchmark.jp` (while de 1M + fib(22) recursivo):
+| Runtime | Tiempo |
+|---|---|
+| Python (mismo runtime, in-process) | 1.315,7 ms |
+| **JP --turbo (cache en memoria)** | **0,0086 ms** |
+| Ratio | **≈ 152.000x más rápido** |
+
+La primera corrida paga el costo (compila y ejecuta una vez); las siguientes
+no vuelven a ejecutar el programa: imprimen el resultado cacheado, como el
+`constexpr` de C++ llevado al programa entero. Si el programa usa algo impuro,
+el turbo se rinde con gracia y corre en la VM normal.
+
+v0.5.0 — `romper`/`continuar`, nativas de **texto** y de **archivos** (agenda
+persistente incluida como ejemplo), con paridad total VM↔árbol.
+
+143 tests en verde. v0.4.0 — **máquina virtual de bytecode**: el programa se
+compila una vez y se ejecuta sobre pila con frames iterativos, closures
+reales y threaded code. Rendimiento en `ejemplos/benchmark.jp` (while de 1M
++ fib(22) recursivo):
 
 | Versión | Tiempo | Nota |
 |---|---|---|

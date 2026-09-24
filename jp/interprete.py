@@ -8,6 +8,7 @@ Diseño:
 
 from __future__ import annotations
 
+import math
 import random
 import time
 
@@ -690,6 +691,12 @@ def _instalar_nativas(entorno: Entorno) -> None:
             )
         return t[i]
 
+    def exp(x: object) -> float:
+        """e^x (para sigmoides y matemática de redes neuronales)."""
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            raise ErrorEjecucion("exp() espera un número")
+        return math.exp(x)
+
     def reloj() -> float:
         """Segundos (monotónicos) para medir tiempos: reloj() - reloj()."""
         return time.monotonic()
@@ -723,6 +730,7 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "letra": FuncionNativa("letra", letra, aridad=2),
         "agregar": FuncionNativa("agregar", agregar, aridad=2),
         "reloj": FuncionNativa("reloj", reloj, aridad=0),
+        "exp": FuncionNativa("exp", exp, aridad=1),
     }
     for nombre, funcion in nativas.items():
         entorno.definir(nombre, funcion)

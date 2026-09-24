@@ -1,0 +1,111 @@
+# 🧠 Red neuronal en JP PURO — 2-4-1 que aprende XOR con backpropagation
+#
+# Ejecutar:  python -m jp ejemplos/red-neuronal.jp
+#
+# Sin numpy, sin librerías: el bucle de entrenamiento completo está escrito
+# en el lenguaje. Con --nativo el JIT acelera las funciones numéricas.
+
+# ---------- utilidades ----------
+
+funcion sigmoide(x) {
+    devuelve 1.0 / (1.0 + exp(-x))
+}
+
+funcion azar_peso() {
+    # pesos pequeños al azar en [-1, 1]
+    devuelve azar(2000) / 1000.0 - 1.0
+}
+
+# ---------- la red (matrices como variables separadas) ----------
+
+variable w1a = []      # pesos de x1 hacia las 4 neuronas ocultas
+variable w1b = []      # pesos de x2 hacia las 4 neuronas ocultas
+variable wo = []       # pesos de las 4 ocultas hacia la salida
+variable bh = []       # sesgos de las ocultas
+variable bo = 0.0
+
+para i en 1..4 {
+    agregar(w1a, azar_peso())
+    agregar(w1b, azar_peso())
+    agregar(wo, azar_peso())
+    agregar(bh, 0.0)
+}
+
+# ---------- forward ----------
+
+funcion forward(x1, x2) {
+    variable ocultas = []
+    variable zo = 0.0
+    para j en 1..4 {
+        variable h = sigmoide(w1a[j-1] * x1 + w1b[j-1] * x2 + bh[j-1])
+        agregar(ocultas, h)
+        zo = zo + wo[j-1] * h
+    }
+    devuelve { ocultas: ocultas, salida: sigmoide(zo + bo) }
+}
+
+# ---------- entrenamiento (backpropagation) ----------
+
+variable tasa = 0.5
+
+funcion entrenar_epoca() {
+    variable error_total = 0.0
+    para d en datos {
+        variable r = forward(d["x1"], d["x2"])
+        variable salida = r["salida"]
+        variable ocultas = r["ocultas"]
+
+        variable error = d["deseado"] - salida
+        error_total = error_total + error * error
+
+        # gradiente de la salida
+        variable delta_o = error * salida * (1.0 - salida)
+
+        # gradientes ocultos + actualizar pesos de salida
+        variable deltas_h = []
+        para j en 1..4 {
+            agregar(deltas_h, delta_o * wo[j-1] * ocultas[j-1] * (1.0 - ocultas[j-1]))
+            wo[j-1] = wo[j-1] + tasa * delta_o * ocultas[j-1]
+        }
+
+        # actualizar pesos de entrada
+        para j en 1..4 {
+            w1a[j-1] = w1a[j-1] + tasa * deltas_h[j-1] * d["x1"]
+            w1b[j-1] = w1b[j-1] + tasa * deltas_h[j-1] * d["x2"]
+            bh[j-1] = bh[j-1] + tasa * deltas_h[j-1]
+        }
+
+        bo = bo + tasa * delta_o
+    }
+    devuelve error_total
+}
+
+# ---------- datos XOR ----------
+
+variable datos = []
+variable d1 = { x1: 0.0, x2: 0.0, deseado: 0.0 }; agregar(datos, d1)
+variable d2 = { x1: 0.0, x2: 1.0, deseado: 1.0 }; agregar(datos, d2)
+variable d3 = { x1: 1.0, x2: 0.0, deseado: 1.0 }; agregar(datos, d3)
+variable d4 = { x1: 1.0, x2: 1.0, deseado: 0.0 }; agregar(datos, d4)
+
+# ---------- correr el entrenamiento ----------
+
+muestra("=== Red neuronal 2-4-1 aprendiendo XOR (en JP puro) ===")
+
+variable epoca = 0
+variable err = 1.0
+mientras err > 0.01 y epoca < 8000 {
+    err = entrenar_epoca()
+    epoca = epoca + 1
+    si epoca % 1000 == 0 {
+        muestra("época", epoca, "· error:", err)
+    }
+}
+
+muestra("")
+muestra("Entrenada en", epoca, "épocas. Error final:", err)
+muestra("Predicciones (entradas → salida de la red):")
+para d en datos {
+    variable r = forward(d["x1"], d["x2"])
+    muestra("  ", d["x1"], " xor ", d["x2"], "= ", r["salida"], " (quería ", d["deseado"], ")")
+}

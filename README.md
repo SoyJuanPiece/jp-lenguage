@@ -242,6 +242,10 @@ python -m jp --turbo archivo.jp              # cache total para programas puros
 
 ## Estado
 
+v1.0.0 — **IA en JP puro**: `ejemplos/red-neuronal.jp` es una red neuronal
+2-4-1 con backpropagation completa, escrita solo con JP (listas, dicts,
+bucles, `exp`): aprende XOR en ~1.700 épocas con predicciones correctas.
+
 v0.9.0 — **benchmark nativo oficial**: `ejemplos/benchmark-nativo.jp`
 (auto-cronometrado con la nueva nativa `reloj()`). El MISMO programa:
 

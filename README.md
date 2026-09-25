@@ -122,6 +122,31 @@ variable edad = 25
 'crudo: {nombre}'                     # => "crudo: {nombre}" (simples = literales)
 ```
 
+### Métodos de valor — las funciones viven en el propio valor
+
+```jp
+"hola".mayusculas()              # => "HOLA"
+"  jp  ".recortar()              # => "jp"
+"a,b,c".separar(",")             # => ["a", "b", "c"]
+"banana".reemplazar("na", "NA")  # => "baNANA"
+"banana".subtexto(1, 3)          # => "an"
+"banana".letra(0)                # => "b"
+"hola".contiene("ol")            # => verdadero
+"hola mundo".longitud()          # => 10
+
+variable lista = [1, 2]
+lista.agregar(3)                 # => [1, 2, 3]
+lista.contiene(2)                # => verdadero
+
+variable d = {nombre: "jp", edad: 1}
+d.claves()                       # => ["nombre", "edad"]
+d.tiene("edad")                  # => verdadero
+```
+
+Son las mismas funciones de la librería estándar: `t.mayusculas()` es
+`mayusculas(t)`. En diccionarios la clave gana sobre el método: con
+`d = {claves: 99}`, `d.claves` sigue devolviendo 99.
+
 ## Librería estándar
 
 | Función | Descripción |
@@ -253,6 +278,12 @@ python -m jp --turbo archivo.jp              # cache total para programas puros
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.2.0 — **métodos de valor**: `"texto".mayusculas()`, `lista.agregar(x)`,
+`d.claves()`... las funciones de la librería estándar ahora también se
+llaman sobre el propio valor (`t.mayusculas()` es `mayusculas(t)`).
+Disponibles en los dos motores (árbol y VM) con paridad total, y en
+diccionarios la clave siempre gana sobre el método. 173 tests.
 
 v1.1.0 — **interpolación de strings**: `"hola {nombre}, tienes {edad + 10}"
 ` incrusta cualquier expresión entre llaves en las cadenas con comillas

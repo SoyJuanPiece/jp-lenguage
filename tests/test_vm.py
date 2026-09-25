@@ -238,5 +238,34 @@ class TestParidadVM(unittest.TestCase):
             self.assertIn("fuera de un bucle", str(ctx.exception))
 
 
+class TestMetodosValorVM(unittest.TestCase):
+    """Paridad VM <-> árbol para los métodos de valor."""
+
+    def _par(self, codigo: str):
+        vm, arbol = paridad(codigo)
+        self.assertEqual(vm, arbol, "la VM y el intérprete de árbol difieren")
+        return vm
+
+    def test_metodos_texto(self):
+        self._par('muestra("hola".mayusculas())\nmuestra("A B".minusculas())\nmuestra(" x ".recortar())')
+        self._par('muestra("a,b".separar(","))\nmuestra("banana".reemplazar("na", "NA"))')
+        self._par('muestra("banana".subtexto(1, 3))\nmuestra("banana".letra(-1))')
+        self._par('muestra("hola".contiene("ol"))')
+
+    def test_metodos_listas(self):
+        self._par('variable l = [1, 2]\nl.agregar(3)\nmuestra(l)\nmuestra(l.longitud())')
+        self._par('muestra([1, 2].contiene(3))')
+
+    def test_metodos_diccionarios(self):
+        self._par('variable d = {a: 1, b: 2}\nmuestra(d.claves())\nmuestra(d.tiene("a"))')
+        self._par('variable d = {claves: 1}\nmuestra(d.claves)')
+
+    def test_errores_metodos_iguales(self):
+        for maquina in (MaquinaVM(), Interprete()):
+            with self.assertRaises(Exception) as ctx:
+                ejecutar_en(maquina, '"hola".falta()')
+            self.assertIn("no existe el método 'falta' para texto", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

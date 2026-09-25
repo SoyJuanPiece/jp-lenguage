@@ -24,6 +24,7 @@ from .interprete import (
     Entorno,
     FuncionNativa,
     _instalar_nativas,
+    _metodo_de_valor,
     es_verdad,
     jp_a_texto,
 )
@@ -713,14 +714,22 @@ class MaquinaVM:
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)
-            if indice not in objeto:
-                claves = ", ".join(str(k) for k in objeto) or "ninguna"
-                raise ErrorEjecucion(
-                    f"no existe la clave '{indice}' (claves disponibles: {claves})", linea
-                )
-            return objeto[indice]
+            if indice in objeto:
+                return objeto[indice]
+            metodo = _metodo_de_valor(objeto, indice)
+            if metodo is not None:
+                return metodo
+            claves = ", ".join(str(k) for k in objeto) or "ninguna"
+            raise ErrorEjecucion(
+                f"no existe la clave '{indice}' (claves disponibles: {claves})", linea
+            )
         if isinstance(objeto, list):
             if not isinstance(indice, (int, float)) or isinstance(indice, bool):
+                metodo = _metodo_de_valor(objeto, str(indice))
+                if metodo is not None:
+                    return metodo
+                if isinstance(indice, str):
+                    raise ErrorEjecucion(f"no existe el método '{indice}' para lista", linea)
                 raise ErrorEjecucion("el índice de una lista debe ser un número", linea)
             i = int(indice)
             if i < 0:
@@ -732,6 +741,11 @@ class MaquinaVM:
             return objeto[i]
         if isinstance(objeto, str):
             if not isinstance(indice, (int, float)) or isinstance(indice, bool):
+                metodo = _metodo_de_valor(objeto, str(indice))
+                if metodo is not None:
+                    return metodo
+                if isinstance(indice, str):
+                    raise ErrorEjecucion(f"no existe el método '{indice}' para texto", linea)
                 raise ErrorEjecucion("el índice de una cadena debe ser un número", linea)
             i = int(indice)
             if i < 0:

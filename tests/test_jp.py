@@ -617,5 +617,53 @@ class TestArchivos(unittest.TestCase):
         self.assertEqual(ejecutar(codigo), "5\nverdadero falso\n")
 
 
+class TestMetodosValor(unittest.TestCase):
+    """Métodos sobre valores: "texto".mayusculas(), [1, 2].agregar(3), d.claves()."""
+
+    def test_texto(self):
+        self.assertEqual(ejecutar('muestra("hola".mayusculas())'), "HOLA\n")
+        self.assertEqual(ejecutar('muestra("ADIOS".minusculas())'), "adios\n")
+        self.assertEqual(ejecutar('muestra("  hola  ".recortar())'), "hola\n")
+        self.assertEqual(ejecutar('muestra("a,b,c".separar(","))'), '["a", "b", "c"]\n')
+        self.assertEqual(ejecutar('muestra("a b c".separar())'), '["a", "b", "c"]\n')
+        self.assertEqual(ejecutar('muestra("banana".reemplazar("na", "NA"))'), "baNANA\n")
+        self.assertEqual(ejecutar('muestra("banana".subtexto(1, 3))'), "an\n")
+        self.assertEqual(ejecutar('muestra("banana".subtexto(2))'), "nana\n")
+        self.assertEqual(ejecutar('muestra("banana".letra(0))'), "b\n")
+        self.assertEqual(ejecutar('muestra("banana".letra(-1))'), "a\n")
+        self.assertEqual(ejecutar('muestra("hola".contiene("ol"))'), "verdadero\n")
+        self.assertEqual(ejecutar('muestra("hola".contiene("z"))'), "falso\n")
+
+    def test_texto_en_variables(self):
+        self.assertEqual(ejecutar('variable t = "hola"\nmuestra(t.mayusculas())'), "HOLA\n")
+
+    def test_listas(self):
+        self.assertEqual(ejecutar('variable l = [1, 2]\nl.agregar(3)\nmuestra(l)'), "[1, 2, 3]\n")
+        self.assertEqual(ejecutar('muestra([1, 2, 3].longitud())'), "3\n")
+        self.assertEqual(ejecutar('muestra([1, 2].contiene(2))'), "verdadero\n")
+        self.assertEqual(ejecutar('muestra("cadena".longitud())'), "6\n")
+
+    def test_diccionarios(self):
+        self.assertEqual(ejecutar('variable d = {a: 1, b: 2}\nmuestra(d.claves())'), '["a", "b"]\n')
+        self.assertEqual(ejecutar('muestra({a: 1}.tiene("a"))'), "verdadero\n")
+        self.assertEqual(ejecutar('muestra({a: 1}.tiene("b"))'), "falso\n")
+
+    def test_clave_gana_sobre_metodo(self):
+        self.assertEqual(ejecutar('variable d = {claves: 99}\nmuestra(d.claves)'), "99\n")
+
+    def test_metodos_sobre_expresiones(self):
+        self.assertEqual(ejecutar('muestra(("h" + "ola").mayusculas())'), "HOLA\n")
+        self.assertEqual(ejecutar('muestra("hola mundo".separar()[0])'), "hola\n")
+
+    def test_metodo_inexistente(self):
+        with self.assertRaises(ErrorEjecucion) as ctx:
+            ejecutar('"hola".falta()')
+        self.assertIn("no existe el método 'falta' para texto", str(ctx.exception))
+        with self.assertRaises(ErrorEjecucion):
+            ejecutar('[1].falta()')
+        with self.assertRaises(ErrorEjecucion):
+            ejecutar('"hola".falta')
+
+
 if __name__ == "__main__":
     unittest.main()

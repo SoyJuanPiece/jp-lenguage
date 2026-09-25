@@ -44,6 +44,28 @@ from .arbol import (
 from .errores import ErrorEjecucion
 
 
+# ----------------- Métodos de valor ("texto".mayusculas(), [1, 2].agregar(3), ...) -----------------
+
+# Registro: tipo Python -> {nombre: (funcion, aridad_total)}.
+# funcion recibe el receptor como primer argumento; aridad_total es el total de
+# argumentos que recibe funcion (receptor + extras) y None significa varargs.
+# Lo llena _instalar_nativas, así que los métodos siguen a las nativas del módulo que se instale.
+_METODOS_VALOR: dict[type, dict[str, tuple]] = {}
+
+
+def _metodo_de_valor(objeto: object, nombre: str) -> object | None:
+    """Devuelve el método `nombre` ligado a `objeto`, o None si no existe."""
+    metodos = _METODOS_VALOR.get(type(objeto))
+    if metodos is None:
+        return None
+    registro = metodos.get(nombre)
+    if registro is None:
+        return None
+    funcion, aridad_total = registro
+    aridad = None if aridad_total is None else aridad_total - 1  # sin el receptor
+    return FuncionNativa(f"{nombre}()", lambda *args: funcion(objeto, *args), aridad=aridad)
+
+
 # ----------------- Señales de control de flujo -----------------
 
 class Retornar(Exception):
@@ -482,34 +504,51 @@ class Interprete:
     def _indice(self, nodo: NodoIndice, entorno: Entorno) -> object:
         objeto = self._evaluar(nodo.objeto, entorno)
         indice = self._evaluar(nodo.indice, entorno)
+        return self._indexar(objeto, indice, nodo.linea)
+
+    @staticmethod
+    def _indexar(objeto: object, indice: object, linea: int) -> object:
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
-                raise ErrorEjecucion("la clave de un diccionario debe ser texto", nodo.linea)
-            if indice not in objeto:
-                claves = ", ".join(str(k) for k in objeto) or "ninguna"
-                raise ErrorEjecucion(
-                    f"no existe la clave '{indice}' (claves disponibles: {claves})", nodo.linea
-                )
-            return objeto[indice]
+                raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)
+            if indice in objeto:
+                return objeto[indice]
+            metodo = _metodo_de_valor(objeto, indice)
+            if metodo is not None:
+                return metodo
+            claves = ", ".join(str(k) for k in objeto) or "ninguna"
+            raise ErrorEjecucion(
+                f"no existe la clave '{indice}' (claves disponibles: {claves})", linea
+            )
         if isinstance(objeto, list):
             if not isinstance(indice, (int, float)) or isinstance(indice, bool):
-                raise ErrorEjecucion("el índice de una lista debe ser un número", nodo.linea)
+                metodo = _metodo_de_valor(objeto, str(indice))
+                if metodo is not None:
+                    return metodo
+                if isinstance(indice, str):
+                    raise ErrorEjecucion(f"no existe el método '{indice}' para lista", linea)
+                raise ErrorEjecucion("el índice de una lista debe ser un número", linea)
             i = int(indice)
             if i < 0:
                 i += len(objeto)
             if i < 0 or i >= len(objeto):
-                raise ErrorEjecucion(f"índice fuera de rango: {i} (lista de {len(objeto)} elementos)", nodo.linea)
+                raise ErrorEjecucion(f"índice fuera de rango: {i} (lista de {len(objeto)} elementos)", linea)
             return objeto[i]
         if isinstance(objeto, str):
             if not isinstance(indice, (int, float)) or isinstance(indice, bool):
-                raise ErrorEjecucion("el índice de una cadena debe ser un número", nodo.linea)
+                metodo = _metodo_de_valor(objeto, str(indice))
+                if metodo is not None:
+                    return metodo
+                if isinstance(indice, str):
+                    raise ErrorEjecucion(f"no existe el método '{indice}' para texto", linea)
+                raise ErrorEjecucion("el índice de una cadena debe ser un número", linea)
             i = int(indice)
             if i < 0:
                 i += len(objeto)
             if i < 0 or i >= len(objeto):
-                raise ErrorEjecucion(f"índice fuera de rango: {i} (cadena de {len(objeto)} caracteres)", nodo.linea)
+                raise ErrorEjecucion(f"índice fuera de rango: {i} (cadena de {len(objeto)} caracteres)", linea)
             return objeto[i]
-        raise ErrorEjecucion(f"este valor no se puede indexar: {jp_a_texto(objeto)!r}", nodo.linea)
+        raise ErrorEjecucion(f"este valor no se puede indexar: {jp_a_texto(objeto)!r}", linea)
 
     def _llamada(self, nodo: NodoLlamada, entorno: Entorno) -> object:
         callee = self._evaluar(nodo.callee, entorno)
@@ -730,6 +769,39 @@ def _instalar_nativas(entorno: Entorno) -> None:
             raise ErrorEjecucion(f"agregar() espera una lista, no {jp_a_texto(lista)!r}")
         lista.append(valor)
         return lista
+
+    def claves_dic(d: object) -> list:
+        if not isinstance(d, dict):
+            raise ErrorEjecucion(f"claves() espera un diccionario, no {jp_a_texto(d)!r}")
+        return list(d.keys())
+
+    def tiene_dic(d: object, clave: object) -> bool:
+        if not isinstance(d, dict):
+            raise ErrorEjecucion(f"tiene() espera un diccionario, no {jp_a_texto(d)!r}")
+        return clave in d
+
+    # Métodos de valor: reutilizan las nativas poniendo el receptor como primer argumento.
+    # En diccionarios la clave manda y el método es fallback; en texto/listas el método manda.
+    _METODOS_VALOR[str] = {
+        "mayusculas": (mayusculas, 1),
+        "minusculas": (minusculas, 1),
+        "recortar": (recortar, 1),
+        "separar": (separar, None),
+        "reemplazar": (reemplazar, 3),
+        "subtexto": (subtexto, None),
+        "letra": (letra, 2),
+        "contiene": (contiene, 2),
+        "longitud": (longitud, 1),
+    }
+    _METODOS_VALOR[list] = {
+        "agregar": (agregar, 2),
+        "longitud": (longitud, 1),
+        "contiene": (contiene, 2),
+    }
+    _METODOS_VALOR[dict] = {
+        "claves": (claves_dic, 1),
+        "tiene": (tiene_dic, 2),
+    }
 
     nativas = {
         "muestra": FuncionNativa("muestra", muestra),

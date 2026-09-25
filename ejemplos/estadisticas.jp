@@ -12,6 +12,6 @@ para n en notas {
 
 imprime("Notas:   ", notas)
 imprime("Suma:    ", suma)
-imprime("Promedio:", suma / longitud(notas))
+imprime("Promedio:", suma / notas.longitud())
 imprime("Mayor:   ", mayor)
 imprime("Menor:   ", menor)

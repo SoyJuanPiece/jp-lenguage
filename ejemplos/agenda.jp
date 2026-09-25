@@ -1,7 +1,7 @@
 # 📒 Agenda persistente en JP — contactos que sobreviven al cierre
 # Ejecuta: python -m jp ejemplos/agenda.jp
 #
-# Demuestra: archivos, diccionarios, separar/unir, romper/continuar.
+# Demuestra: archivos, diccionarios, métodos de valor, romper/continuar.
 
 variable archivo = "agenda_datos.txt"
 
@@ -9,9 +9,9 @@ variable archivo = "agenda_datos.txt"
 funcion cargar() {
     variable contactos = {}
     si existe_archivo(archivo) {
-        para linea en separar(leer_archivo(archivo), "\n") {
-            si longitud(linea) == 0 { continuar }
-            variable partes = separar(linea, "|")
+        para linea en leer_archivo(archivo).separar("\n") {
+            si linea.longitud() == 0 { continuar }
+            variable partes = linea.separar("|")
             contactos[partes[0]] = partes[1]
         }
     }
@@ -21,43 +21,43 @@ funcion cargar() {
 # Guarda todos los contactos de vuelta al archivo
 funcion guardar(contactos) {
     variable lineas = []
-    para nombre en claves(contactos) {
-        agregar(lineas, "{nombre}|{contactos[nombre]}")
+    para nombre en contactos.claves() {
+        lineas.agregar("{nombre}|{contactos[nombre]}")
     }
     escribir_archivo(archivo, unir(lineas, "\n") + "\n")
 }
 
 variable contactos = cargar()
 
-muestra("=== MI AGENDA === (", longitud(contactos), "contactos guardados)")
+muestra("=== MI AGENDA === (", contactos.longitud(), "contactos guardados)")
 
 mientras verdadero {
     muestra("")
     muestra("1) listar  2) agregar  3) buscar  4) salir")
-    variable opcion = recortar(leer("Opción: "))
+    variable opcion = leer("Opción: ").recortar()
 
     si opcion == "1" {
-        si longitud(contactos) == 0 {
+        si contactos.longitud() == 0 {
             muestra("(agenda vacía)")
         }
-        para nombre en claves(contactos) {
+        para nombre en contactos.claves() {
             muestra("  📞", nombre, "→", contactos[nombre])
         }
         continuar
     }
 
     si opcion == "2" {
-        variable nombre = recortar(leer("Nombre: "))
-        si longitud(nombre) == 0 { continuar }
-        contactos[nombre] = recortar(leer("Teléfono: "))
+        variable nombre = leer("Nombre: ").recortar()
+        si nombre.longitud() == 0 { continuar }
+        contactos[nombre] = leer("Teléfono: ").recortar()
         guardar(contactos)
         muestra("✓ Guardado")
         continuar
     }
 
     si opcion == "3" {
-        variable nombre = recortar(leer("Nombre a buscar: "))
-        si tiene(contactos, nombre) {
+        variable nombre = leer("Nombre a buscar: ").recortar()
+        si contactos.tiene(nombre) {
             muestra("  📞", nombre, "→", contactos[nombre])
         } sino {
             muestra("  No está en la agenda")
@@ -66,7 +66,7 @@ mientras verdadero {
     }
 
     si opcion == "4" {
-        muestra("¡Hasta pronto! Tus", longitud(contactos), "contactos quedaron guardados.")
+        muestra("¡Hasta pronto! Tus", contactos.longitud(), "contactos quedaron guardados.")
         romper
     }
 

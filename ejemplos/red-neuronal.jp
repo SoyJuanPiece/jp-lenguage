@@ -25,10 +25,10 @@ variable bh = []       # sesgos de las ocultas
 variable bo = 0.0
 
 para i en 1..4 {
-    agregar(w1a, azar_peso())
-    agregar(w1b, azar_peso())
-    agregar(wo, azar_peso())
-    agregar(bh, 0.0)
+    w1a.agregar(azar_peso())
+    w1b.agregar(azar_peso())
+    wo.agregar(azar_peso())
+    bh.agregar(0.0)
 }
 
 # ---------- forward ----------
@@ -38,7 +38,7 @@ funcion forward(x1, x2) {
     variable zo = 0.0
     para j en 1..4 {
         variable h = sigmoide(w1a[j-1] * x1 + w1b[j-1] * x2 + bh[j-1])
-        agregar(ocultas, h)
+        ocultas.agregar(h)
         zo = zo + wo[j-1] * h
     }
     devuelve { ocultas: ocultas, salida: sigmoide(zo + bo) }
@@ -64,7 +64,7 @@ funcion entrenar_epoca() {
         # gradientes ocultos + actualizar pesos de salida
         variable deltas_h = []
         para j en 1..4 {
-            agregar(deltas_h, delta_o * wo[j-1] * ocultas[j-1] * (1.0 - ocultas[j-1]))
+            deltas_h.agregar(delta_o * wo[j-1] * ocultas[j-1] * (1.0 - ocultas[j-1]))
             wo[j-1] = wo[j-1] + tasa * delta_o * ocultas[j-1]
         }
 
@@ -83,10 +83,10 @@ funcion entrenar_epoca() {
 # ---------- datos XOR ----------
 
 variable datos = []
-variable d1 = { x1: 0.0, x2: 0.0, deseado: 0.0 }; agregar(datos, d1)
-variable d2 = { x1: 0.0, x2: 1.0, deseado: 1.0 }; agregar(datos, d2)
-variable d3 = { x1: 1.0, x2: 0.0, deseado: 1.0 }; agregar(datos, d3)
-variable d4 = { x1: 1.0, x2: 1.0, deseado: 0.0 }; agregar(datos, d4)
+variable d1 = { x1: 0.0, x2: 0.0, deseado: 0.0 }; datos.agregar(d1)
+variable d2 = { x1: 0.0, x2: 1.0, deseado: 1.0 }; datos.agregar(d2)
+variable d3 = { x1: 1.0, x2: 0.0, deseado: 1.0 }; datos.agregar(d3)
+variable d4 = { x1: 1.0, x2: 1.0, deseado: 0.0 }; datos.agregar(d4)
 
 # ---------- correr el entrenamiento ----------
 

@@ -27,40 +27,40 @@ variable sesgos = []              # sesgos[i] = sesgos de la capa i+1
 
 variable t0 = reloj()
 
-para i en 1..longitud(capas) - 1 {
+para i en 1..capas.longitud() - 1 {
     variable matriz = []
     variable sesgos_l = []
     para j en 1..capas[i] {
         variable fila = []
         para k en 1..capas[i - 1] {
-            agregar(fila, azar_peso())
+            fila.agregar(azar_peso())
         }
-        agregar(matriz, fila)
-        agregar(sesgos_l, 0.0)
+        matriz.agregar(fila)
+        sesgos_l.agregar(0.0)
     }
-    agregar(pesos, matriz)
-    agregar(sesgos, sesgos_l)
+    pesos.agregar(matriz)
+    sesgos.agregar(sesgos_l)
 }
 
 # ---------- forward: guarda las activaciones de TODAS las capas ----------
 
 funcion forward(entrada) {
     variable activs = []
-    agregar(activs, entrada)
+    activs.agregar(entrada)
     variable actual = entrada
-    para i en 1..longitud(pesos) {
+    para i en 1..pesos.longitud() {
         variable matriz = pesos[i - 1]
         variable sesgos_l = sesgos[i - 1]
         variable nueva = []
         para j en 1..capas[i] {
             variable suma = sesgos_l[j - 1]
             variable fila = matriz[j - 1]
-            para k en 1..longitud(actual) {
+            para k en 1..actual.longitud() {
                 suma = suma + fila[k - 1] * actual[k - 1]
             }
-            agregar(nueva, sigmoide(suma))
+            nueva.agregar(sigmoide(suma))
         }
-        agregar(activs, nueva)
+        activs.agregar(nueva)
         actual = nueva
     }
     devuelve activs
@@ -71,16 +71,16 @@ funcion forward(entrada) {
 variable tasa = 0.5
 
 variable datos = []
-variable d1 = { entrada: [0.0, 0.0], deseado: [0.0] }; agregar(datos, d1)
-variable d2 = { entrada: [0.0, 1.0], deseado: [1.0] }; agregar(datos, d2)
-variable d3 = { entrada: [1.0, 0.0], deseado: [1.0] }; agregar(datos, d3)
-variable d4 = { entrada: [1.0, 1.0], deseado: [0.0] }; agregar(datos, d4)
+variable d1 = { entrada: [0.0, 0.0], deseado: [0.0] }; datos.agregar(d1)
+variable d2 = { entrada: [0.0, 1.0], deseado: [1.0] }; datos.agregar(d2)
+variable d3 = { entrada: [1.0, 0.0], deseado: [1.0] }; datos.agregar(d3)
+variable d4 = { entrada: [1.0, 1.0], deseado: [0.0] }; datos.agregar(d4)
 
 funcion entrenar_epoca() {
     variable error_total = 0.0
     para d en datos {
         variable activs = forward(d["entrada"])
-        variable ultima = longitud(capas) - 1
+        variable ultima = capas.longitud() - 1
         variable salidas = activs[ultima]
         variable deseado = d["deseado"]
 
@@ -90,22 +90,22 @@ funcion entrenar_epoca() {
         para j en 1..capas[ultima] {
             variable e = deseado[j - 1] - salidas[j - 1]
             e_total = e_total + e * e
-            agregar(error_capa, e)
+            error_capa.agregar(e)
         }
         error_total = error_total + e_total
 
         # deltas: delta[i] corresponde a la capa i (mismo tamaño que activs[i])
         variable deltas = []
-        para c en 1..longitud(capas) {
-            agregar(deltas, [])
+        para c en 1..capas.longitud() {
+            deltas.agregar([])
         }
         para j en 1..capas[ultima] {
             variable a = salidas[j - 1]
-            agregar(deltas[ultima], error_capa[j - 1] * a * (1.0 - a))
+            deltas[ultima].agregar(error_capa[j - 1] * a * (1.0 - a))
         }
 
         # hacia atrás: deltas[i] desde deltas[i+1] usando pesos[i]
-        variable i = longitud(pesos) - 1
+        variable i = pesos.longitud() - 1
         mientras i >= 1 {
             variable deltas_sig = deltas[i + 1]
             variable matriz_sig = pesos[i]
@@ -117,14 +117,14 @@ funcion entrenar_epoca() {
                     retro = retro + matriz_sig[k - 1][j - 1] * deltas_sig[k - 1]
                 }
                 variable a = act[j - 1]
-                agregar(delta_nueva, retro * a * (1.0 - a))
+                delta_nueva.agregar(retro * a * (1.0 - a))
             }
             deltas[i] = delta_nueva
             i = i - 1
         }
 
         # actualizar pesos y sesgos con los deltas
-        variable i2 = longitud(pesos) - 1
+        variable i2 = pesos.longitud() - 1
         mientras i2 >= 0 {
             variable deltas_sig = deltas[i2 + 1]
             variable act = activs[i2]
@@ -164,7 +164,7 @@ muestra("Entrenada en", epoca, "épocas · error:", err, "·", segundos, "segund
 muestra("Predicciones:")
 para d en datos {
     variable activs = forward(d["entrada"])
-    variable salida = activs[longitud(capas) - 1][0]
+    variable salida = activs[capas.longitud() - 1][0]
     variable e = d["entrada"]
     muestra("  ", e[0], " xor ", e[1], "= ", salida, " (quería ", d["deseado"][0], ")")
 }

@@ -3,7 +3,7 @@ var frutas = ["manzana", "banana", "cereza"]
 muestra("Lista:", frutas)
 muestra("Primera:", frutas[0])
 muestra("Última:", frutas[-1])
-muestra("Cantidad:", longitud(frutas))
+muestra("Cantidad:", frutas.longitud())
 
 para (f en frutas) {
     muestra("-", f)

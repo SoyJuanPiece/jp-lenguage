@@ -27,4 +27,4 @@ imprime('cuenta a cero:', cuenta)
 # Listas e índices
 variable frutas = ['manzana', 'banana']
 imprime('Primera fruta:', frutas[0])
-imprime('Total:', longitud(frutas))
+imprime('Total:', frutas.longitud())

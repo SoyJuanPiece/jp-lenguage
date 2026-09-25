@@ -10,7 +10,7 @@ variable vidas = 6
 funcion tablero() {
     variable linea = ""
     para letra en palabra {
-        si contiene(aciertos, letra) {
+        si aciertos.contiene(letra) {
             linea = "{linea}{letra} "
         } sino {
             linea = "{linea}_ "
@@ -20,26 +20,26 @@ funcion tablero() {
 }
 
 muestra("=== AHORCADO ===")
-muestra("La palabra tiene", longitud(palabra), "letras. Tienes", vidas, "vidas.")
+muestra("La palabra tiene", palabra.longitud(), "letras. Tienes", vidas, "vidas.")
 
 mientras verdadero {
     muestra("")
     muestra(tablero())
-    si longitud(aciertos) > 0: muestra("Usadas:", unir(usadas, ", "))
+    si aciertos.longitud() > 0: muestra("Usadas:", unir(usadas, ", "))
 
-    variable letra = minusculas(recortar(leer("Letra: ")))
-    si longitud(letra) != 1 {
+    variable letra = leer("Letra: ").recortar().minusculas()
+    si letra.longitud() != 1 {
         muestra("Escribe UNA letra.")
         continuar
     }
-    si contiene(usadas, letra) {
+    si usadas.contiene(letra) {
         muestra("Ya probaste", letra, "...")
         continuar
     }
-    agregar(usadas, letra)
+    usadas.agregar(letra)
 
-    si contiene(palabra, letra) {
-        agregar(aciertos, letra)
+    si palabra.contiene(letra) {
+        aciertos.agregar(letra)
         muestra("¡Bien! La", letra, "está.")
     } sino {
         vidas = vidas - 1
@@ -53,7 +53,7 @@ mientras verdadero {
     # ¿ganó? todas las letras de la palabra están en aciertos
     variable completa = verdadero
     para l en palabra {
-        si no contiene(aciertos, l) {
+        si no aciertos.contiene(l) {
             completa = falso
             romper
         }

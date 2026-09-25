@@ -8,7 +8,7 @@ imprime("Puerto:  ", config["puerto"])
 # Simulamos la respuesta real de Telegram a getUpdates
 variable update = json_leer('{"ok": true, "result": [{"update_id": 1, "message": {"chat": {"id": 99}, "text": "¡buenas!"}}]}')
 
-si tiene(update, "ok") {
+si update.tiene("ok") {
     para u en update["result"] {
         imprime("Mensaje de", u.message.chat.id, ":", u.message.text)
     }
@@ -21,7 +21,7 @@ imprime("Último valor:", vuelta["respuesta"][2])
 
 # Diccionarios son mutables y se pueden iterar
 variable contador = {}
-si no tiene(contador, "visitas") {
+si no contador.tiene("visitas") {
     contador.visitas = 1
 }
-imprime("Contador:", contador, "· claves:", claves(contador))
+imprime("Contador:", contador, "· claves:", contador.claves())

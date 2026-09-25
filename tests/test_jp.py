@@ -424,6 +424,46 @@ class TestJSONYRed(unittest.TestCase):
         self.assertEqual(ejecutar('esperar(0)\nimprime("ok")'), "ok\n")
 
 
+class TestInterpolacion(unittest.TestCase):
+    def test_basica(self):
+        self.assertEqual(ejecutar('variable n = "mundo"\nmuestra("hola {n}!")'), "hola mundo!\n")
+
+    def test_expresiones(self):
+        self.assertEqual(ejecutar('variable e = 25\nmuestra("{e} + 10 = {e + 10}")'), "25 + 10 = 35\n")
+        self.assertEqual(ejecutar('muestra("{2 * 3 + 1}")'), "7\n")
+
+    def test_varias_y_adheridas(self):
+        self.assertEqual(ejecutar('muestra("{1}{2}{3}")'), "123\n")
+        self.assertEqual(ejecutar('variable a = "x"\nmuestra("{a}-{a}")'), "x-x\n")
+
+    def test_formato_como_muestra(self):
+        # los valores se convierten igual que muestra(): verdadero/falso, etc.
+        self.assertEqual(ejecutar('muestra("v={verdadero} n={nulo}")'), "v=verdadero n=nulo\n")
+        self.assertEqual(ejecutar('muestra("{1 / 2}")'), "0.5\n")
+
+    def test_escape_de_llaves(self):
+        self.assertEqual(ejecutar('muestra("escape: \\{no interpola}")'), "escape: {no interpola}\n")
+
+    def test_simples_no_interpolan(self):
+        self.assertEqual(ejecutar('variable n = "mundo"\nmuestra(\'hola {n}\')'), "hola {n}\n")
+
+    def test_con_indices_y_llamadas(self):
+        self.assertEqual(
+            ejecutar('variable d = {nombre: "Ana"}\nmuestra("hola {d.nombre}!")'),
+            "hola Ana!\n",
+        )
+        self.assertEqual(
+            ejecutar('funcion doble(x) { devuelve x * 2 }\nmuestra("doble = {doble(21)}")'),
+            "doble = 42\n",
+        )
+
+    def test_errores(self):
+        with self.assertRaises(ErrorLexico):
+            ejecutar('muestra("sin cerrar {n")')
+        with self.assertRaises(ErrorLexico):
+            ejecutar('muestra("vacio {}")')
+
+
 class TestOptimizaciones(unittest.TestCase):
     def test_plegado_de_constantes(self):
         from jp.arbol import NodoBinario, NodoNumero

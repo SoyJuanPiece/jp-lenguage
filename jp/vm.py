@@ -499,6 +499,22 @@ class MaquinaVM:
                 return lista[sig]
             return op
 
+        if codigo is Codigo.INTERPOLAR:
+            n = operando   # partes de NodoInterpolacion: texto, valor, texto...
+
+            def op():
+                piezas = pila[-n:]
+                del pila[-n:]
+                trozos: list[str] = []
+                for indice, pieza in enumerate(piezas):
+                    if indice % 2 == 0:
+                        trozos.append(pieza)          # NodoCadena ya es str
+                    else:
+                        trozos.append(jp_a_texto(pieza))
+                pila.append("".join(trozos))
+                return lista[sig]
+            return op
+
         if codigo is Codigo.RANGO:
             def op():
                 fin = pila.pop()

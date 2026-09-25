@@ -110,6 +110,17 @@ class NodoDiccionario(Nodo):
     linea: int = 0
 
 
+@dataclass
+class NodoInterpolacion(Nodo):
+    """"texto {expr} medio {expr} fin" -> partes alternadas texto/expr.
+
+    Las partes de texto son NodoCadena; las expresiones cualquier Nodo.
+    Se convierte en una suma que usa jp_a_texto para cada expr.
+    """
+    partes: list[Nodo] = field(default_factory=list)
+    linea: int = 0
+
+
 # ----------------- Sentencias (efectos) -----------------
 
 @dataclass

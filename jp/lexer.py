@@ -2,6 +2,12 @@
 
 Ejemplo:
     "var x = 10"  ->  [VAR, IDENTIFICADOR(x), IGUAL, NUMERO(10), FIN]
+
+Interpolación: las cadenas con COMILLAS DOBLES pueden incrustar expresiones
+entre llaves:  "hola {nombre}, tienes {edad * 2} vidas".  El lexer trocea la
+cadena en CADENA_INI / (tokens de la expresión empalmados) / CADENA_MEDIO /
+... / CADENA_FIN, y el parser los convierte en NodoInterpolacion. Las
+comillas SIMPLES son literales puros (nunca interpolan).
 """
 
 from __future__ import annotations
@@ -36,6 +42,8 @@ _ESCAPES = {
     "r": "\r",
     '"': '"',
     "\\": "\\",
+    "{": "{",   # escapa una interpolación: "a\{b"
+    "}": "}",
 }
 
 
@@ -163,22 +171,160 @@ class Lexer:
 
         raise ErrorLexico(f"carácter no reconocido: {c!r}", self.linea, self.columna - 1)
 
+    # ---------- cadenas e interpolación ----------
+
     def _cadena(self, delim: str) -> None:
-        valor = []
+        """Escanea una cadena.
+
+        - COMILLAS SIMPLES: literal puro con los escapes de siempre
+          (\\n, \\t, \\\", \\\\). Nunca interpola.
+        - COMILLAS DOBLES: un '{' inicia una interpolación
+              "hola {nombre}, tienes {edad * 2} vidas"
+          Se emite: CADENA_INI(texto) [tokens de la expresión]
+                    (CADENA_MEDIO(texto) [tokens])* CADENA_FIN(texto).
+          '\\{' y '\\}' insertan llaves literales.
+        """
+        if delim == "'":
+            valor = []
+            while True:
+                if self._fin():
+                    raise ErrorLexico(
+                        "cadena sin cerrar (falta ')", self.linea_inicial, self.columna_inicial
+                    )
+                c = self._avanzar()
+                if c == "'":
+                    break
+                if c == "\\":
+                    escape = self._avanzar()
+                    if escape not in _ESCAPES:
+                        raise ErrorLexico(
+                            f"escape no válido: \\{escape}", self.linea, self.columna - 1
+                        )
+                    valor.append(_ESCAPES[escape])
+                else:
+                    valor.append(c)
+            self._agregar(TToken.CADENA, "".join(valor))
+            return
+
+        # --- comillas dobles, con interpolación ---
+        trozos: list[str] = []       # textos; trozos[i+1] sigue a la interpolación i
+        expresiones: list[str] = []
+        actual: list[str] = []
         while True:
             if self._fin():
-                raise ErrorLexico(f"cadena sin cerrar (falta '{delim}')", self.linea_inicial, self.columna_inicial)
+                raise ErrorLexico(
+                    'cadena sin cerrar (falta ")', self.linea_inicial, self.columna_inicial
+                )
             c = self._avanzar()
-            if c == delim:
+            if c == '"':
                 break
             if c == "\\":
                 escape = self._avanzar()
                 if escape not in _ESCAPES:
-                    raise ErrorLexico(f"escape no válido: \\{escape}", self.linea, self.columna - 1)
-                valor.append(_ESCAPES[escape])
+                    raise ErrorLexico(
+                        f"escape no válido: \\{escape}", self.linea, self.columna - 1
+                    )
+                actual.append(_ESCAPES[escape])
+                continue
+            if c == "{":
+                trozos.append("".join(actual))
+                actual = []
+                expresiones.append(self._leer_hasta_llave())
+                continue
+            actual.append(c)
+        trozos.append("".join(actual))
+
+        if not expresiones:
+            self._agregar(TToken.CADENA, trozos[0])
+            return
+
+        self._agregar(TToken.CADENA_INI, trozos[0])
+        for indice, expr in enumerate(expresiones):
+            self._empalmar_expresion(expr)
+            texto = trozos[indice + 1]
+            if indice == len(expresiones) - 1:
+                self._agregar(TToken.CADENA_FIN, texto)
             else:
-                valor.append(c)
-        self._agregar(TToken.CADENA, "".join(valor))
+                self._agregar(TToken.CADENA_MEDIO, texto)
+
+    def _leer_hasta_llave(self) -> str:
+        """Dentro de una interpolación (el '{' ya fue consumido): consume
+        caracteres hasta el '}' que la cierra, contando anidación y respetando
+        cadenas anidadas. Devuelve el texto de la expresión."""
+        linea_inicial = self.linea
+        columna_inicial = self.columna - 1
+        trozo: list[str] = []
+        llaves = 1
+        parentesis = 0
+        corchetes = 0
+        while True:
+            if self._fin():
+                raise ErrorLexico(
+                    "interpolación sin cerrar (falta '}')", linea_inicial, columna_inicial
+                )
+            c = self._avanzar()
+            if c == '"' or c == "'":
+                trozo.append(c)
+                if not self._saltar_cadena_simple(c, trozo):
+                    raise ErrorLexico(
+                        "cadena sin cerrar dentro de una interpolación",
+                        self.linea,
+                        self.columna,
+                    )
+                continue
+            if c == "\\":
+                trozo.append(c)
+                if self._fin():
+                    raise ErrorLexico(
+                        "escape incompleto en interpolación", self.linea, self.columna
+                    )
+                trozo.append(self._avanzar())
+                continue
+            if c == "{":
+                llaves += 1
+            elif c == "}":
+                llaves -= 1
+                if llaves == 0 and parentesis == 0 and corchetes == 0:
+                    return "".join(trozo)
+            elif c == "(":
+                parentesis += 1
+            elif c == ")":
+                parentesis -= 1
+            elif c == "[":
+                corchetes += 1
+            elif c == "]":
+                corchetes -= 1
+            trozo.append(c)
+
+    def _saltar_cadena_simple(self, delim: str, trozo: list[str]) -> bool:
+        """Cadena anidada dentro de una interpolación: consume hasta el cierre
+        (respetando escapes) y deja el texto crudo en `trozo`."""
+        while True:
+            if self._fin():
+                return False
+            c = self._avanzar()
+            if c == "\\":
+                trozo.append(c)
+                if self._fin():
+                    return False
+                trozo.append(self._avanzar())
+                continue
+            trozo.append(c)
+            if c == delim:
+                return True
+
+    def _empalmar_expresion(self, expr: str) -> None:
+        """Tokeniza el texto de una interpolación y EMPALMA sus tokens en la
+        secuencia actual (sin el FIN_DE_ARCHIVO del sub-lexer). El parser
+        después consume esos tokens con _expresion() normal."""
+        sub_tokens = tokenizar(expr)
+        if len(sub_tokens) <= 1:
+            raise ErrorLexico(
+                "interpolación vacía {}", self.linea_inicial, self.columna_inicial
+            )
+        self.tokens.extend(sub_tokens[:-1])
+
+    # ---------- números e identificadores ----------
 
     def _numero(self) -> None:
         while self._mirar().isdigit():

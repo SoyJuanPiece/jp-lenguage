@@ -32,6 +32,7 @@ from .arbol import (
     NodoExpresion,
     NodoFuncion,
     NodoIndice,
+    NodoInterpolacion,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -370,6 +371,18 @@ class Compilador:
                 self._expresion(clave, chunk)
                 self._expresion(valor, chunk)
             self._emitir(chunk, Codigo.DICCIONARIO, len(nodo.pares), nodo.linea)
+            return
+
+        if tipo is NodoInterpolacion:
+            # pila: [texto, valor, texto, valor, ..., texto]; cada texto es
+            # constante y cada valor se convierte a texto con INTERPOLAR.
+            for indice, parte in enumerate(nodo.partes):
+                if indice % 2 == 0:
+                    indice_const = chunk.agregar_constante(parte.valor)
+                    self._emitir(chunk, Codigo.CONSTANTE, indice_const, nodo.linea)
+                else:
+                    self._expresion(parte, chunk)
+            self._emitir(chunk, Codigo.INTERPOLAR, len(nodo.partes), nodo.linea)
             return
 
         if tipo is NodoRango:

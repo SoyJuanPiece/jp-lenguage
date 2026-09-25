@@ -27,6 +27,7 @@ from .arbol import (
     NodoPara,
     NodoPrograma,
     NodoRango,
+    NodoInterpolacion,
     NodoRomper,
     NodoContinuar,
     NodoRetorna,
@@ -322,6 +323,8 @@ class Parser:
 
     def _primario(self) -> Nodo:
         token = self._avanzar()
+        if token.tipo == TToken.CADENA_INI:
+            return self._interpolacion(token)
         if token.tipo == TToken.NUMERO:
             return NodoNumero(valor=token.literal, linea=token.linea)
         if token.tipo == TToken.CADENA:
@@ -373,6 +376,25 @@ class Parser:
             return expr
         encontrado = "fin del archivo" if token.tipo == TToken.FIN_DE_ARCHIVO else repr(token.lexema)
         raise ErrorSintaxis(f"se esperaba una expresión, pero se encontró {encontrado}", token.linea, token.columna)
+
+    def _interpolacion(self, token: Token) -> Nodo:
+        """Convierte CADENA_INI [expr] (CADENA_MEDIO [expr])* CADENA_FIN en
+        NodoInterpolacion (partes de texto + expresiones alternadas)."""
+        partes: list[Nodo] = [NodoCadena(valor=token.literal, linea=token.linea)]
+        while True:
+            partes.append(self._expresion())
+            token_medio = self._avanzar()
+            if token_medio.tipo == TToken.CADENA_FIN:
+                partes.append(NodoCadena(valor=token_medio.literal, linea=token_medio.linea))
+                break
+            if token_medio.tipo != TToken.CADENA_MEDIO:
+                raise ErrorSintaxis(
+                    "interpolación mal formada: falta el '}'",
+                    token_medio.linea,
+                    token_medio.columna,
+                )
+            partes.append(NodoCadena(valor=token_medio.literal, linea=token_medio.linea))
+        return NodoInterpolacion(partes=partes, linea=token.linea)
 
 
 def parsear(tokens: list[Token]) -> NodoPrograma:

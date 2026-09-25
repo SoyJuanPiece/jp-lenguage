@@ -32,6 +32,7 @@ class Codigo(Enum):
     # Estructuras
     LISTA = auto()          # operando=n -> construye lista con n elementos
     DICCIONARIO = auto()    # operando=n -> construye dict con n pares (k,v en pila)
+    INTERPOLAR = auto()     # operando=n -> concatena n/2 textos + n/2 valores (pila)
     RANGO = auto()          # inicio y fin en pila -> lista inclusiva (al revés también)
     INDICE = auto()         # objeto[indice] (ambos en pila)
     INDICE_ASIG = auto()    # objeto, indice, valor en pila; deja el valor
@@ -91,6 +92,7 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.AMBITO_POP: "AMBITO_POP",
     Codigo.LISTA: "LISTA",
     Codigo.DICCIONARIO: "DICCIONARIO",
+    Codigo.INTERPOLAR: "INTERPOLAR",
     Codigo.RANGO: "RANGO",
     Codigo.INDICE: "INDICE",
     Codigo.INDICE_ASIG: "INDICE_ASIG",

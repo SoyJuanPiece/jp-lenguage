@@ -25,6 +25,7 @@ from .arbol import (
     NodoExpresion,
     NodoFuncion,
     NodoIndice,
+    NodoInterpolacion,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -202,6 +203,7 @@ class Interprete:
             NodoRango: self._ev_rango,
             NodoIndice: self._ev_indice,
             NodoDiccionario: self._ev_diccionario,
+            NodoInterpolacion: self._ev_interpolacion,
             NodoLlamada: self._ev_llamada,
         }
 
@@ -372,6 +374,17 @@ class Interprete:
 
     def _ev_diccionario(self, nodo: NodoDiccionario, entorno: Entorno):
         return {self._evaluar(k, entorno): self._evaluar(v, entorno) for k, v in nodo.pares}
+
+    def _ev_interpolacion(self, nodo: NodoInterpolacion, entorno: Entorno):
+        # "texto {expr} medio": las partes de texto van tal cual; las
+        # expresiones se convierten a texto como hace muestra() (jp_a_texto).
+        piezas: list[str] = []
+        for indice, parte in enumerate(nodo.partes):
+            if indice % 2 == 0:
+                piezas.append(parte.valor)
+            else:
+                piezas.append(jp_a_texto(self._evaluar(parte, entorno)))
+        return "".join(piezas)
 
     def _ev_llamada(self, nodo: NodoLlamada, entorno: Entorno):
         return self._llamada(nodo, entorno)

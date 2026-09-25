@@ -37,6 +37,9 @@ class TToken(Enum):
     # Literales
     NUMERO = auto()
     CADENA = auto()
+    CADENA_INI = auto()     # "texto{" (inicio de interpolación)
+    CADENA_MEDIO = auto()   # "}texto{" (continúa)
+    CADENA_FIN = auto()     # "}texto" (cierre)
     IDENTIFICADOR = auto()
 
     # Palabras clave
@@ -119,6 +122,9 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.MAYOR_IGUAL: ">=",
     TToken.NUMERO: "número",
     TToken.CADENA: "cadena",
+    TToken.CADENA_INI: "cadena con interpolación",
+    TToken.CADENA_MEDIO: "cadena con interpolación",
+    TToken.CADENA_FIN: "cadena con interpolación",
     TToken.IDENTIFICADOR: "identificador",
     TToken.VAR: "'var'",
     TToken.FUN: "'fun'",

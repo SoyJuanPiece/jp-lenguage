@@ -219,6 +219,11 @@ class TestParidadVM(unittest.TestCase):
                   '  si opcion == 2 { continuar }\n  si opcion == 4 { romper }\n'
                   '  muestra("paso", opcion)\n}\nmuestra("fin")')
 
+    def test_interpolacion(self):
+        self._par('variable n = "mundo"\nmuestra("hola {n} dos veces")')
+        self._par('variable e = 5\nmuestra("{e} * {e} = {e * e}")')
+        self._par('muestra("suma: {[1, 2] + [3]}")')
+
     def test_romper_fuera_de_bucle_igual(self):
         for maquina in (MaquinaVM(), Interprete()):
             with self.assertRaises(Exception) as ctx:

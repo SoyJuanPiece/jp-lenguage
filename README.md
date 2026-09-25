@@ -110,6 +110,18 @@ lista[0]                  # indexar
 lista[-1]                 # índice negativo = desde el final
 ```
 
+### Interpolación — las dobles incrustan expresiones
+
+```jp
+variable nombre = "mundo"
+variable edad = 25
+"hola {nombre}!"                      # => "hola mundo!"
+"en 10 años tendrás {edad + 10}"      # => "en 10 años tendrás 35"
+"{2 * 3 + 1}"                         # => "7" (cualquier expresión)
+"escape: \{esto no interpola}"        # => "escape: {esto no interpola}"
+'crudo: {nombre}'                     # => "crudo: {nombre}" (simples = literales)
+```
+
 ## Librería estándar
 
 | Función | Descripción |
@@ -241,6 +253,12 @@ python -m jp --turbo archivo.jp              # cache total para programas puros
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.1.0 — **interpolación de strings**: `"hola {nombre}, tienes {edad + 10}"
+` incrusta cualquier expresión entre llaves en las cadenas con comillas
+dobles (las simples quedan como literales crudos, y `\{` escapa).
+Implementada en las 8 capas (lexer trocea y empalma tokens, parser,
+intérprete, opcode INTERPOLAR en la VM) con paridad total. 162 tests.
 
 v1.0.0 — **IA en JP puro**: `ejemplos/red-neuronal.jp` es una red neuronal
 2-4-1 con backpropagation completa, y `ejemplos/red-profunda.jp` va más

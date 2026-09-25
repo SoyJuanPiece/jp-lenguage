@@ -7,5 +7,5 @@ fun fibonacci(n) {
 }
 
 para (i en rango(0, 15)) {
-    muestra("fib(" + texto(i) + ") =", fibonacci(i))
+    muestra("fib({i}) = {fibonacci(i)}")
 }

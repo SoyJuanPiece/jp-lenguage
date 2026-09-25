@@ -22,7 +22,7 @@ funcion cargar() {
 funcion guardar(contactos) {
     variable lineas = []
     para nombre en claves(contactos) {
-        agregar(lineas, nombre + "|" + contactos[nombre])
+        agregar(lineas, "{nombre}|{contactos[nombre]}")
     }
     escribir_archivo(archivo, unir(lineas, "\n") + "\n")
 }

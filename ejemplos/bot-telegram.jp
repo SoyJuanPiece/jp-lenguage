@@ -19,9 +19,9 @@ mientras escuchando {
         } sino si m.texto == "/ayuda" {
             telegram_responder(token, m.de, "Comandos: /hola /ayuda /numero  (o dime lo que quieras)")
         } sino si m.texto == "/numero" {
-            telegram_responder(token, m.de, "Tu número al azar: " + texto(azar(100)))
+            telegram_responder(token, m.de, "Tu número al azar: {azar(100)}")
         } sino {
-            telegram_responder(token, m.de, "Echo: " + m.texto)
+            telegram_responder(token, m.de, "Echo: {m.texto}")
         }
     }
     esperar(1)   # esperamos 1s entre consultas para no saturar la API

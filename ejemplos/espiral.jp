@@ -227,9 +227,9 @@ para gy en 1..15 {
         variable activs = forward(punto)
         variable salida = activs[longitud(capas) - 1][0]
         si salida >= 0.5 {
-            linea = linea + "×"
+            linea = "{linea}×"
         } sino {
-            linea = linea + "·"
+            linea = "{linea}·"
         }
     }
     muestra(linea)

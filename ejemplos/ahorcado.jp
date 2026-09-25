@@ -11,9 +11,9 @@ funcion tablero() {
     variable linea = ""
     para letra en palabra {
         si contiene(aciertos, letra) {
-            linea = linea + letra + " "
+            linea = "{linea}{letra} "
         } sino {
-            linea = linea + "_ "
+            linea = "{linea}_ "
         }
     }
     devuelve linea

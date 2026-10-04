@@ -16,8 +16,10 @@ from .arbol import (
     NodoCadena,
     NodoDeclaracionVar,
     NodoDiccionario,
+    NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoIntentar,
     NodoIndice,
     NodoLista,
     NodoLlamada,
@@ -48,6 +50,15 @@ _CLAVES_VALIDAS = {
     TToken.Y,
     TToken.O,
     TToken.NO,
+}
+
+# Asignación compuesta: token -> operador. 'x += e' se convierte en 'x = x + e'.
+_OPERADORES_COMPUESTOS = {
+    TToken.MAS_IGUAL: "+",
+    TToken.MENOS_IGUAL: "-",
+    TToken.POR_IGUAL: "*",
+    TToken.ENTRE_IGUAL: "/",
+    TToken.MODULO_IGUAL: "%",
 }
 
 
@@ -107,6 +118,10 @@ class Parser:
                 return NodoContinuar(linea=token.linea)
             if self._coincide(TToken.SI):
                 return self._sentencia_si()
+            if self._coincide(TToken.ELEGIR):
+                return self._sentencia_elegir()
+            if self._coincide(TToken.INTENTA):
+                return self._sentencia_intenta()
             if self._coincide(TToken.MIENTRAS):
                 return self._sentencia_mientras()
             if self._coincide(TToken.PARA):
@@ -126,7 +141,13 @@ class Parser:
 
     def _sentencia_fun(self) -> Nodo:
         token = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la función")
-        self._esperar(TToken.PAREN_IZQ, "se esperaba '(' tras el nombre de la función")
+        parametros = self._parametros("el nombre de la función")
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
+        cuerpo = self._bloque()
+        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea)
+
+    def _parametros(self, tras_que: str) -> list[str]:
+        self._esperar(TToken.PAREN_IZQ, f"se esperaba '(' tras {tras_que}")
         parametros: list[str] = []
         if self._actual().tipo != TToken.PAREN_DER:
             while True:
@@ -135,9 +156,7 @@ class Parser:
                 if not self._coincide(TToken.COMA):
                     break
         self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los parámetros")
-        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
-        cuerpo = self._bloque()
-        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea)
+        return parametros
 
     def _sentencia_retorna(self) -> Nodo:
         token = self._actual()
@@ -171,15 +190,62 @@ class Parser:
             self._esperar(TToken.PAREN_DER, f"se esperaba ')' tras la condición de '{palabra}'")
         return condicion
 
-    def _cuerpo_sentencia(self) -> NodoBloque:
-        """Cuerpo de si/mientras/para: '{ varias }' o ': una sola'."""
+    def _cuerpo_sentencia(self, que: str = "tras la condición") -> NodoBloque:
+        """Cuerpo de si/mientras/para/elegir: '{ varias }' o ': una sola'."""
         if self._coincide(TToken.LLAVE_IZQ):
             return self._bloque()
         if self._coincide(TToken.DOSPUNTOS):
             sentencia = self._sentencia()
             declara = isinstance(sentencia, (NodoDeclaracionVar, NodoFuncion))
             return NodoBloque(sentencias=[sentencia], declara=declara)
-        raise self._error("se esperaba '{' (varias sentencias) o ':' (una sola) tras la condición")
+        raise self._error(f"se esperaba '{{' (varias sentencias) o ':' (una sola) {que}")
+
+    def _sentencia_elegir(self) -> Nodo:
+        """elegir expr { caso a, b { ... } caso c: ... sino { ... } }
+
+        No hay caída entre casos: se ejecuta UN solo bloque (el primero que
+        coincide) y, si ninguno coincide, el 'sino' (opcional).
+        """
+        token = self._actual()
+        expresion = self._expresion()
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras el valor de 'elegir'")
+        casos: list[tuple[list[Nodo], NodoBloque]] = []
+        sino: NodoBloque | None = None
+        while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
+            if self._coincide(TToken.CASO):
+                valores = [self._expresion()]
+                while self._coincide(TToken.COMA):
+                    valores.append(self._expresion())
+                cuerpo = self._cuerpo_sentencia("tras 'caso'")
+                casos.append((valores, cuerpo))
+                continue
+            if self._coincide(TToken.SINO):
+                sino = self._cuerpo_sentencia("tras 'sino'")
+                break  # 'sino' cierra el elegir: solo queda la llave final
+            raise self._error("se esperaba 'caso' o 'sino' dentro de 'elegir'")
+        self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar el 'elegir'")
+        return NodoElegir(expresion=expresion, casos=casos, sino=sino, linea=token.linea)
+
+    def _sentencia_intenta(self) -> Nodo:
+        """intenta { ... } atrapa error { ... }
+
+        El nombre del error es opcional; solo existe dentro del bloque 'atrapa'.
+        """
+        token = self._actual()
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras 'intenta'")
+        cuerpo = self._bloque()
+        self._esperar(
+            TToken.ATRAPA,
+            "se esperaba 'atrapa' tras el bloque de 'intenta' "
+            "(así: intenta { ... } atrapa error { ... })",
+        )
+        nombre_error = None
+        if self._actual().tipo == TToken.IDENTIFICADOR:
+            nombre_error = self._avanzar().lexema
+        captura = self._cuerpo_sentencia("tras 'atrapa'")
+        return NodoIntentar(
+            cuerpo=cuerpo, nombre_error=nombre_error, captura=captura, linea=token.linea
+        )
 
     def _sentencia_mientras(self) -> Nodo:
         token = self._actual()
@@ -218,24 +284,44 @@ class Parser:
 
     def _asignacion(self) -> Nodo:
         expr = self._rango()
-        if self._coincide(TToken.IGUAL):
-            igual = self._actual()
-            valor = self._asignacion()
-            if isinstance(expr, NodoVariable):
-                return NodoAsignacion(nombre=expr.nombre, valor=valor, linea=expr.linea)
-            if isinstance(expr, NodoIndice):
-                return NodoAsignarIndice(objeto=expr.objeto, indice=expr.indice, valor=valor, linea=expr.linea)
-            raise ErrorSintaxis(
-                "el objetivo de '=' debe ser una variable, lista[i] o d.clave", igual.linea, igual.columna
-            )
-        return expr
+        token = self._coincide(
+            TToken.IGUAL,
+            TToken.MAS_IGUAL,
+            TToken.MENOS_IGUAL,
+            TToken.POR_IGUAL,
+            TToken.ENTRE_IGUAL,
+            TToken.MODULO_IGUAL,
+        )
+        if token is None:
+            return expr
+        valor = self._asignacion()
+        if token.tipo is not TToken.IGUAL:
+            # x += 2  se convierte en  x = x + 2 (también con lista[i] y d.clave)
+            operador = _OPERADORES_COMPUESTOS[token.tipo]
+            valor = NodoBinario(operador=operador, izquierda=expr, derecha=valor, linea=token.linea)
+        if isinstance(expr, NodoVariable):
+            return NodoAsignacion(nombre=expr.nombre, valor=valor, linea=expr.linea)
+        if isinstance(expr, NodoIndice):
+            return NodoAsignarIndice(objeto=expr.objeto, indice=expr.indice, valor=valor, linea=expr.linea)
+        raise ErrorSintaxis(
+            f"el objetivo de {token.lexema!r} debe ser una variable, lista[i] o d.clave",
+            token.linea,
+            token.columna,
+        )
 
     def _rango(self) -> Nodo:
-        """Rango inclusivo '..': 1..10 = del 1 al 10 (5..1 también funciona)."""
+        """Rango inclusivo '..': 1..10 = del 1 al 10 (5..1 también funciona).
+
+        Admite paso: 1..10 paso 2 -> 1, 3, 5, 7, 9 (también en 'para').
+        """
         expr = self._o()
         if (token := self._coincide(TToken.PUNTO_PUNTO)):
             derecha = self._o()
-            return NodoRango(izquierda=expr, derecha=derecha, linea=token.linea)
+            paso = None
+            if self._actual().tipo is TToken.IDENTIFICADOR and self._actual().lexema == "paso":
+                self._avanzar()
+                paso = self._o()
+            return NodoRango(izquierda=expr, derecha=derecha, paso=paso, linea=token.linea)
         return expr
 
     def _o(self) -> Nodo:
@@ -286,7 +372,17 @@ class Parser:
             if token.tipo == TToken.MENOS and isinstance(operando, NodoNumero):
                 return NodoNumero(valor=-operando.valor, linea=token.linea)
             return NodoUnario(operador=token.lexema, operando=operando, linea=token.linea)
-        return self._llamada()
+        return self._potencia()
+
+    def _potencia(self) -> Nodo:
+        """'**' asocia a la derecha y liga más que el menos unario (como en Python):
+        -2 ** 2 = -4  ·  2 ** 3 ** 2 = 512  ·  2 ** -1 = 0.5
+        """
+        expr = self._llamada()
+        if (token := self._coincide(TToken.POTENCIA)):
+            derecha = self._unario()  # derecha-asociativa (y admite exponente negativo)
+            return _plegar("**", expr, derecha, token.linea)
+        return expr
 
     def _llamada(self) -> Nodo:
         expr = self._primario()
@@ -337,6 +433,12 @@ class Parser:
             return NodoNulo(linea=token.linea)
         if token.tipo == TToken.IDENTIFICADOR:
             return NodoVariable(nombre=token.lexema, linea=token.linea)
+        if token.tipo == TToken.FUN:
+            # Función anónima como valor:  funcion(x) { devuelve x * 2 }
+            parametros = self._parametros("'funcion'")
+            self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
+            cuerpo = self._bloque()
+            return NodoFuncion(nombre="", parametros=parametros, cuerpo=cuerpo, linea=token.linea)
         if token.tipo == TToken.CORCHETE_IZQ:
             elementos: list[Nodo] = []
             if self._actual().tipo != TToken.CORCHETE_DER:
@@ -418,6 +520,11 @@ def _plegar(operador: str, izq: Nodo, der: Nodo, linea: int) -> Nodo:
             return NodoNumero(valor=a / b, linea=linea)
         if operador == "%" and b != 0:
             return NodoNumero(valor=a % b, linea=linea)
+        if operador == "**":
+            try:
+                return NodoNumero(valor=a**b, linea=linea)
+            except (OverflowError, ZeroDivisionError):
+                pass  # 0 ** -1: el error se cuenta con precisión en ejecución
     if operador == "+" and isinstance(izq, NodoCadena) and isinstance(der, NodoCadena):
         return NodoCadena(valor=izq.valor + der.valor, linea=linea)
     return NodoBinario(operador=operador, izquierda=izq, derecha=der, linea=linea)

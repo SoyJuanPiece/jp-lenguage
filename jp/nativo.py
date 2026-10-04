@@ -499,6 +499,8 @@ class _Comp:
     def _para(self, nodo: NodoPara) -> None:
         if not isinstance(nodo.iterable, NodoRango):
             raise FalloCompilacion("para requiere rango a..b en nativo")
+        if nodo.iterable.paso is not None:
+            raise FalloCompilacion("el rango con 'paso' no está soportado en nativo")
         asm = self.actual.asm
         sufijo = f"{id(nodo) & 0xFFFF:x}"
         i_disp = self.actual.slot_de(nodo.variable)

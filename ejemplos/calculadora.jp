@@ -1,0 +1,58 @@
+# Calculadora de JP — elegir + intenta + leer (v1.3) 🧮
+#
+# Escribe operaciones como "12 + 5" o "7 / 2", o "salir" para terminar.
+# Demuestra lo nuevo: elegir/caso, intenta/atrapa, += y orden superior.
+
+funcion calcular(a, operacion, b) {
+    elegir operacion {
+        caso "+": devuelve a + b
+        caso "-": devuelve a - b
+        caso "*": devuelve a * b
+        caso "/" {
+            si b == 0 {
+                devuelve "no se puede dividir entre cero"
+            }
+            devuelve a / b
+        }
+        caso "**": devuelve a ** b
+        sino: devuelve "operación desconocida: " + operacion
+    }
+}
+
+# Un par de operaciones de regalo, para ver el formato
+imprime("2 ** 10 =", calcular(2, "**", 10))
+imprime("7 / 2  =", calcular(7, "/", 2))
+
+variable historial = []
+imprime('Escribe "12 + 5", "2 ** 8" o "salir".')
+
+mientras verdadero {
+    variable linea = recortar(leer("> "))
+    si linea == "salir" { romper }
+    si linea == "" { continuar }
+
+    variable partes = separar(linea)
+    si partes.longitud() != 3 {
+        imprime("Formato: número operación número (ej: 7 * 6)")
+        continuar
+    }
+
+    intenta {
+        variable resultado = calcular(numero(partes[0]), partes[1], numero(partes[2]))
+        imprime("=", resultado)
+        historial.agregar(texto(resultado))
+    } atrapa error {
+        imprime("No pude calcularlo:", error)
+    }
+}
+
+# Resumen final con orden superior
+si historial.longitud() > 0 {
+    imprime("Resultados:", historial.unir(", "))
+    intenta {
+        imprime("Suma de todo:", reducir(historial, funcion(a, b) { devuelve numero(a) + numero(b) }, 0))
+    } atrapa error {
+        imprime("(alguno no era un número, no pasa nada)")
+    }
+}
+imprime("¡Hasta la próxima! 👋")

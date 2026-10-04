@@ -33,6 +33,12 @@ class TToken(Enum):
     MENOR_IGUAL = auto()      # <=
     MAYOR_IGUAL = auto()      # >=
     PUNTO_PUNTO = auto()      # ..
+    POTENCIA = auto()         # **
+    MAS_IGUAL = auto()        # +=
+    MENOS_IGUAL = auto()      # -=
+    POR_IGUAL = auto()        # *=
+    ENTRE_IGUAL = auto()      # /=
+    MODULO_IGUAL = auto()     # %=
 
     # Literales
     NUMERO = auto()
@@ -59,6 +65,10 @@ class TToken(Enum):
     NO = auto()           # no
     ROMPER = auto()       # romper
     CONTINUAR = auto()    # continuar
+    ELEGIR = auto()       # elegir
+    CASO = auto()         # caso
+    INTENTA = auto()      # intenta
+    ATRAPA = auto()       # atrapa
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -94,6 +104,10 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "no": TToken.NO,
     "romper": TToken.ROMPER,
     "continuar": TToken.CONTINUAR,
+    "elegir": TToken.ELEGIR,
+    "caso": TToken.CASO,
+    "intenta": TToken.INTENTA,
+    "atrapa": TToken.ATRAPA,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -108,6 +122,12 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.DOSPUNTOS: ":",
     TToken.PUNTO: ".",
     TToken.PUNTO_PUNTO: "..",
+    TToken.POTENCIA: "**",
+    TToken.MAS_IGUAL: "+=",
+    TToken.MENOS_IGUAL: "-=",
+    TToken.POR_IGUAL: "*=",
+    TToken.ENTRE_IGUAL: "/=",
+    TToken.MODULO_IGUAL: "%=",
     TToken.MAS: "+",
     TToken.MENOS: "-",
     TToken.POR: "*",
@@ -142,5 +162,9 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.NO: "'no'",
     TToken.ROMPER: "'romper'",
     TToken.CONTINUAR: "'continuar'",
+    TToken.ELEGIR: "'elegir'",
+    TToken.CASO: "'caso'",
+    TToken.INTENTA: "'intenta'",
+    TToken.ATRAPA: "'atrapa'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

@@ -21,11 +21,14 @@ from .bytecode import Chunk, Codigo
 from .compilador import FunCerrada, compilar
 from .errores import ErrorEjecucion
 from .interprete import (
+    Cierre,
     Entorno,
     FuncionNativa,
     _instalar_nativas,
     _metodo_de_valor,
     es_verdad,
+    evaluar_paso,
+    iguales,
     jp_a_texto,
 )
 
@@ -44,19 +47,6 @@ class Ambito:
         self.padre = padre
 
 
-class Cierre:
-    """Función compilada + ámbito donde fue definida (closures reales)."""
-
-    __slots__ = ("fun", "ambito")
-
-    def __init__(self, fun: FunCerrada, ambito: Ambito | None):
-        self.fun = fun
-        self.ambito = ambito
-
-    def __repr__(self) -> str:
-        return f"<fun {self.fun.nombre}>"
-
-
 class IteradorJP:
     """Estado de un 'para ... en' que vive en la pila de la VM."""
 
@@ -70,10 +60,8 @@ class IteradorJP:
 
 
 def _igual(a: object, b: object) -> bool:
-    """Igualdad de JP (misma regla que Interprete._igual)."""
-    if isinstance(a, bool) or isinstance(b, bool):
-        return a is b
-    return a == b
+    """Igualdad de JP (misma regla que el intérprete de árbol)."""
+    return iguales(a, b)
 
 
 class MaquinaVM:
@@ -81,8 +69,10 @@ class MaquinaVM:
 
     def __init__(self) -> None:
         # Reutiliza las nativas del intérprete (incluida la red) tal cual.
+        # Se le pasa _llamar_valor para que las nativas de orden superior
+        # (mapear, filtrar, reducir...) puedan llamar a funciones JP.
         entorno_global = Entorno()
-        _instalar_nativas(entorno_global)
+        _instalar_nativas(entorno_global, self._llamar_valor)
         from .red import instalar as _instalar_red
 
         _instalar_red(entorno_global)
@@ -91,9 +81,14 @@ class MaquinaVM:
         _instalar_archivos(entorno_global)
         self.globals: dict[str, object] = entorno_global.variables
         self.pila: list[object] = []
-        self.frames: list[list] = []  # [cierre_de_reanudación, ámbito_previo]
+        # [cierre_de_reanudación, ámbito_previo, alto_de_pila_al_llamar]
+        self.frames: list[list] = []
         self.ambito: Ambito | None = None
         self.ultimo_valor: object = None
+        # Manejadores de 'intenta': (ops del chunk, destino, largo_pila,
+        # largo_frames, ámbito) por cada TRY activo.
+        self.manejadores: list[tuple] = []
+        self.error_actual: object = ""
         # Nombres globales instalados por el JIT (jp.nativo): DECLARAR no los
         # pisa para que la versión nativa siga viva durante la ejecución.
         self.resguardadas: set[str] = set()
@@ -105,13 +100,67 @@ class MaquinaVM:
         self.pila.clear()
         self.frames.clear()
         self.ambito = None
+        self.manejadores.clear()
+        self.error_actual = ""
         chunk = compilar(programa)
         ops = self._compilar_ops(chunk)
         if not ops:
             return
+        pila = self.pila
         op = ops[0]
         while op is not None:
+            try:
+                op = op()
+            except ErrorEjecucion as error:
+                # 'intenta { } atrapa error { }': el error más cercano manda.
+                # Se restaura pila, frames y ámbito, y se salta al 'atrapa'.
+                if not self.manejadores:
+                    raise
+                ops_manejador, destino, largo_pila, largo_frames, ambito = self.manejadores.pop()
+                del pila[largo_pila:]
+                del self.frames[largo_frames:]
+                self.ambito = ambito
+                self.error_actual = error.mensaje
+                op = ops_manejador[destino]
+
+    def _llamar_valor(self, callee: object, argumentos: list, linea: int = 0) -> object:
+        """Llama a un valor-función desde una nativa de orden superior.
+
+        Ejecuta un bucle anidado con un marco SIN continuación: el 'retorna'
+        de la función devuelve None y el bucle se detiene con el valor en la
+        pila. Los errores suben al bucle principal, que sabe de 'intenta'.
+        """
+        pila = self.pila
+        tipo = type(callee)
+        if tipo is FuncionNativa:
+            if callee.aridad is not None and len(argumentos) != callee.aridad:
+                raise ErrorEjecucion(
+                    f"{callee.nombre}() espera {callee.aridad} argumento(s), recibió {len(argumentos)}",
+                    linea,
+                )
+            return callee.funcion(*argumentos)
+        if tipo is not Cierre:
+            raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", linea)
+        fun = callee.fun
+        if len(argumentos) != fun.aridad:
+            raise ErrorEjecucion(
+                f"la función '{fun.nombre or '<anónima>'}' espera {fun.aridad} argumento(s), "
+                f"recibió {len(argumentos)}",
+                linea,
+            )
+        if len(self.frames) >= _MAX_FRAMES:
+            raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
+        ops_fun = fun.chunk.ops
+        if ops_fun is None:
+            ops_fun = self._compilar_ops(fun.chunk)
+        self.frames.append([None, self.ambito, len(pila)])
+        self.ambito = Ambito(callee.ambito)
+        for nombre, valor in zip(fun.parametros, argumentos):
+            self.ambito.vars[nombre] = valor
+        op = ops_fun[0]
+        while op is not None:
             op = op()
+        return pila.pop()
 
     # ---------------- compilación a cierres ----------------
 
@@ -347,6 +396,25 @@ class MaquinaVM:
                 return lista[sig]
             return op
 
+        if codigo is Codigo.POTENCIA:
+            def op():
+                b = pila.pop()
+                a = pila.pop()
+                for v in (a, b):
+                    if isinstance(v, bool) or not isinstance(v, (int, float)):
+                        raise ErrorEjecucion(
+                            f"el operador '**' espera números, recibió {jp_a_texto(v)!r}", linea
+                        )
+                try:
+                    resultado = a ** b
+                except (OverflowError, ZeroDivisionError):
+                    raise ErrorEjecucion("potencia no válida (¿0 elevado a algo negativo?)", linea)
+                if isinstance(resultado, complex):
+                    raise ErrorEjecucion("la potencia no dio un número real", linea)
+                pila.append(resultado)
+                return lista[sig]
+            return op
+
         if codigo is Codigo.IGUAL:
             def op():
                 b = pila.pop()
@@ -517,17 +585,43 @@ class MaquinaVM:
             return op
 
         if codigo is Codigo.RANGO:
+            con_paso = bool(operando)
+
             def op():
-                fin = pila.pop()
-                inicio = pila.pop()
-                for v in (inicio, fin):
-                    if isinstance(v, bool) or not isinstance(v, (int, float)):
-                        raise ErrorEjecucion(
-                            f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
-                        )
+                if con_paso:
+                    paso = pila.pop()
+                    fin = pila.pop()
+                    inicio = pila.pop()
+                    for v in (inicio, fin):
+                        if isinstance(v, bool) or not isinstance(v, (int, float)):
+                            raise ErrorEjecucion(
+                                f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
+                            )
+                else:
+                    paso = None
+                    fin = pila.pop()
+                    inicio = pila.pop()
+                    for v in (inicio, fin):
+                        if isinstance(v, bool) or not isinstance(v, (int, float)):
+                            raise ErrorEjecucion(
+                                f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
+                            )
                 ini, finn = int(inicio), int(fin)
-                paso = 1 if ini <= finn else -1
-                pila.append(list(range(ini, finn + paso, paso)))
+                if paso is None:
+                    incremento = 1 if ini <= finn else -1
+                else:
+                    incremento = evaluar_paso(paso, linea)
+                    if ini > finn:
+                        incremento = -incremento
+                pila.append(
+                    list(range(ini, finn + (1 if incremento > 0 else -1), incremento))
+                )
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.DUP:
+            def op():
+                pila.append(pila[-1])
                 return lista[sig]
             return op
 
@@ -600,6 +694,31 @@ class MaquinaVM:
                 return lista[sig]
             return op
 
+        # ---------- intenta / atrapa ----------
+
+        if codigo is Codigo.TRY:
+            destino = operando
+
+            def op():
+                self.manejadores.append(
+                    (lista, destino, len(pila), len(frames), self.ambito)
+                )
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.ENDTRY:
+            def op():
+                if self.manejadores:
+                    self.manejadores.pop()
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.ERROR_ACTUAL:
+            def op():
+                pila.append(self.error_actual)
+                return lista[sig]
+            return op
+
         # ---------- llamadas y retorno ----------
 
         if codigo is Codigo.LLAMAR:
@@ -615,7 +734,8 @@ class MaquinaVM:
                     fun = callee.fun
                     if n != fun.aridad:
                         raise ErrorEjecucion(
-                            f"la función '{fun.nombre}' espera {fun.aridad} argumento(s), recibió {n}",
+                            f"la función '{fun.nombre or '<anónima>'}' espera {fun.aridad} "
+                            f"argumento(s), recibió {n}",
                             linea,
                         )
                     if len(frames) >= _MAX_FRAMES:
@@ -623,7 +743,7 @@ class MaquinaVM:
                     ops_fun = fun.chunk.ops
                     if ops_fun is None:
                         ops_fun = self._compilar_ops(fun.chunk)
-                    frames.append([lista[reanudar], self.ambito])
+                    frames.append([lista[reanudar], self.ambito, len(pila)])
                     self.ambito = Ambito(callee.ambito)  # padre = ámbito de definición
                     locales = self.ambito.vars
                     for nombre_arg, valor in zip(fun.parametros, argumentos):
@@ -654,9 +774,13 @@ class MaquinaVM:
                     # 'retorna' en el nivel superior: termina el programa
                     # (misma conducta que el intérprete de árbol).
                     self.ultimo_valor = valor
+                    pila.clear()
                     return None
                 frame = frames.pop()
                 self.ambito = frame[1]
+                # Volver al alto de pila del llamador: descarta lo que hayan
+                # dejado atrás bucles ('para' deja su iterador) o ámbitos.
+                del pila[frame[2]:]
                 pila.append(valor)
                 return frame[0]
             return op

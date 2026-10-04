@@ -22,8 +22,10 @@ from .arbol import (
     NodoCadena,
     NodoDeclaracionVar,
     NodoDiccionario,
+    NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoIntentar,
     NodoIndice,
     NodoInterpolacion,
     NodoLista,
@@ -127,7 +129,7 @@ class FuncionJP:
         self.cierre = cierre
 
     def __repr__(self) -> str:
-        return f"<fun {self.declaracion.nombre}>"
+        return f"<fun {self.declaracion.nombre or '<anónima>'}>"
 
 
 class FuncionNativa:
@@ -140,6 +142,23 @@ class FuncionNativa:
 
     def __repr__(self) -> str:
         return f"<nativa {self.nombre}>"
+
+
+class Cierre:
+    """Función ya compilada a bytecode (la VM) + ámbito donde fue definida.
+
+    Vive aquí (y no en jp.vm) para que la librería estándar pueda reconocer
+    las funciones de los DOS motores con un solo isinstance.
+    """
+
+    __slots__ = ("fun", "ambito")
+
+    def __init__(self, fun, ambito) -> None:
+        self.fun = fun
+        self.ambito = ambito
+
+    def __repr__(self) -> str:
+        return f"<fun {getattr(self.fun, 'nombre', '') or '<anónima>'}>"
 
 
 # ----------------- Utilidades de tipos -----------------
@@ -182,12 +201,32 @@ def es_verdad(valor: object) -> bool:
     return True
 
 
+def iguales(a: object, b: object) -> bool:
+    """Igualdad de JP: los booleanos solo son iguales a sí mismos.
+
+    1 == verdadero es falso (como en Python), pero 1 == 1.0 es verdadero.
+    """
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+    return a == b
+
+
+def evaluar_paso(valor: object, linea: int) -> int:
+    """El paso de 'a..b paso c' debe ser un número mayor que 0 (magnitud)."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        raise ErrorEjecucion(f"el paso de '..' espera un número, recibió {jp_a_texto(valor)!r}", linea)
+    paso = int(valor)
+    if paso <= 0:
+        raise ErrorEjecucion("el paso de '..' debe ser mayor que 0 (la dirección la deciden los extremos)", linea)
+    return paso
+
+
 # ----------------- Intérprete -----------------
 
 class Interprete:
     def __init__(self):
         self.global_env = Entorno()
-        _instalar_nativas(self.global_env)
+        _instalar_nativas(self.global_env, self._llamar_valor)
         from .red import instalar as _instalar_red
         _instalar_red(self.global_env)
         from .archivos import instalar as _instalar_archivos
@@ -204,6 +243,8 @@ class Interprete:
             NodoExpresion: self._ej_expresion,
             NodoBloque: self._ej_bloque,
             NodoSi: self._ej_si,
+            NodoElegir: self._ej_elegir,
+            NodoIntentar: self._ej_intentar,
             NodoMientras: self._ej_mientras,
             NodoPara: self._ejecutar_para,
             NodoFuncion: self._ej_funcion,
@@ -227,6 +268,7 @@ class Interprete:
             NodoDiccionario: self._ev_diccionario,
             NodoInterpolacion: self._ev_interpolacion,
             NodoLlamada: self._ev_llamada,
+            NodoFuncion: self._ev_funcion,  # función anónima usada como valor
         }
 
     # ---------- API pública ----------
@@ -282,6 +324,31 @@ class Interprete:
             self._ejecutar(nodo.entonces, entorno)
         elif nodo.sino is not None:
             self._ejecutar(nodo.sino, entorno)
+
+    def _ej_elegir(self, nodo: NodoElegir, entorno: Entorno) -> None:
+        """Sin caída entre casos: gana el primero que coincide (o el 'sino')."""
+        valor = self._evaluar(nodo.expresion, entorno)
+        for valores, cuerpo in nodo.casos:
+            for candidato in valores:
+                if self._igual(valor, self._evaluar(candidato, entorno)):
+                    self._ejecutar(cuerpo, entorno)
+                    return
+        if nodo.sino is not None:
+            self._ejecutar(nodo.sino, entorno)
+
+    def _ej_intentar(self, nodo: NodoIntentar, entorno: Entorno) -> None:
+        """intenta { ... } atrapa error { ... }: captura errores de ejecución.
+
+        'romper', 'continuar' y 'retorna' NO son errores: siguen su camino.
+        El nombre del error solo vive dentro del bloque 'atrapa'.
+        """
+        try:
+            self._ejecutar(nodo.cuerpo, entorno)
+        except ErrorEjecucion as error:
+            entorno_error = Entorno(padre=entorno)
+            if nodo.nombre_error is not None:
+                entorno_error.definir(nodo.nombre_error, error.mensaje)
+            self._ejecutar(nodo.captura, entorno_error)
 
     def _ej_mientras(self, nodo: NodoMientras, entorno: Entorno) -> None:
         while es_verdad(self._evaluar(nodo.condicion, entorno)):
@@ -411,8 +478,16 @@ class Interprete:
     def _ev_llamada(self, nodo: NodoLlamada, entorno: Entorno):
         return self._llamada(nodo, entorno)
 
+    def _ev_funcion(self, nodo: NodoFuncion, entorno: Entorno):
+        """Función anónima como valor: captura el entorno donde se define."""
+        return FuncionJP(nodo, entorno)
+
     def _rango(self, nodo: NodoRango, entorno: Entorno) -> list[int]:
-        """1..5 -> [1,2,3,4,5] inclusive; 5..1 -> [5,4,3,2,1] (al revés también)."""
+        """1..5 -> [1,2,3,4,5] inclusive; 5..1 -> [5,4,3,2,1] (al revés también).
+
+        Con paso: 1..9 paso 4 -> [1,5,9]; 9..1 paso 4 -> [9,5,1]. El paso es
+        una magnitud (mayor que 0) y la dirección la marcan los extremos.
+        """
         inicio = self._evaluar(nodo.izquierda, entorno)
         fin = self._evaluar(nodo.derecha, entorno)
         for valor in (inicio, fin):
@@ -421,8 +496,13 @@ class Interprete:
                     f"el rango '..' espera números, recibió {jp_a_texto(valor)!r}", nodo.linea
                 )
         i, f = int(inicio), int(fin)
-        paso = 1 if i <= f else -1
-        return list(range(i, f + paso, paso))
+        if nodo.paso is None:
+            paso = 1 if i <= f else -1
+        else:
+            paso = evaluar_paso(self._evaluar(nodo.paso, entorno), nodo.linea)
+            if i > f:
+                paso = -paso
+        return list(range(i, f + (1 if paso > 0 else -1), paso))
 
     def _binario(self, nodo: NodoBinario, entorno: Entorno) -> object:
         operador = nodo.operador
@@ -471,6 +551,16 @@ class Interprete:
                 return izquierda * int(derecha)
             self._verificar_numeros(izquierda, derecha, operador, nodo.linea)
             return izquierda * derecha
+
+        if operador == "**":
+            self._verificar_numeros(izquierda, derecha, "**", nodo.linea)
+            try:
+                resultado = izquierda ** derecha
+            except (OverflowError, ZeroDivisionError):
+                raise ErrorEjecucion("potencia no válida (¿0 elevado a algo negativo?)", nodo.linea)
+            if isinstance(resultado, complex):
+                raise ErrorEjecucion("la potencia no dio un número real", nodo.linea)
+            return resultado
 
         if operador in ("-", "/", "%"):
             self._verificar_numeros(izquierda, derecha, operador, nodo.linea)
@@ -553,30 +643,34 @@ class Interprete:
     def _llamada(self, nodo: NodoLlamada, entorno: Entorno) -> object:
         callee = self._evaluar(nodo.callee, entorno)
         argumentos = [self._evaluar(arg, entorno) for arg in nodo.argumentos]
+        return self._llamar_valor(callee, argumentos, nodo.linea)
 
+    def _llamar_valor(self, callee: object, argumentos: list[object], linea: int = 0) -> object:
+        """Llama a un valor-función (JP o nativa). La usan también las nativas
+        de orden superior (mapear, filtrar, reducir, ordenar con clave...)."""
         if isinstance(callee, FuncionNativa):
             if callee.aridad is not None and len(argumentos) != callee.aridad:
                 raise ErrorEjecucion(
-                    f"{callee.nombre}() espera {callee.aridad} argumento(s), recibió {len(argumentos)}", nodo.linea
+                    f"{callee.nombre}() espera {callee.aridad} argumento(s), recibió {len(argumentos)}", linea
                 )
             try:
                 return callee.funcion(*argumentos)
             except ErrorEjecucion:
                 raise
             except TypeError as exc:
-                raise ErrorEjecucion(f"argumentos no válidos para {callee.nombre}(): {exc}", nodo.linea)
+                raise ErrorEjecucion(f"argumentos no válidos para {callee.nombre}(): {exc}", linea)
 
         if isinstance(callee, FuncionJP):
-            return self._llamar_funcion(callee, argumentos, nodo.linea)
+            return self._llamar_funcion(callee, argumentos, linea)
 
-        raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", nodo.linea)
+        raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", linea)
 
     def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int) -> object:
         declaracion = funcion.declaracion
         if len(argumentos) != len(declaracion.parametros):
             raise ErrorEjecucion(
-                f"la función '{declaracion.nombre}' espera {len(declaracion.parametros)} argumento(s), "
-                f"recibió {len(argumentos)}",
+                f"la función '{declaracion.nombre or '<anónima>'}' espera "
+                f"{len(declaracion.parametros)} argumento(s), recibió {len(argumentos)}",
                 linea,
             )
         entorno_local = Entorno(padre=funcion.cierre)
@@ -612,7 +706,38 @@ class Interprete:
 
 # ----------------- Funciones nativas (librería estándar) -----------------
 
-def _instalar_nativas(entorno: Entorno) -> None:
+def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
+    """Instala la librería estándar en el entorno global.
+
+    `invocar` es la forma que tiene el motor activo de llamar a un valor-función
+    (el árbol y la VM tienen la suya); lo usan las nativas de orden superior
+    (mapear, filtrar, reducir, para_cada, ordenar con clave).
+    """
+
+    def _num(valor: object, nombre: str) -> float | int:
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise ErrorEjecucion(f"{nombre}() espera un número, no {jp_a_texto(valor)!r}")
+        return valor
+
+    def _secuencia(valor: object, nombre: str) -> list:
+        """Lo mismo que acepta 'para ... en': lista, texto, diccionario o número."""
+        if isinstance(valor, list):
+            return list(valor)
+        if isinstance(valor, str):
+            return list(valor)
+        if isinstance(valor, dict):
+            return list(valor.keys())
+        if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            return list(range(1, int(valor) + 1))
+        raise ErrorEjecucion(
+            f"{nombre}() espera lista, texto, diccionario o número, no {jp_a_texto(valor)!r}"
+        )
+
+    def _llamar_fun(f: object, argumentos: list, nombre: str) -> object:
+        if invocar is None:  # los dos motores reales siempre pasan su invocador
+            raise ErrorEjecucion(f"{nombre}() necesita un motor que sepa llamar funciones")
+        return invocar(f, argumentos, 0)
+
     def muestra(*valores: object) -> None:
         print(" ".join(jp_a_texto(v) for v in valores) if valores else "")
 
@@ -677,6 +802,121 @@ def _instalar_nativas(entorno: Entorno) -> None:
         if len(valores) == 3:
             return list(range(valores[0], valores[1], valores[2]))
         raise ErrorEjecucion("rango() espera 1, 2 o 3 argumentos")
+
+    # ---------- matemáticas ----------
+
+    def absoluto(x: object):
+        return abs(_num(x, "absoluto"))
+
+    def raiz(x: object) -> float:
+        valor = _num(x, "raiz")
+        if valor < 0:
+            raise ErrorEjecucion(f"raiz() de un número negativo ({jp_a_texto(valor)})")
+        return math.sqrt(valor)
+
+    def potencia(a: object, b: object):
+        return _num(a, "potencia") ** _num(b, "potencia")
+
+    def piso(x: object) -> int:
+        return math.floor(_num(x, "piso"))
+
+    def techo(x: object) -> int:
+        return math.ceil(_num(x, "techo"))
+
+    def redondear(x: object, decimales: object = 0):
+        """Redondeo de escuela: 2.5 -> 3, -2.5 -> -3, 3.14159 con 2 -> 3.14."""
+        valor = _num(x, "redondear")
+        n = int(_num(decimales, "redondear"))
+        factor = 10 ** n
+        escalado = valor * factor
+        entero = math.floor(escalado + 0.5) if escalado >= 0 else math.ceil(escalado - 0.5)
+        resultado = entero / factor
+        if n <= 0:
+            return int(resultado)
+        return resultado
+
+    def log(x: object, base: object = None) -> float:
+        valor = _num(x, "log")
+        if valor <= 0:
+            raise ErrorEjecucion("log() espera un número mayor que 0")
+        if base is None:
+            return math.log(valor)
+        b = _num(base, "log")
+        if b <= 0 or b == 1:
+            raise ErrorEjecucion("la base de log() debe ser mayor que 0 y distinta de 1")
+        return math.log(valor, b)
+
+    def _lista_de_numeros(args: tuple, nombre: str) -> list:
+        if len(args) == 1 and isinstance(args[0], list):
+            args = tuple(args[0])
+        if not args:
+            raise ErrorEjecucion(f"{nombre}() necesita al menos un número")
+        return [_num(v, nombre) for v in args]
+
+    def minimo(*args: object):
+        return min(_lista_de_numeros(args, "minimo"))
+
+    def maximo(*args: object):
+        return max(_lista_de_numeros(args, "maximo"))
+
+    def sumar(secuencia: object):
+        total: float | int = 0
+        for valor in _secuencia(secuencia, "sumar"):
+            total += _num(valor, "sumar")
+        return total
+
+    def pi() -> float:
+        return math.pi
+
+    def aleatorio() -> float:
+        """Número decimal al azar entre 0 y 1 (azar(n) sigue siendo para 1..n)."""
+        return random.random()
+
+    # ---------- funciones de orden superior ----------
+
+    def mapear(secuencia: object, f: object) -> list:
+        """[f(x) para cada x]: mapear([1, 2], funcion(x) { devuelve x * 2 })."""
+        return [_llamar_fun(f, [x], "mapear") for x in _secuencia(secuencia, "mapear")]
+
+    def filtrar(secuencia: object, f: object) -> list:
+        return [
+            x
+            for x in _secuencia(secuencia, "filtrar")
+            if es_verdad(_llamar_fun(f, [x], "filtrar"))
+        ]
+
+    def para_cada(secuencia: object, f: object) -> None:
+        for x in _secuencia(secuencia, "para_cada"):
+            _llamar_fun(f, [x], "para_cada")
+
+    def reducir(secuencia: object, f: object, *inicial: object):
+        """reducir(lista, f) o reducir(lista, f, inicial): acumula de izquierda a derecha."""
+        if len(inicial) > 1:
+            raise ErrorEjecucion("reducir() espera 2 o 3 argumentos")
+        elementos = _secuencia(secuencia, "reducir")
+        if inicial:
+            acumulado = inicial[0]
+        elif elementos:
+            acumulado = elementos[0]
+            elementos = elementos[1:]
+        else:
+            raise ErrorEjecucion("reducir() de una lista vacía necesita un valor inicial")
+        for x in elementos:
+            acumulado = _llamar_fun(f, [acumulado, x], "reducir")
+        return acumulado
+
+    def ordenar(secuencia: object, *clave: object) -> list:
+        """Copia ordenada; con una función clave: ordenar(lista, funcion(x) { ... })."""
+        if len(clave) > 1:
+            raise ErrorEjecucion("ordenar() espera 1 o 2 argumentos")
+        elementos = _secuencia(secuencia, "ordenar")
+        try:
+            if clave:
+                f = clave[0]
+                return sorted(elementos, key=lambda x: _llamar_fun(f, [x], "ordenar"))
+            return sorted(elementos)
+        except TypeError as exc:
+            raise ErrorEjecucion(f"ordenar() no puede comparar esos valores: {exc}")
 
     # ---------- texto ----------
 
@@ -780,6 +1020,109 @@ def _instalar_nativas(entorno: Entorno) -> None:
             raise ErrorEjecucion(f"tiene() espera un diccionario, no {jp_a_texto(d)!r}")
         return clave in d
 
+    def valores(d: object) -> list:
+        if not isinstance(d, dict):
+            raise ErrorEjecucion(f"valores() espera un diccionario, no {jp_a_texto(d)!r}")
+        return list(d.values())
+
+    def elementos(d: object) -> list:
+        """Pares [clave, valor] para recorrer un diccionario con 'para'."""
+        if not isinstance(d, dict):
+            raise ErrorEjecucion(f"elementos() espera un diccionario, no {jp_a_texto(d)!r}")
+        return [[clave, valor] for clave, valor in d.items()]
+
+    def empezar_con(texto: object, prefijo: object) -> bool:
+        return _cadena(texto, "empezar_con").startswith(_cadena(prefijo, "empezar_con"))
+
+    def terminar_con(texto: object, sufijo: object) -> bool:
+        return _cadena(texto, "terminar_con").endswith(_cadena(sufijo, "terminar_con"))
+
+    def buscar(texto: object, aguja: object) -> int:
+        """Posición de un pedazo de texto, o -1 si no está."""
+        return _cadena(texto, "buscar").find(_cadena(aguja, "buscar"))
+
+    def repetir(valor: object, veces: object):
+        """repetir(\"ab\", 3) -> \"ababab\" (también con listas)."""
+        n = int(_num(veces, "repetir"))
+        if isinstance(valor, str):
+            return valor * n
+        if isinstance(valor, list):
+            return valor * n
+        raise ErrorEjecucion(f"repetir() espera texto o lista, no {jp_a_texto(valor)!r}")
+
+    def invertir(valor: object):
+        """Copia al revés (no modifica el original)."""
+        if isinstance(valor, list):
+            return list(reversed(valor))
+        if isinstance(valor, str):
+            return valor[::-1]
+        raise ErrorEjecucion(f"invertir() espera lista o texto, no {jp_a_texto(valor)!r}")
+
+    def indice_de(secuencia: object, valor: object) -> int:
+        """Posición de un valor en una lista o texto, o -1 si no está."""
+        for i, candidato in enumerate(_secuencia(secuencia, "indice_de")):
+            if iguales(candidato, valor):
+                return i
+        return -1
+
+    def _indice_lista(lista: list, indice: object, nombre: str) -> int:
+        if isinstance(indice, bool) or not isinstance(indice, (int, float)):
+            raise ErrorEjecucion(f"{nombre}() espera un índice numérico")
+        i = int(indice)
+        if i < 0:
+            i += len(lista)
+        if i < 0 or i >= len(lista):
+            raise ErrorEjecucion(f"índice fuera de rango: {i} (lista de {len(lista)} elementos)")
+        return i
+
+    def insertar(lista: object, indice: object, valor: object) -> list:
+        """Inserta en la posición indicada (el resto se corre) y devuelve la lista."""
+        if not isinstance(lista, list):
+            raise ErrorEjecucion(f"insertar() espera una lista, no {jp_a_texto(lista)!r}")
+        if isinstance(indice, bool) or not isinstance(indice, (int, float)):
+            raise ErrorEjecucion("insertar() espera un índice numérico")
+        lista.insert(int(indice), valor)
+        return lista
+
+    def quitar(lista: object, *indice: object):
+        """Quita por posición (la última si no se indica) y devuelve el elemento."""
+        if not isinstance(lista, list):
+            raise ErrorEjecucion(f"quitar() espera una lista, no {jp_a_texto(lista)!r}")
+        if len(indice) > 1:
+            raise ErrorEjecucion("quitar() espera 1 o 2 argumentos")
+        if not lista:
+            raise ErrorEjecucion("quitar() de una lista vacía")
+        i = -1 if not indice else _indice_lista(lista, indice[0], "quitar")
+        return lista.pop(i)
+
+    def eliminar(lista: object, valor: object) -> bool:
+        """Quita la primera aparición de un valor; devuelve si lo encontró."""
+        if not isinstance(lista, list):
+            raise ErrorEjecucion(f"eliminar() espera una lista, no {jp_a_texto(lista)!r}")
+        for i, candidato in enumerate(lista):
+            if iguales(candidato, valor):
+                del lista[i]
+                return True
+        return False
+
+    def tipo(valor: object) -> str:
+        """Nombre del tipo de un valor, en español."""
+        if valor is None:
+            return "nulo"
+        if isinstance(valor, bool):
+            return "booleano"
+        if isinstance(valor, (int, float)):
+            return "número"
+        if isinstance(valor, str):
+            return "texto"
+        if isinstance(valor, list):
+            return "lista"
+        if isinstance(valor, dict):
+            return "diccionario"
+        if isinstance(valor, (FuncionJP, FuncionNativa, Cierre)):
+            return "función"
+        return "valor"
+
     # Métodos de valor: reutilizan las nativas poniendo el receptor como primer argumento.
     # En diccionarios la clave manda y el método es fallback; en texto/listas el método manda.
     _METODOS_VALOR[str] = {
@@ -792,15 +1135,35 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "letra": (letra, 2),
         "contiene": (contiene, 2),
         "longitud": (longitud, 1),
+        "empezar_con": (empezar_con, 2),
+        "terminar_con": (terminar_con, 2),
+        "buscar": (buscar, 2),
+        "repetir": (repetir, 2),
+        "invertir": (invertir, 1),
+        "indice_de": (indice_de, 2),
     }
     _METODOS_VALOR[list] = {
         "agregar": (agregar, 2),
         "longitud": (longitud, 1),
         "contiene": (contiene, 2),
+        "mapear": (mapear, 2),
+        "filtrar": (filtrar, 2),
+        "reducir": (reducir, None),
+        "para_cada": (para_cada, 2),
+        "ordenar": (ordenar, None),
+        "invertir": (invertir, 1),
+        "sumar": (sumar, 1),
+        "indice_de": (indice_de, 2),
+        "insertar": (insertar, 3),
+        "quitar": (quitar, None),
+        "eliminar": (eliminar, 2),
+        "unir": (unir, None),
     }
     _METODOS_VALOR[dict] = {
         "claves": (claves_dic, 1),
         "tiene": (tiene_dic, 2),
+        "valores": (valores, 1),
+        "elementos": (elementos, 1),
     }
 
     nativas = {
@@ -828,6 +1191,38 @@ def _instalar_nativas(entorno: Entorno) -> None:
         "exp": FuncionNativa("exp", exp, aridad=1),
         "seno": FuncionNativa("seno", seno, aridad=1),
         "coseno": FuncionNativa("coseno", coseno, aridad=1),
+        # matemáticas
+        "absoluto": FuncionNativa("absoluto", absoluto, aridad=1),
+        "raiz": FuncionNativa("raiz", raiz, aridad=1),
+        "potencia": FuncionNativa("potencia", potencia, aridad=2),
+        "piso": FuncionNativa("piso", piso, aridad=1),
+        "techo": FuncionNativa("techo", techo, aridad=1),
+        "redondear": FuncionNativa("redondear", redondear),
+        "log": FuncionNativa("log", log),
+        "minimo": FuncionNativa("minimo", minimo),
+        "maximo": FuncionNativa("maximo", maximo),
+        "sumar": FuncionNativa("sumar", sumar, aridad=1),
+        "pi": FuncionNativa("pi", pi, aridad=0),
+        "aleatorio": FuncionNativa("aleatorio", aleatorio, aridad=0),
+        # orden superior
+        "mapear": FuncionNativa("mapear", mapear, aridad=2),
+        "filtrar": FuncionNativa("filtrar", filtrar, aridad=2),
+        "reducir": FuncionNativa("reducir", reducir),
+        "para_cada": FuncionNativa("para_cada", para_cada, aridad=2),
+        "ordenar": FuncionNativa("ordenar", ordenar),
+        # texto y listas
+        "empezar_con": FuncionNativa("empezar_con", empezar_con, aridad=2),
+        "terminar_con": FuncionNativa("terminar_con", terminar_con, aridad=2),
+        "buscar": FuncionNativa("buscar", buscar, aridad=2),
+        "repetir": FuncionNativa("repetir", repetir, aridad=2),
+        "invertir": FuncionNativa("invertir", invertir, aridad=1),
+        "indice_de": FuncionNativa("indice_de", indice_de, aridad=2),
+        "insertar": FuncionNativa("insertar", insertar, aridad=3),
+        "quitar": FuncionNativa("quitar", quitar),
+        "eliminar": FuncionNativa("eliminar", eliminar, aridad=2),
+        "valores": FuncionNativa("valores", valores, aridad=1),
+        "elementos": FuncionNativa("elementos", elementos, aridad=1),
+        "tipo": FuncionNativa("tipo", tipo, aridad=1),
     }
     for nombre, funcion in nativas.items():
         entorno.definir(nombre, funcion)

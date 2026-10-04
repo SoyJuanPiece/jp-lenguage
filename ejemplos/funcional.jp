@@ -1,0 +1,56 @@
+# JP funcional — funciones anónimas y orden superior (v1.3) 🧠
+#
+# Las funciones son valores: se guardan en variables, se pasan por parámetro
+# y se escriben en el momento con 'funcion(x) { ... }'.
+
+variable numeros = 1..10
+
+# mapear: una lista nueva aplicando la función a cada elemento
+variable dobles = mapear(numeros, funcion(x) { devuelve x * 2 })
+imprime("Dobles:  ", dobles)
+
+# filtrar: deja solo los que cumplen la condición
+variable pares = filtrar(numeros, funcion(x) { devuelve x % 2 == 0 })
+imprime("Pares:   ", pares)
+
+# reducir: convierte una lista en un solo valor (suma, producto, texto...)
+variable suma = reducir(numeros, funcion(a, b) { devuelve a + b }, 0)
+variable producto = reducir(1..5, funcion(a, b) { devuelve a * b }, 1)
+imprime("Suma:    ", suma)
+imprime("Producto:", producto)
+
+# ordenar con una clave calculada
+variable palabras = ["banana", "kiwi", "manzana"]
+variable por_longitud = ordenar(palabras, funcion(p) { devuelve p.longitud() })
+imprime("Por longitud:", por_longitud)
+
+# reducir + filtrar + mapear encadenados: precios con descuento
+variable precios = [120, 45, 300, 15, 90]
+variable rebajados = mapear(
+    filtrar(precios, funcion(p) { devuelve p >= 50 }),
+    funcion(p) { devuelve redondear(p * 0.8) }
+)
+imprime("Con 20% de descuento:", rebajados)
+imprime("Más caro:", maximo(rebajados), "· Más barato:", minimo(rebajados))
+
+# una función que recibe otra función (¡de primera clase de verdad!)
+funcion aplicar_dos_veces(valor, f) {
+    devuelve f(f(valor))
+}
+imprime("3 + 1 dos veces:", aplicar_dos_veces(3, funcion(n) { devuelve n + 1 }))
+imprime("3 al cuadrado dos veces:", aplicar_dos_veces(3, funcion(n) { devuelve n * n }))
+
+# métodos equivalentes: la lista también sabe hacerlo
+imprime("Con métodos:", [4, 1, 3].ordenar().mapear(funcion(x) { devuelve x * 10 }))
+
+# los lambdas capturan su entorno (closures)
+funcion multiplicador(n) {
+    devuelve funcion(x) { devuelve x * n }
+}
+variable triple = multiplicador(3)
+imprime("Triple de 7:", triple(7))
+
+# y una tubería de datos legible
+variable gastos = [{nombre: "café", costo: 3.5}, {nombre: "libro", costo: 18}]
+variable caros = filtrar(gastos, funcion(g) { devuelve g.costo > 5 })
+imprime("Gastos grandes:", mapear(caros, funcion(g) { devuelve g.nombre }))

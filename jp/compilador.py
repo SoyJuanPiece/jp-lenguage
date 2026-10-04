@@ -29,8 +29,10 @@ from .arbol import (
     NodoContinuar,
     NodoDeclaracionVar,
     NodoDiccionario,
+    NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoIntentar,
     NodoIndice,
     NodoInterpolacion,
     NodoLista,
@@ -75,12 +77,16 @@ class Compilador:
         # ([iter, valor]): 'continuar' popea el valor (conserva el iterador)
         # y 'romper' popea ambos; en 'mientras' son 0.
         self.bucles: list[dict[str, int]] = []
+        # TRYs activos en el cuerpo que se está compilando: 'romper',
+        # 'continuar' y 'retorna' deben cerrarlos (ENDTRY) al salir.
+        self.intentos: list[int] = []
 
     # ---------------- API ----------------
 
     def compilar(self, programa: NodoPrograma) -> Chunk:
         self.ambitos = []
         self.bucles = []
+        self.intentos = []
         self._cuerpo(programa.sentencias, self.global_chunk, es_fun=False)
         return self.global_chunk
 
@@ -160,6 +166,14 @@ class Compilador:
                 self._emitir(chunk, Codigo.AMBITO_POP, linea=getattr(nodo, "linea", 0))
             return
 
+        if tipo is NodoElegir:
+            self._elegir(nodo, chunk)
+            return
+
+        if tipo is NodoIntentar:
+            self._intentar(nodo, chunk)
+            return
+
         if tipo is NodoSi:
             self._expresion(nodo.condicion, chunk)
             si_falso = self._emitir(chunk, Codigo.SALTAR_SI_FALSO, 0, nodo.linea)
@@ -200,10 +214,15 @@ class Compilador:
             return
 
         if tipo is NodoRetorna:
+            # El valor se evalúa DENTRO del 'intenta' (si falla, lo atrapa).
             if nodo.valor is not None:
                 self._expresion(nodo.valor, chunk)
             else:
                 self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
+            # Ya con el valor: un 'retorna' dentro de un 'intenta' abandona la
+            # función, así que hay que quitar sus manejadores de error.
+            for _ in range(len(self.intentos)):
+                self._emitir(chunk, Codigo.ENDTRY, linea=nodo.linea)
             self._emitir(chunk, Codigo.RETORNAR, linea=nodo.linea)
             return
 
@@ -216,6 +235,94 @@ class Compilador:
             return
 
         raise ErrorEjecucion(f"sentencia desconocida para el compilador: {tipo.__name__}", getattr(nodo, "linea", 0))
+
+    # ---------------- elegir (switch) / intenta-atrapa ----------------
+
+    def _elegir(self, nodo: NodoElegir, chunk: Chunk) -> None:
+        """elegir expr { caso a, b { } ... sino { } }
+
+        Se compila como una cadena de comparaciones con DUP: el valor queda en
+        la pila, cada caso lo duplica y lo compara; el primer acierto ejecuta su
+        bloque (sin caída al siguiente) y todos saltan al final.
+        """
+        linea = nodo.linea
+        self._expresion(nodo.expresion, chunk)
+        saltos_al_final: list[int] = []
+        for valores, cuerpo in nodo.casos:
+            saltos_al_cuerpo: list[int] = []
+            for i, valor in enumerate(valores):
+                # DUP; valor; == deja [v, booleano]; SALTAR_SI_FALSO lo popea:
+                # falso -> probar el siguiente valor (o el siguiente caso);
+                # verdadero -> se cae al cuerpo del caso.
+                self._emitir(chunk, Codigo.DUP, linea=linea)
+                self._expresion(valor, chunk)
+                self._emitir(chunk, Codigo.IGUAL, linea=linea)
+                ix_falso = self._emitir(chunk, Codigo.SALTAR_SI_FALSO, 0, linea)
+                if i < len(valores) - 1:
+                    saltos_al_cuerpo.append(self._emitir(chunk, Codigo.SALTAR, 0, linea))
+                    chunk.codigo[ix_falso] = (Codigo.SALTAR_SI_FALSO, len(chunk.codigo), linea)
+                else:
+                    ix_ultimo_falso = ix_falso
+            cuerpo_ix = len(chunk.codigo)
+            for ix in saltos_al_cuerpo:
+                chunk.codigo[ix] = (Codigo.SALTAR, cuerpo_ix, linea)
+            self._emitir(chunk, Codigo.POP, linea=linea)  # descarta el valor ya comparado
+            self._marcar()
+            self._sentencia(cuerpo, chunk)
+            self._desmarcar()
+            saltos_al_final.append(self._emitir(chunk, Codigo.SALTAR, 0, linea))
+            # Ningún valor del caso coincidió: saltar al caso siguiente
+            chunk.codigo[ix_ultimo_falso] = (Codigo.SALTAR_SI_FALSO, len(chunk.codigo), linea)
+        # Sin coincidencia: descarta el valor y ejecuta el 'sino' (si lo hay)
+        self._emitir(chunk, Codigo.POP, linea=linea)
+        if nodo.sino is not None:
+            self._marcar()
+            self._sentencia(nodo.sino, chunk)
+            self._desmarcar()
+        fin = len(chunk.codigo)
+        for ix in saltos_al_final:
+            chunk.codigo[ix] = (Codigo.SALTAR, fin, linea)
+        # Netas 0: el valor de la sentencia
+        self._emitir(chunk, Codigo.NULO, linea=linea)
+        self._emitir(chunk, Codigo.POP, linea=linea)
+
+    def _intentar(self, nodo: NodoIntentar, chunk: Chunk) -> None:
+        """intenta { ... } atrapa error { ... }
+
+        pila en el camino feliz: [manejador] TRY ... cuerpo ... ENDTRY SALTAR fin
+        pila en el camino de error: la VM restaura pila/frames/ámbito y salta al
+        'atrapa', que recibe el mensaje (ERROR_ACTUAL) en un ámbito propio.
+        """
+        linea = nodo.linea
+        ix_try = self._emitir(chunk, Codigo.TRY, 0, linea)
+        self.intentos.append(ix_try)
+        self._marcar()
+        self._sentencia(nodo.cuerpo, chunk)
+        self._desmarcar()
+        self.intentos.pop()
+        self._emitir(chunk, Codigo.ENDTRY, linea=linea)
+        al_fin = self._emitir(chunk, Codigo.SALTAR, 0, linea)
+
+        destino = len(chunk.codigo)
+        chunk.codigo[ix_try] = (Codigo.TRY, destino, linea)
+        # ---- camino del error ----
+        self._marcar()
+        self._emitir(chunk, Codigo.ERROR_ACTUAL, linea=linea)
+        self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)
+        self.ambitos.append({})
+        if nodo.nombre_error is not None:
+            self._emitir(chunk, Codigo.DECLARAR, nodo.nombre_error, linea)
+            self.ambitos[-1][nodo.nombre_error] = True
+        else:
+            self._emitir(chunk, Codigo.POP, linea=linea)
+        self._sentencia(nodo.captura, chunk)
+        self.ambitos.pop()
+        self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
+        self._desmarcar()
+        chunk.codigo[al_fin] = (Codigo.SALTAR, len(chunk.codigo), linea)
+        # Netas 0: el valor de la sentencia
+        self._emitir(chunk, Codigo.NULO, linea=linea)
+        self._emitir(chunk, Codigo.POP, linea=linea)
 
     # ---------------- bucles ----------------
 
@@ -231,7 +338,14 @@ class Compilador:
         if con_ambito:
             self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)
             self.ambitos.append({})
-        marco = {"vuelta": inicio, "base": base, "c_pops": 0, "r_pops": 0, "pendientes": []}
+        marco = {
+            "vuelta": inicio,
+            "base": base,
+            "c_pops": 0,
+            "r_pops": 0,
+            "intentos_base": len(self.intentos),
+            "pendientes": [],
+        }
         self.bucles.append(marco)
         self._sentencia(cuerpo, chunk)
         self.bucles.pop()
@@ -264,7 +378,14 @@ class Compilador:
         vuelta = len(chunk.codigo)  # tras ITERAR se cae AQUÍ (sin salto de entrada)
         self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)      # ámbito de la vuelta
         ix_iter = self._emitir(chunk, Codigo.ITERAR_SIGUIENTE, (nodo.variable, 0), linea)
-        marco = {"vuelta": vuelta, "base": base, "c_pops": 1, "r_pops": 1, "pendientes": []}
+        marco = {
+            "vuelta": vuelta,
+            "base": base,
+            "c_pops": 1,
+            "r_pops": 1,
+            "intentos_base": len(self.intentos),
+            "pendientes": [],
+        }
         self.bucles.append(marco)
         self._sentencia(nodo.cuerpo, chunk)                       # el cuerpo deja 0 neto
         self.bucles.pop()
@@ -294,6 +415,10 @@ class Compilador:
         if not self.bucles:
             raise ErrorEjecucion(f"'{palabra}' fuera de un bucle", linea)
         marco = self.bucles[-1]
+        # Salir de un 'intenta' activo dentro del bucle: quitar sus manejadores
+        # de error (si no, quedarían vivos tras el salto).
+        for _ in range(len(self.intentos) - marco["intentos_base"]):
+            self._emitir(chunk, Codigo.ENDTRY, linea=linea)
         # Cerrar SOLO los ámbitos abiertos desde la base de este bucle (los suyos
         # y los de bloques/si anidados en el camino actual); los bucles externos
         # conservan los suyos porque siguen vivos.
@@ -385,10 +510,22 @@ class Compilador:
             self._emitir(chunk, Codigo.INTERPOLAR, len(nodo.partes), nodo.linea)
             return
 
+        if tipo is NodoFuncion:
+            # Función anónima como valor: se compila a un chunk propio y la
+            # CONSTANTE la envuelve en un Cierre con el ámbito actual.
+            fun_cerrada = self._compilar_funcion(nodo)
+            indice = chunk.agregar_constante(fun_cerrada)
+            self._emitir(chunk, Codigo.CONSTANTE, indice, nodo.linea)
+            return
+
         if tipo is NodoRango:
             self._expresion(nodo.izquierda, chunk)
             self._expresion(nodo.derecha, chunk)
-            self._emitir(chunk, Codigo.RANGO, linea=nodo.linea)
+            if nodo.paso is None:
+                self._emitir(chunk, Codigo.RANGO, 0, nodo.linea)
+            else:
+                self._expresion(nodo.paso, chunk)
+                self._emitir(chunk, Codigo.RANGO, 1, nodo.linea)
             return
 
         if tipo is NodoIndice:
@@ -469,11 +606,14 @@ class Compilador:
         # parámetros y sus propias locales, nunca las de la llamada anterior.
         self.ambitos.append({parametro: True for parametro in nodo.parametros})
         # Aislamiento: dentro de la función no existen los bucles del llamador
-        # (un 'romper' no puede saltar a otro chunk).
+        # (un 'romper' no puede saltar a otro chunk) ni sus manejadores de error.
         bucles_externos = self.bucles
         self.bucles = []
+        intentos_externos = self.intentos
+        self.intentos = []
         self._cuerpo(nodo.cuerpo.sentencias, chunk, es_fun=True)
         self.bucles = bucles_externos
+        self.intentos = intentos_externos
         self.ambitos.pop()
         return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros))
 
@@ -484,6 +624,7 @@ _OP_BINARIOS: dict[str, Codigo] = {
     "*": Codigo.MULTIPLICAR,
     "/": Codigo.DIVIDIR,
     "%": Codigo.MODULO,
+    "**": Codigo.POTENCIA,
     "==": Codigo.IGUAL,
     "!=": Codigo.DIFERENTE,
     "<": Codigo.MENOR,

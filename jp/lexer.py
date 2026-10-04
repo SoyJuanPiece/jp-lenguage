@@ -46,6 +46,15 @@ _ESCAPES = {
     "}": "}",
 }
 
+# Operadores compuestos: el carácter del signo -> token de dos caracteres.
+_COMPUESTOS: dict[str, TToken] = {
+    "+": TToken.MAS_IGUAL,
+    "-": TToken.MENOS_IGUAL,
+    "*": TToken.POR_IGUAL,
+    "/": TToken.ENTRE_IGUAL,
+    "%": TToken.MODULO_IGUAL,
+}
+
 
 class Lexer:
     def __init__(self, fuente: str):
@@ -120,14 +129,17 @@ class Lexer:
         # Signos
         if c in _SIGNOS_SIMPLES:
             tipo = _SIGNOS_SIMPLES[c]
-            if c == "=" and self._coincide("="):
-                self._agregar(TToken.IGUAL_IGUAL)
-            elif c == "!" and self._coincide("="):
-                self._agregar(TToken.DIFERENTE)
-            elif c == "<" and self._coincide("="):
-                self._agregar(TToken.MENOR_IGUAL)
-            elif c == ">" and self._coincide("="):
-                self._agregar(TToken.MAYOR_IGUAL)
+            if c == "*" and self._coincide("*"):
+                self._agregar(TToken.POTENCIA)          # **
+            elif self._coincide("="):
+                if c in _COMPUESTOS:
+                    self._agregar(_COMPUESTOS[c])       # += -= *= /= %=
+                elif c == "=":
+                    self._agregar(TToken.IGUAL_IGUAL)   # ==
+                elif c == "<":
+                    self._agregar(TToken.MENOR_IGUAL)   # <=
+                else:
+                    self._agregar(TToken.MAYOR_IGUAL)   # >=
             else:
                 self._agregar(tipo)
             return

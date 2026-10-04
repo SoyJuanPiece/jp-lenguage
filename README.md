@@ -6,10 +6,14 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - ✍️ Sin paréntesis obligatorios: `si edad >= 18 { ... }`
 - 📝 Una sola línea sin llaves: `si 1 < 2: imprime("sí")`
 - 🇪🇸 Palabras en español con alias: `variable`, `funcion`, `devuelve`, `imprime`
-- 🔢 Rangos inclusivos intuitivos: `para i en 1..5`
+- 🔢 Rangos inclusivos intuitivos: `para i en 1..5` (con paso: `1..10 paso 3`)
 - 💬 Comillas simples o dobles: `'hola'` y `"hola"`
 - 📦 Diccionarios: `variable d = {clave: valor}` y acceso `d.clave`
 - 🌐 Internet incluido: `http_get`, `json_leer`, bots de Telegram en 10 líneas
+- 🧠 Funciones como valores: `mapear(lista, funcion(x) { devuelve x * 2 })`
+- 🎯 Decisiones claras: `elegir n { caso 1 { ... } sino { ... } }`
+- 🛡️ Errores que no tumban el programa: `intenta { ... } atrapa error { ... }`
+- ⚡ Azúcar cómodo: `x += 1`, `2 ** 10`, `promedio *= 2`
 
 ```
                                   ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
@@ -99,6 +103,102 @@ funcion doble(n) {       # 'fun' también vale
 imprime(doble(21))       # => 42
 ```
 
+Una función también es un valor que se escribe en el momento (anónima):
+
+```jp
+variable triple = funcion(x) { devuelve x * 3 }
+variable fs = [funcion(x) { devuelve x + 1 }, triple]
+imprime(fs[1](5))        # => 15
+```
+
+### Elegir (switch) — sin caída entre casos
+
+```jp
+variable opcion = 2
+elegir opcion {
+    caso 1 { imprime("uno") }
+    caso 2, 3 { imprime("dos o tres") }    # varios valores por caso
+    caso 4: imprime("cuatro")              # y también de una línea
+    sino { imprime("otro") }               # opcional
+}
+```
+
+Se ejecuta **un solo** bloque: el primero que coincide (no hay `romper` que
+recordar) y, si ninguno coincide, el `sino`. Compara con la igualdad de JP
+(`1 == verdadero` es falso) y los valores se evalúan en orden, de arriba abajo.
+
+### Intentar / atrapar — los errores se pueden manejar
+
+```jp
+intenta {
+    variable x = 10 / 0
+} atrapa error {
+    imprime("algo salió mal:", error)   # "algo salió mal: división por cero"
+}
+imprime("y el programa sigue 🎉")
+
+funcion dividir(a, b) {
+    intenta { devuelve a / b } atrapa e { devuelve "no se puede" }
+}
+```
+
+Atrapa los errores de ejecución (división por cero, índices fuera de rango,
+archivos, variables sin definir, tipos equivocados...). El nombre del error
+solo existe dentro del bloque `atrapa`, y se puede omitir:
+
+```jp
+intenta { variable datos = leer_archivo("no-existe.txt") } atrapa { imprime("ups") }
+```
+
+`romper`, `continuar` y `devuelve` **no** son errores: siguen su camino normal.
+
+### Rangos con paso
+
+```jp
+para i en 0..20 paso 5 { imprime(i) }   # 0, 5, 10, 15, 20
+imprime(10..1 paso 4)                   # => [10, 6, 2]
+imprime(1..9 paso 4)                    # => [1, 5, 9]
+```
+
+El paso es una magnitud (mayor que 0); la dirección la deciden los extremos,
+así que `10..1 paso 4` baja sin sorpresas. `paso` solo es palabra clave dentro
+de un rango: `variable paso = 2` sigue siendo un nombre válido.
+
+### Potencia y asignación compuesta
+
+```jp
+2 ** 10          # => 1024
+2 ** -1          # => 0.5
+-2 ** 2          # => -4   (la potencia liga más que el menos unario)
+2 ** 3 ** 2      # => 512  (asocia a la derecha)
+
+variable vidas = 3
+vidas -= 1       # vidas = vidas - 1
+vidas *= 2       # vidas = vidas * 2
+variable total = 0
+para n en 1..10 { total += n }          # acumuladores cómodos
+precios["pan"] += 0.5                   # también con listas[i] y d.clave
+```
+
+### Orden superior — funciones que reciben funciones
+
+```jp
+mapear([1, 2, 3], funcion(x) { devuelve x * 2 })          # => [2, 4, 6]
+filtrar(1..10, funcion(x) { devuelve x % 2 == 0 })        # => [2, 4, 6, 8, 10]
+reducir([1, 2, 3, 4], funcion(a, b) { devuelve a + b }, 0) # => 10
+para_cada(["a", "b"], funcion(x) { imprime(x) })
+ordenar(["bbb", "a"], funcion(x) { devuelve x.longitud() }) # => ["a", "bbb"]
+```
+
+Aceptan lo mismo que un `para ... en` (listas, texto, diccionarios y números)
+y también existen como métodos: `[3, 1].ordenar()`, `"abc".mapear(f)`...
+Se pueden encadenar para escribir tuberías de datos legibles:
+
+```jp
+variable caros = filtrar(gastos, funcion(g) { devuelve g.costo > 5 })
+imprime(mapear(caros, funcion(g) { devuelve g.nombre }))
+```
+
 ### Números y cadenas
 
 ```jp
@@ -143,6 +243,11 @@ d.claves()                       # => ["nombre", "edad"]
 d.tiene("edad")                  # => verdadero
 ```
 
+De la v1.3 hay bastantes más: `lista.ordenar()`, `lista.mapear(f)`,
+`lista.sumar()`, `texto.empezar_con("ho")`, `d.valores()`, `d.elementos()`...
+Los métodos viven en texto, listas y diccionarios; las matemáticas son
+funciones normales (`raiz(x)`, `absoluto(x)`, `redondear(x, 2)`).
+
 Son las mismas funciones de la librería estándar: `t.mayusculas()` es
 `mayusculas(t)`. En diccionarios la clave gana sobre el método: con
 `d = {claves: 99}`, `d.claves` sigue devolviendo 99.
@@ -178,6 +283,33 @@ Son las mismas funciones de la librería estándar: `t.mayusculas()` es
 | `letra(t, i)` | Letra en posición `i` (soporta negativos) |
 | `agregar(lista, v)` | Agrega al final de una lista |
 | `reloj()` | Segundos (monotónicos) para cronometrar: `reloj() - reloj()` |
+| **Matemáticas** | |
+| `absoluto(x)` | Valor absoluto |
+| `raiz(x)` | Raíz cuadrada |
+| `potencia(a, b)` | `a` elevado a `b` (como `a ** b`) |
+| `piso(x)` / `techo(x)` | Redondea hacia abajo / hacia arriba |
+| `redondear(x[, dec])` | Redondeo de escuela: `redondear(2.5)` = 3 |
+| `log(x[, base])` | Logaritmo (natural por defecto) |
+| `minimo(...)` / `maximo(...)` | Menor/mayor de números o de una lista |
+| `sumar(lista)` | Suma todos los números de una lista |
+| `pi()` | 3.14159... |
+| `aleatorio()` | Decimal al azar entre 0 y 1 |
+| **Funciones y datos** | |
+| `tipo(x)` | "número", "texto", "lista", "diccionario", "booleano", "nulo", "función" |
+| `mapear(sec, f)` | Aplica `f` a cada elemento: devuelve lista nueva |
+| `filtrar(sec, f)` | Deja los elementos donde `f` es verdad |
+| `reducir(sec, f[, inicio])` | Acumula de izquierda a derecha en un solo valor |
+| `para_cada(sec, f)` | Llama a `f` por cada elemento (por sus efectos) |
+| `ordenar(sec[, clave])` | Copia ordenada (con función clave opcional) |
+| `invertir(lista_o_texto)` | Copia al revés (no modifica el original) |
+| `indice_de(sec, v)` / `buscar(t, sub)` | Posición de un valor, o -1 si no está |
+| `insertar(lista, i, v)` | Inserta en la posición `i` (devuelve la lista) |
+| `quitar(lista[, i])` | Quita por posición (la última si no se indica) y devuelve el elemento |
+| `eliminar(lista, v)` | Quita la primera aparición de un valor (¿estaba?) |
+| `empezar_con(t, pre)` / `terminar_con(t, suf)` | ¿Empieza/termina así? |
+| `repetir(t, n)` | `"ab"` * 3 = `"ababab"` (también listas) |
+| `unir(lista[, sep])` | Une una lista en texto |
+| `elementos(d)` / `valores(d)` | Pares `[clave, valor]` / lista de valores de un diccionario |
 | **Archivos** | |
 | `leer_archivo(ruta)` | Lee un archivo de texto |
 | `escribir_archivo(ruta, t)` | Crea/sobreescribe (UTF-8) |
@@ -234,8 +366,12 @@ jp-lang/
 │   └── cli.py           # CLI + REPL
 ├── tests/
 │   ├── test_jp.py       # lenguaje completo (81 tests)
-│   └── test_vm.py       # paridad VM vs árbol (32 tests)
+│   ├── test_vm.py       # paridad VM vs árbol (32 tests)
+│   └── test_v13.py      # elegir, intenta, paso, **, += y orden superior (72)
 ├── ejemplos/            # programas de muestra .jp
+│   ├── funcional.jp     # funciones anónimas y orden superior
+│   ├── seguro.jp        # intenta/atrapa en acción
+│   └── calculadora.jp   # elegir + intenta + leer (interactiva)
 └── pyproject.toml       # para instalar el comando jp
 ```
 
@@ -273,11 +409,38 @@ python -m jp --turbo archivo.jp              # cache total para programas puros
 
 ## Próximos pasos posibles
 
-- Strings interpolados `"hola {nombre}"`
 - Websockets (bots de Discord en vivo)
+- Módulos: `importar "utilidades.jp"` y biblioteca compartida
+- Clases y objetos, o algo más sencillo: `objeto` + métodos
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.3.0 — **más expresivo y a prueba de errores**. Nuevo:
+
+- 🎯 `elegir` / `caso` / `sino`: decisiones de varios caminos, sin caída
+  entre casos y con varios valores por caso (`caso 2, 3 { ... }`).
+- 🛡️ `intenta { ... } atrapa error { ... }`: los errores de ejecución se
+  capturan (con nombre o anónimos) y el programa sigue. `romper`, `continuar`
+  y `devuelve` atraviesan el `intenta` sin confundirse con errores.
+- 🧠 Funciones anónimas (`funcion(x) { ... }`) como valores, con closures,
+  y orden superior: `mapear`, `filtrar`, `reducir`, `para_cada` y `ordenar`
+  con clave (también como métodos).
+- 🔢 `paso` en los rangos: `para i en 0..20 paso 5`, `10..1 paso 4`.
+- ⚡ `**` (potencia) y `+= -= *= /= %=` (asignación compuesta) con variables,
+  `lista[i]` y `d.clave`.
+- 🧮 Librería estándar ampliada: matemáticas (`raiz`, `absoluto`, `redondear`,
+  `piso`, `techo`, `log`, `minimo`, `maximo`, `sumar`, `pi`, `aleatorio`),
+  texto (`empezar_con`, `terminar_con`, `buscar`, `repetir`), listas
+  (`ordenar`, `invertir`, `indice_de`, `insertar`, `quitar`, `eliminar`) y
+  `tipo(x)`, `valores(d)`, `elementos(d)`.
+- 🐛 Un bug de paridad de la VM: `devuelve` dentro de un `para` corrompía la
+  pila (el árbol funcionaba). La VM ahora restaura el alto de pila al volver
+  de una función. Detectado y cubierto con tests.
+
+Todo implementado en **los dos motores** (árbol y VM) con paridad total,
+más tests y ejemplos nuevos (`ejemplos/funcional.jp`, `ejemplos/seguro.jp`,
+`ejemplos/calculadora.jp`). 245 tests.
 
 v1.2.0 — **métodos de valor**: `"texto".mayusculas()`, `lista.agregar(x)`,
 `d.claves()`... las funciones de la librería estándar ahora también se

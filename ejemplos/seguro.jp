@@ -1,0 +1,56 @@
+# JP seguro — intenta / atrapa (v1.3) 🛡️
+#
+# En JP un error de ejecución (división por cero, índice fuera de rango,
+# archivo que no existe, variable sin definir...) se puede atrapar y seguir.
+
+# 1) Lo básico: la división por cero ya no tumba el programa
+intenta {
+    variable resultado = 10 / 0
+    imprime("nunca llega aquí:", resultado)
+} atrapa error {
+    imprime("Ups:", error)
+}
+imprime("El programa sigue vivo ✨")
+
+# 2) Una función que nunca falla hacia fuera
+funcion dividir(a, b) {
+    intenta { devuelve a / b } atrapa e { devuelve "no se puede: " + e }
+}
+imprime(dividir(10, 2))
+imprime(dividir(7, 0))
+
+# 3) Índices y claves que no existen
+intenta {
+    variable lista = [1, 2, 3]
+    imprime(lista[99])
+} atrapa e {
+    imprime("Índice malo:", e)
+}
+
+# 4) Archivos: leer algo que no existe sin morir en el intento
+intenta {
+    imprime(leer_archivo("no-existe-de-verdad.txt"))
+} atrapa e {
+    imprime("Archivo:", e)
+}
+
+# 5) Cuántas palabras válidas hay: cada error se cuenta, no se propaga
+variable entradas = ["12", "siete", "42", "cero", "100"]
+variable validos = []
+para entrada en entradas {
+    intenta {
+        validos.agregar(entero(entrada))
+    } atrapa e {
+        imprime("Descartado:", entrada)
+    }
+}
+imprime("Números válidos:", validos, "· Suma:", sumar(validos))
+
+# 6) Atrapa anónimo: cuando no te interesa el mensaje
+intenta { variable x = nulo + 1 } atrapa { imprime("Error silencioso (y olvidado)") }
+
+# 7) El nombre del error solo vive dentro del atrapa
+intenta { 1 % 0 } atrapa problema { imprime("Atrapado dentro:", problema) }
+imprime("Fuera ya no existe, así que esto es una variable nueva")
+variable problema = "sin conflicto"
+imprime(problema)

@@ -80,9 +80,14 @@ class NodoLista(Nodo):
 
 @dataclass
 class NodoRango(Nodo):
-    """Rango inclusivo: 1..10 -> del 1 al 10 (incluso al revés: 10..1)."""
+    """Rango inclusivo: 1..10 -> del 1 al 10 (incluso al revés: 10..1).
+
+    Con paso opcional: 1..10 paso 2 -> 1, 3, 5, 7, 9. El paso es una
+    magnitud (mayor que 0); la dirección la deciden los extremos.
+    """
     izquierda: Nodo
     derecha: Nodo
+    paso: Nodo | None = None
     linea: int = 0
 
 
@@ -172,8 +177,30 @@ class NodoPara(Nodo):
 
 
 @dataclass
+class NodoElegir(Nodo):
+    """elegir expr { caso v1[, v2]: ... sino: ... } (sin caída entre casos)."""
+    expresion: Nodo
+    casos: list[tuple[list[Nodo], NodoBloque]] = field(default_factory=list)
+    sino: NodoBloque | None = None
+    linea: int = 0
+
+
+@dataclass
+class NodoIntentar(Nodo):
+    """intenta { ... } atrapa error { ... }
+
+    `nombre_error` es el nombre con el que el bloque `atrapa` ve el mensaje
+    del error (None si se escribió un `atrapa` anónimo).
+    """
+    cuerpo: NodoBloque
+    nombre_error: str | None
+    captura: NodoBloque
+    linea: int = 0
+
+
+@dataclass
 class NodoFuncion(Nodo):
-    nombre: str
+    nombre: str  # "" si es una función anónima usada como valor
     parametros: list[str]
     cuerpo: NodoBloque
     linea: int = 0

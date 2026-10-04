@@ -39,6 +39,7 @@ _NATIVAS_IMPURAS = {
     "lista_archivos", "tamano_archivo", "existe_archivo",
     "esperar",         # tiempo
     "reloj",           # tiempo (monotónico)
+    "aleatorio",       # azar
 }
 
 

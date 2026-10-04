@@ -33,9 +33,11 @@ class Codigo(Enum):
     LISTA = auto()          # operando=n -> construye lista con n elementos
     DICCIONARIO = auto()    # operando=n -> construye dict con n pares (k,v en pila)
     INTERPOLAR = auto()     # operando=n -> concatena n/2 textos + n/2 valores (pila)
-    RANGO = auto()          # inicio y fin en pila -> lista inclusiva (al revés también)
+    RANGO = auto()          # inicio[, fin[, paso]] en pila -> lista inclusiva (al revés también)
+                            # operando=0: sin paso · operando=1: inicio, fin, paso
     INDICE = auto()         # objeto[indice] (ambos en pila)
     INDICE_ASIG = auto()    # objeto, indice, valor en pila; deja el valor
+    DUP = auto()            # duplica el tope de la pila (lo usa 'elegir')
 
     # Operadores
     SUMAR = auto()          # +  (números, cadenas o listas)
@@ -43,6 +45,7 @@ class Codigo(Enum):
     MULTIPLICAR = auto()    # *  (incluye cadena * número)
     DIVIDIR = auto()        # /  (entera si es exacta)
     MODULO = auto()         # %
+    POTENCIA = auto()       # ** (a ** b)
     NEGAR = auto()          # -x
     NO = auto()             # no x
     IGUAL = auto()          # ==
@@ -66,6 +69,11 @@ class Codigo(Enum):
     # Ámbitos de bloque (para que 'var' dentro de { } no se escape del bloque)
     AMBITO_PUSH = auto()      # ambito = Ambito(padre=ambito)
     AMBITO_POP = auto()       # ambito = ambito.padre
+
+    # intenta/atrapa: manejadores de error (pila de manejadores en la VM)
+    TRY = auto()              # operando=destino del 'atrapa'; apila un manejador
+    ENDTRY = auto()           # quita el manejador (camino feliz)
+    ERROR_ACTUAL = auto()     # empuja el texto del último error capturado
     # (romper/continuar no necesitan opcode: el compilador emite los
     #  AMBITO_POP necesarios y un SALTAR normal)
 
@@ -96,11 +104,16 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.RANGO: "RANGO",
     Codigo.INDICE: "INDICE",
     Codigo.INDICE_ASIG: "INDICE_ASIG",
+    Codigo.DUP: "DUP",
+    Codigo.TRY: "TRY",
+    Codigo.ENDTRY: "ENDTRY",
+    Codigo.ERROR_ACTUAL: "ERROR_ACTUAL",
     Codigo.SUMAR: "SUMAR",
     Codigo.RESTAR: "RESTAR",
     Codigo.MULTIPLICAR: "MULTIPLICAR",
     Codigo.DIVIDIR: "DIVIDIR",
     Codigo.MODULO: "MODULO",
+    Codigo.POTENCIA: "POTENCIA",
     Codigo.NEGAR: "NEGAR",
     Codigo.NO: "NO",
     Codigo.IGUAL: "IGUAL",

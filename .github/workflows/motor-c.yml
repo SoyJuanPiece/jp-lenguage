@@ -1,0 +1,58 @@
+name: Motor nativo en C
+
+# Compila `motor-c/jpvm` (la VM de JP escrita en C11, sin dependencias) en cada
+# push y deja el binario como artefacto descargable. Además corre la suite
+# completa y el comparador de paridad Python vs C.
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    name: Compilar y probar (${{ matrix.cc }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.cc != 'gcc' }}   # gcc es el compilador oficial
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compilar el motor
+        run: make -C motor-c CC=${{ matrix.cc }}
+
+      - name: Compilar los binarios independientes de ejemplo
+        run: |
+          python -m jp --binario ejemplos/hola.jp -o jp-hola
+          python -m jp --binario ejemplos/funcional.jp -o jp-funcional
+          ./jp-hola
+          ./jp-funcional
+
+      - name: Suite completa (con el motor en C presente)
+        if: matrix.cc == 'gcc'
+        run: python -m unittest discover -s tests
+
+      - name: Paridad de todos los ejemplos (Python vs C)
+        if: matrix.cc == 'gcc'
+        run: python herramientas/paridad.py
+
+      - name: Guardar los binarios
+        uses: actions/upload-artifact@v4
+        with:
+          name: jpvm-linux-x86_64-${{ matrix.cc }}
+          if-no-files-found: error
+          path: |
+            motor-c/jpvm
+            jp-hola
+            jp-funcional

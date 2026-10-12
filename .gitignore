@@ -7,3 +7,9 @@ build/
 
 # Cache del modo turbo
 *.jpc
+
+# Motor nativo en C (se compila con `make -C motor-c`)
+motor-c/jpvm
+motor-c/jpvm-debug
+motor-c/jpvm-asan
+*.jpb

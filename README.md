@@ -375,9 +375,9 @@ jp-lang/
 └── pyproject.toml       # para instalar el comando jp
 ```
 
-## Los cuatro motores
+## Los cinco motores
 
-JP trae cuatro formas de ejecutar el mismo código, con la misma semántica
+JP trae cinco formas de ejecutar el mismo código, con la misma semántica
 (la paridad está garantizada por tests):
 
 | Motor | Bandera | Cómo ejecuta tu código | Fuerte | Límite |
@@ -386,26 +386,57 @@ JP trae cuatro formas de ejecutar el mismo código, con la misma semántica
 | **VM** | *(por defecto)* | Bytecode + threaded code (cierres compilados) | Todo el lenguaje, siempre correcto | Vive dentro de Python |
 | **JIT** | `--nativo` | Compila funciones numéricas a **x86-64 real** | 19–73x más rápido que Python en cálculo | Solo enteros/decimales; ≤3 parámetros; lo demás va a la VM |
 | **Turbo** | `--turbo` | Evalúa todo en compilación y cachea la salida | Microsegundos en corridas repetidas | Solo programas puros (sin `leer`, `azar`, red, archivos, `reloj`) |
+| ⚡ **C (nativo)** | `--c` | Compila a bytecode **.jpb** y lo ejecuta una VM en C11 **sin dependencias** | Corre todo el programa (bucles incluidos), es un binario independiente y le gana a CPython | Todavía no tiene métodos, diccionarios, `intenta` ni `elegir` |
+
+### El motor en C: independiente de verdad
+
+El resto de los motores vive dentro de Python. El motor en C no: es un
+**binario autónomo** (solo libc, como CPython) que ejecuta bytecode compilado.
+No necesita Python para correr un programa JP.
+
+```bash
+make -C motor-c                              # compila el motor (una vez, 2 segundos)
+
+python -m jp --c programa.jp                 # ejecuta con el motor en C
+python -m jp --compilar programa.jp          # -> programa.jp.jpb (bytecode nativo)
+python -m jp --bytecode programa.jp          # lo desensambla, para mirar adentro
+python -m jp --binario programa.jp -o prog   # -> ./prog: ELF independiente
+./motor-c/jpvm programa.jp.jpb               # el motor a pelo
+./prog                                        # el binario: ni Python ni JP
+```
+
+Si un programa usa algo que el motor en C todavía no implementa, el compilador
+se **niega con un mensaje claro** y `--c` sigue con el motor de Python: nunca
+hay resultados silenciosamente distintos. (Los enteros de más de 64 bits
+también se rechazan, porque Python usa precisión arbitraria y el nativo no.)
 
 ### Números medidos (misma máquina, Linux x86-64, Python 3.12)
 
-| Programa | Árbol | VM | JIT | Turbo | Python |
-|---|---|---|---|---|---|
-| `benchmark.jp` (while 1M + fib(22)) | 11,3 s | **6,7 s** | parcial: fib nativo, bucle en VM (no medido) | 1ª ≈ VM → luego µs | 0,29 s |
-| `benchmark-grande.jp` (while 5M + fib(25)) | — | ≈35 s (1ª) | — | 1ª ≈35 s → **0,0086 ms** después | 1,32 s |
-| `benchmark-nativo.jp` (5M + fib(25) + armónica 2M) | — | 39,9 s | **0,104 s** | no aplica (usa `reloj()`) | 2,16 s |
-| Micro in-process: suma 10M / fib(32) / armónica 10M | — | — | 44,7 / 36,2 / 63,9 ms | — | 3.274 / 694 / 2.908 ms |
+| Programa | Árbol | VM | JIT | Turbo | **C** | Python |
+|---|---|---|---|---|---|---|
+| `benchmark.jp` (while 1M + fib(22)) | 11,3 s | **6,7 s** | parcial: fib nativo, bucle en VM | 1ª ≈ VM → luego µs | **0,046 s** | 0,29 s |
+| `benchmark-grande.jp` (while 5M + fib(25)) | — | ≈35 s (1ª) | — | 1ª ≈35 s → **0,0086 ms** después | 0,228 s | 1,32 s |
+| `benchmark-nativo.jp` (5M + fib(25) + armónica 2M) | — | 39,9 s | **0,104 s** | no aplica (usa `reloj()`) | 0,233 s | 2,16 s |
+| Micro: suma 10M + fib(32) | — | 41,1 s | 44,7 / 36,2 ms (por función) | — | **0,481 s** | 0,813 s |
+| Micro: armónica 10M (flotantes) | — | 29,0 s | 63,9 ms | — | **0,487 s** | 1,140 s |
 
-Lecturas honestas: el JIT **le gana a Python en raw loop numérico** (19–73x);
-el turbo le gana en *runtime* a todo (el trabajo se hace una sola vez);
-y en cadenas/colecciones Python sigue adelante (30 años de C optimizado).
+Lecturas honestas: el motor en C **le gana a CPython en bucles y en flotantes
+(1,7x y 2,3x)** y es **60–85x más rápido que la VM de Python**; el JIT sigue
+siendo el más rápido en micro-kernels numéricos puros (compila a máquina de
+verdad, sin despacho), pero solo cubre funciones numéricas y necesita Python
+para existir; el turbo gana en *runtime* a todo (el trabajo se hace una vez).
 
 ```bash
 python -m jp archivo.jp                      # VM (recomendado para todo)
 python -m jp --interprete archivo.jp         # árbol (referencia)
 python -m jp --nativo archivo.jp             # JIT para cálculo numérico
 python -m jp --turbo archivo.jp              # cache total para programas puros
+python -m jp --c archivo.jp                  # motor en C (independiente de Python)
+python -m jp --binario archivo.jp -o prog    # te da un ejecutable propio
 ```
+
+La paridad se comprueba sola: `python herramientas/paridad.py` compila cada
+ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Próximos pasos posibles
 

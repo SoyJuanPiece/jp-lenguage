@@ -7,6 +7,61 @@
 
 ---
 
+## ⚡ NUEVO RUMBO (2026-10-12): un motor propio, independiente y rápido
+
+> **La petición del autor:** *"optimización máxima, que no dependa de Python
+> (como CPython, que es un ejecutable y no necesita otro lenguaje), rápido,
+> completo y sin romper nada"*. Esto entra **delante** de todo lo de abajo:
+> los T-20/T-21 (optimizar la VM de Python) pasan a segundo plano, porque el
+> trabajo equivalente se hace ahora en el motor propio.
+
+### Lo que ya está hecho y medido (v1.4.0-alpha)
+
+| Pieza | Archivo | Estado |
+|---|---|---|
+| Compilador JP → bytecode `.jpb` (palabras u32, slots, celdas para closures, saltos relativos) | `jp/compilar_nativo.py` | ✅ |
+| VM en C11 sin dependencias: despacho con *computed goto*, enteros con caminos rápidos, GC mark-and-sweep, closures por celdas, upvalues, iteradores, errores con línea y fuente | `motor-c/jpvm.c` | ✅ |
+| Nativas en C: `muestra/imprime`, `longitud`, `entero`, `numero`, `texto`, `tipo`, `raiz`, `absoluto`, `piso`, `techo`, `redondear`, `log`, `exp`, `seno`, `coseno`, `potencia`, `minimo`, `maximo`, `sumar`, `pi`, `reloj`, `aleatorio`, `azar`, `mayusculas`, `minusculas`, `recortar`, `contiene`, `agregar`, `invertir`, `unir`, `rango`, `leer` | `motor-c/jpvm.c` | ✅ 32 |
+| CLI: `--c` (ejecuta), `--compilar` (`.jpb`), `--bytecode` (desensambla), `--binario` (ELF independiente) | `jp/cli.py` | ✅ |
+| **Ejecutables independientes**: el bytecode se enlaza con la VM y el resultado no necesita Python ni JP | `jp/cli.py` + símbolos débiles en `jpvm.c` | ✅ |
+| Arnés de paridad ejemplo por ejemplo (0 fallos) | `herramientas/paridad.py` | ✅ |
+| Tests de paridad integrados en la suite (250 en total) | `tests/test_motor_c.py` | ✅ |
+
+**Números (esta máquina, Xeon 2.6 GHz, gcc 12 -O2):**
+
+| Medida | Motor Python | JIT | **Motor C** | CPython | Mejora |
+|---|---|---|---|---|---|
+| `benchmark.jp` (while 1M + fib(22)) | 2,708 s | — | **0,046 s** | 0,29 s | **58x vs VM** |
+| suma 10M + fib(32) | 41,08 s | — | **0,481 s** | 0,813 s | **85x vs VM · 1,7x vs CPython** |
+| armónica 10M (flotantes) | 28,96 s | — | **0,487 s** | 1,140 s | **59x vs VM · 2,3x vs CPython** |
+| `benchmark-nativo.jp` (5M+fib25+arm2M) | 19,32 s | 0,109 s | 0,233 s | — | el JIT gana en micro-kernels puros |
+| Binario generado | — | — | 44 KB, solo libc/libm | — | independiente ✅ |
+
+Y sobre **no romper**: si un programa usa algo que el motor en C no tiene
+todavía, el compilador se niega con mensaje y `--c` sigue con el motor de
+Python; los enteros de más de 64 bits también se rechazan (Python usa
+precisión arbitraria) — nunca hay números distintos en silencio.
+
+### Lo que falta del motor propio, en orden de impacto
+
+| # | Tarea | Criterio de aceptación | Esf. |
+|---|---|---|---|
+| N-1 | **Métodos de valor en C** (`"x".mayusculas()`, `lista.agregar(v)`) | los 14 ejemplos que hoy se rechazan por esto pasan a idénticos | L |
+| N-2 | **Diccionarios en C** (tabla hash con claves de texto + `claves/valores/elementos/tiene`) | `agenda.jp`, `api-json.jp`, `discord-webhook.jp` con paridad | L |
+| N-3 | **`intenta/atrapa` y `elegir` en C** | `seguro.jp`, `calculadora.jp` con paridad; el motor nunca aborta el proceso ante un error capturable | M |
+| N-4 | **Red y archivos nativos** (`leer_archivo`, `escribir_archivo`, `http_get/post`, `json_leer/texto`) | `bot-telegram.jp` y `api-json.jp` nativos | M |
+| N-5 | **`mapear/filtrar/reducir/para_cada/ordenar`** (nativas de orden superior, que ya saben llamar a un cierre desde el motor) | `funcional.jp` con paridad | M |
+| N-6 | **Frontend propio** (lexer+parser en C, o bootstrap del compilador en JP) | `jpvm` compila y ejecuta un `.jp` **sin Python**; `jp` queda como comando de conveniencia | L |
+| N-7 | **Tier de compilación a máquina** dentro del motor C (AOT por función numérica, como el JIT actual pero sin Python) | superar al JIT en `benchmark-nativo.jp` y acercarse a C puro | L |
+| N-8 | **Extras de tipo**: bignums (o error claro), GC generacional, cache de métodos, superinstrucciones | 500+ tests verdes y menos tiempo por despacho | L |
+| N-9 | **Distribución**: `make install`, binarios para Linux/macOS/Windows, wheels en PyPI con el binario dentro | `pipx install jp-lang && jp --c hola.jp` en una máquina limpia | M |
+
+**Meta de paridad:** los 23 ejemplos en verde bajo el motor en C
+(hoy: 7 idénticos, 14 esperando una de las tareas N-1…N-5, 2 no deterministas
+o interactivos). El arnés `herramientas/paridad.py` es el marcador.
+
+---
+
 ## 0. Cómo leer este documento
 
 | Sección | Para qué sirve |

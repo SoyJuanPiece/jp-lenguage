@@ -46,7 +46,10 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#define _DEFAULT_SOURCE 1
 #include <ctype.h>
+#include <errno.h>
+#include <dirent.h>
 #include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -54,7 +57,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 /* ---------------------------------------------------------------- valores */
 
@@ -70,7 +75,9 @@ typedef struct {
     } v;
 } Valor;
 
-typedef enum { O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER } TipoObj;
+typedef enum {
+    O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA
+} TipoObj;
 
 struct Obj {
     uint8_t tipo;
@@ -144,13 +151,53 @@ typedef struct {
     uint32_t indice;
 } Iter;
 
+/* Diccionario: claves de texto, en orden de inserción (como Python) y con
+ * una tabla hash de índices para que buscar sea O(1). */
+typedef struct {
+    Texto *clave;
+    Valor valor;
+} EntradaDict;
+
+typedef struct {
+    Obj cabecera;
+    uint32_t largo;             /* entradas usadas, en orden de inserción */
+    uint32_t capacidad;
+    EntradaDict *entradas;
+    uint32_t capacidad_indice;  /* potencia de dos */
+    uint32_t *indice;           /* ranura -> (índice de entrada + 1); 0 = libre */
+} Dicto;
+
+/* Nativa ligada a un receptor: "hola".mayusculas  (sin llamar todavía). */
+typedef struct {
+    Obj cabecera;
+    Texto *nombre;
+    Valor receptor;
+} Ligada;
+
 typedef struct {
     Funcion *funcion;
     Valor *base;      /* primer local */
     uint32_t *ip;
     Obj **upvalues;
     uint32_t n_upvalues;
+    uint32_t n_manejadores;  /* 'intenta' activos al entrar al marco */
 } Marco;
+
+/* Un 'intenta' activo: a dónde volver si algo falla dentro. */
+typedef struct {
+    Marco *marco;
+    Valor *sp;
+    uint32_t pc;      /* palabra del bytecode donde empieza el 'atrapa' */
+} Maneja;
+
+/* Un bucle en curso (el del programa o el de una nativa que llama a JP).
+ * 'piso' es el marco por debajo del cual este nivel ya no puede atrapar: si el
+ * 'intenta' que falla vive más arriba, el error sigue hacia fuera (y la pila
+ * de C de la nativa se descarta, como en Python al desenrollar). */
+typedef struct {
+    jmp_buf salto;
+    Marco *piso;
+} Nivel;
 
 /* ---------------------------------------------------------------- la VM */
 
@@ -164,6 +211,26 @@ typedef struct {
     uint8_t definido;
 } Global;
 
+static int textos_iguales(Texto *a, Texto *b);
+
+/* Registro de nativas por nombre: es lo que hace posible los métodos de
+ * valor ("hola".mayusculas() y tambien lista.agregar como función suelta). */
+#define NATIVAS_MAX 128
+static Nativa *nativas_por_nombre[NATIVAS_MAX];
+static const char *nombres_nativas[NATIVAS_MAX];
+static uint32_t n_nativas_registradas;
+
+static Nativa *nativa_por_nombre(Texto *nombre) {
+    for (uint32_t i = 0; i < n_nativas_registradas; i++) {
+        Nativa *n = nativas_por_nombre[i];
+        if (n && n->nombre && strlen(n->nombre) == nombre->largo &&
+            memcmp(n->nombre, nombre->datos, nombre->largo) == 0) {
+            return n;
+        }
+    }
+    return NULL;
+}
+
 struct VM {
     Valor pila[PILA_MAX];
     Valor *sp;
@@ -172,8 +239,14 @@ struct VM {
     Global globales[GLOBALES_MAX];
     uint32_t n_globales;
     jmp_buf salto_error;
+    Nivel niveles[256];     /* un nivel por cada bucle en curso (programa y nativas) */
+    uint32_t n_niveles;
     char error[512];
     uint32_t linea_error;
+    Marco *piso_marco;     /* el bucle vuelve cuando un 'retorna' baja hasta aquí */
+    Maneja manejadores[64];
+    uint32_t n_manejadores;
+    uint32_t pc_inicio;    /* pc desde el que (re)arranca el bucle tras atrapar */
     Valor ultimo_valor;
     Lista *iter_nulo;
     /* cadenas del programa (no son basura) */
@@ -220,6 +293,8 @@ static void error_en(int linea, const char *formato, ...) {
     vsnprintf(vm->error, sizeof(vm->error), formato, ap);
     va_end(ap);
     vm->linea_error = (uint32_t)linea;
+    if (vm->n_manejadores > 0 && vm->n_niveles > 0)
+        longjmp(vm->niveles[vm->n_niveles - 1].salto, 1);
     longjmp(vm->salto_error, 1);
 }
 
@@ -274,6 +349,107 @@ static void lista_asegurar(Lista *l, uint32_t necesarios) {
 static void lista_agregar(Lista *l, Valor v) {
     lista_asegurar(l, l->largo + 1);
     l->elementos[l->largo++] = v;
+}
+
+static Dicto *nuevo_dicto(void) {
+    Dicto *d = nuevo_objeto(sizeof(Dicto), O_DICTO);
+    d->capacidad = 4;
+    d->entradas = memoria(sizeof(EntradaDict) * d->capacidad);
+    d->capacidad_indice = 8;
+    d->indice = memoria(sizeof(uint32_t) * d->capacidad_indice);
+    memset(d->indice, 0, sizeof(uint32_t) * d->capacidad_indice);
+    return d;
+}
+
+static uint32_t dicto_ranura(Dicto *d, Texto *clave) {
+    uint32_t mascara = d->capacidad_indice - 1;
+    uint32_t i = clave->hash & mascara;
+    while (d->indice[i] != 0) {
+        if (textos_iguales(d->entradas[d->indice[i] - 1].clave, clave)) return i;
+        i = (i + 1) & mascara;
+    }
+    return i;
+}
+
+static Valor *dicto_buscar(Dicto *d, Texto *clave) {
+    uint32_t ranura = dicto_ranura(d, clave);
+    if (d->indice[ranura] == 0) return NULL;
+    return &d->entradas[d->indice[ranura] - 1].valor;
+}
+
+static void dicto_reindexar(Dicto *d, uint32_t nueva_capacidad) {
+    free(d->indice);
+    d->capacidad_indice = nueva_capacidad;
+    d->indice = memoria(sizeof(uint32_t) * nueva_capacidad);
+    memset(d->indice, 0, sizeof(uint32_t) * nueva_capacidad);
+    for (uint32_t k = 0; k < d->largo; k++)
+        d->indice[dicto_ranura(d, d->entradas[k].clave)] = k + 1;
+}
+
+static void dicto_poner(Dicto *d, Texto *clave, Valor valor) {
+    uint32_t ranura = dicto_ranura(d, clave);
+    if (d->indice[ranura] != 0) {
+        d->entradas[d->indice[ranura] - 1].valor = valor;
+        return;
+    }
+    if (d->largo == d->capacidad) {
+        d->capacidad *= 2;
+        d->entradas = realloc(d->entradas, sizeof(EntradaDict) * d->capacidad);
+    }
+    d->entradas[d->largo].clave = clave;
+    d->entradas[d->largo].valor = valor;
+    d->largo += 1;
+    if (d->largo * 4 > d->capacidad_indice * 3) dicto_reindexar(d, d->capacidad_indice * 2);
+    else d->indice[ranura] = d->largo;
+}
+
+static Valor de_objeto(Obj *obj);
+
+/* ---------------- Métodos de valor ("hola".mayusculas(), [1].agregar(x)) ------
+ * Son las mismas nativas, con el receptor como primer argumento; la tabla de
+ * cada tipo decide qué nombres existen (como en el motor de Python). */
+
+static const char *const METODOS_TEXTO[] = {
+    "mayusculas", "minusculas", "recortar", "separar", "reemplazar", "subtexto",
+    "letra", "contiene", "longitud", "empezar_con", "terminar_con", "buscar",
+    "repetir", "invertir", "indice_de",
+};
+static const char *const METODOS_LISTA[] = {
+    "agregar", "longitud", "contiene", "mapear", "filtrar", "reducir", "para_cada",
+    "ordenar", "invertir", "sumar", "indice_de", "insertar", "quitar", "eliminar",
+    "unir",
+};
+static const char *const METODOS_DICTO[] = {"claves", "tiene", "valores", "elementos"};
+#define N_METODOS(tabla) (sizeof(tabla) / sizeof((tabla)[0]))
+
+static int nombre_en_tabla(const char *const *tabla, size_t n, Texto *nombre) {
+    for (size_t i = 0; i < n; i++) {
+        size_t largo = strlen(tabla[i]);
+        if (largo == nombre->largo && memcmp(tabla[i], nombre->datos, largo) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Devuelve la nativa que implementa `nombre` para el receptor, o NULL. */
+static Nativa *metodo_de_valor(Valor receptor, Texto *nombre) {
+    if (receptor.etiqueta != T_OBJ) return NULL;
+    const char *const *tabla = NULL;
+    size_t n = 0;
+    switch (receptor.v.obj->tipo) {
+        case O_TEXTO: tabla = METODOS_TEXTO; n = N_METODOS(METODOS_TEXTO); break;
+        case O_LISTA: tabla = METODOS_LISTA; n = N_METODOS(METODOS_LISTA); break;
+        case O_DICTO: tabla = METODOS_DICTO; n = N_METODOS(METODOS_DICTO); break;
+        default: return NULL;
+    }
+    if (!nombre_en_tabla(tabla, n, nombre)) return NULL;
+    return nativa_por_nombre(nombre);
+}
+
+static Valor de_ligada(Nativa *nativa, Valor receptor) {
+    Ligada *lig = nuevo_objeto(sizeof(Ligada), O_LIGADA);
+    lig->nombre = nuevo_texto_largo(nativa->nombre, (uint32_t)strlen(nativa->nombre));
+    lig->receptor = receptor;
+    return de_objeto((Obj *)lig);
 }
 
 static Celda *nueva_celda(Valor v) {
@@ -372,6 +548,21 @@ static void texto_de(Valor v, char *salida, size_t tamano) {
             snprintf(salida + usado, tamano - usado, "]");
             return;
         }
+        case O_DICTO: {
+            Dicto *d = (Dicto *)obj;
+            size_t usado = 0;
+            usado += (size_t)snprintf(salida + usado, tamano - usado, "{");
+            for (uint32_t i = 0; i < d->largo && usado < tamano; i++) {
+                char clave[512], valor[1024];
+                snprintf(clave, sizeof(clave), "\"%.*s\"", (int)d->entradas[i].clave->largo,
+                         d->entradas[i].clave->datos);
+                texto_inspeccion(d->entradas[i].valor, valor, sizeof(valor));
+                usado += (size_t)snprintf(salida + usado, tamano - usado, "%s%s: %s",
+                                          i ? ", " : "", clave, valor);
+            }
+            snprintf(salida + usado, tamano - usado, "}");
+            return;
+        }
         case O_FUNCION:
             snprintf(salida, tamano, "<fun %.*s>",
                      (int)((Cierre *)obj)->funcion->nombre->largo,
@@ -411,6 +602,18 @@ static void marcar_objeto(Obj *obj) {
         case O_ITER:
             marcar_objeto((Obj *)((Iter *)obj)->lista);
             break;
+        case O_DICTO: {
+            Dicto *d = (Dicto *)obj;
+            for (uint32_t i = 0; i < d->largo; i++) {
+                marcar_objeto((Obj *)d->entradas[i].clave);
+                marcar(d->entradas[i].valor);
+            }
+            break;
+        }
+        case O_LIGADA:
+            marcar_objeto((Obj *)((Ligada *)obj)->nombre);
+            marcar(((Ligada *)obj)->receptor);
+            break;
         default:
             break;
     }
@@ -422,6 +625,9 @@ static void marcar(Valor v) {
 
 static void recolectar(void) {
     for (Valor *p = vm->pila; p < vm->sp; p++) marcar(*p);
+    /* las cadenas del programa (nombres de funciones/globales/constantes)
+     * viven todo lo que vive la VM: sin marcarlas, el barrido las libera */
+    for (uint32_t i = 0; i < vm->n_cadenas; i++) marcar_objeto((Obj *)vm->cadenas[i]);
     for (Marco *m = vm->marcos; m <= vm->marco; m++) {
         if (!m->funcion) continue;
         for (uint32_t i = 0; i < m->funcion->n_slots; i++) marcar(*(m->base + i));
@@ -442,6 +648,10 @@ static void recolectar(void) {
             *enlace = obj->siguiente;
             if (obj->tipo == O_TEXTO) free(((Texto *)obj)->datos);
             if (obj->tipo == O_LISTA) free(((Lista *)obj)->elementos);
+            if (obj->tipo == O_DICTO) {
+                free(((Dicto *)obj)->entradas);
+                free(((Dicto *)obj)->indice);
+            }
             if (obj->tipo == O_FUNCION) free(((Cierre *)obj)->upvalues);
             free(obj);
         }
@@ -486,6 +696,15 @@ static int iguales(Valor a, Valor b) {
             if (la->largo != lb->largo) return 0;
             for (uint32_t i = 0; i < la->largo; i++)
                 if (!iguales(la->elementos[i], lb->elementos[i])) return 0;
+            return 1;
+        }
+        if (oa->tipo == O_DICTO) {
+            Dicto *da = (Dicto *)oa, *db = (Dicto *)ob;
+            if (da->largo != db->largo) return 0;
+            for (uint32_t i = 0; i < da->largo; i++) {
+                Valor *v = dicto_buscar(db, da->entradas[i].clave);
+                if (!v || !iguales(*v, da->entradas[i].valor)) return 0;
+            }
             return 1;
         }
         return oa == ob; /* funciones y celdas: identidad */
@@ -673,6 +892,7 @@ static Valor nativa_longitud(VM *v, int argc, Valor *args) {
     Valor x = args[0];
     if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_TEXTO) return de_entero(((Texto *)x.v.obj)->largo);
     if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_LISTA) return de_entero(((Lista *)x.v.obj)->largo);
+    if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_DICTO) return de_entero(((Dicto *)x.v.obj)->largo);
     char texto[256];
     texto_de(x, texto, sizeof(texto));
     error_en(0, "longitud() espera cadena, lista o diccionario, no '%s'", texto);
@@ -750,6 +970,7 @@ static Valor nativa_tipo(VM *v, int argc, Valor *args) {
     switch (x.v.obj->tipo) {
         case O_TEXTO: return de_texto(nuevo_texto("texto"));
         case O_LISTA: return de_texto(nuevo_texto("lista"));
+        case O_DICTO: return de_texto(nuevo_texto("diccionario"));
         case O_FUNCION:
         case O_NATIVA: return de_texto(nuevo_texto("función"));
         default: return de_texto(nuevo_texto("valor"));
@@ -950,7 +1171,11 @@ static Valor nativa_contiene(VM *v, int argc, Valor *args) {
         for (uint32_t i = 0; i < l->largo; i++) if (iguales(l->elementos[i], que)) return de_bool(1);
         return de_bool(0);
     }
-    error_en(0, "contiene() espera texto o lista");
+    if (donde.etiqueta == T_OBJ && donde.v.obj->tipo == O_DICTO) {
+        if (que.etiqueta != T_OBJ || que.v.obj->tipo != O_TEXTO) return de_bool(0);
+        return de_bool(dicto_buscar((Dicto *)donde.v.obj, (Texto *)que.v.obj) != NULL);
+    }
+    error_en(0, "contiene() espera texto, lista o diccionario");
     return de_nulo();
 }
 
@@ -1016,6 +1241,672 @@ static Valor nativa_unir(VM *v, int argc, Valor *args) {
     return de_texto(nuevo);
 }
 
+static const char *nombre_tipo_objeto(uint8_t tipo) {
+    switch (tipo) {
+        case O_TEXTO: return "texto";
+        case O_LISTA: return "lista";
+        case O_DICTO: return "diccionario";
+        default: return "valor";
+    }
+}
+
+static Dicto *exigir_dicto(Valor x, const char *nombre) {
+    if (x.etiqueta != T_OBJ || x.v.obj->tipo != O_DICTO) {
+        char texto[256];
+        texto_de(x, texto, sizeof(texto));
+        error_en(0, "%s() espera un diccionario, no '%s'", nombre, texto);
+    }
+    return (Dicto *)x.v.obj;
+}
+
+static Valor nativa_claves(VM *v, int argc, Valor *args) {
+    (void)v;
+    Dicto *d = exigir_dicto(args[0], "claves");
+    Lista *l = nueva_lista(d->largo ? d->largo : 1);
+    for (uint32_t i = 0; i < d->largo; i++) lista_agregar(l, de_texto(d->entradas[i].clave));
+    return de_lista(l);
+}
+
+static Valor nativa_valores(VM *v, int argc, Valor *args) {
+    (void)v;
+    Dicto *d = exigir_dicto(args[0], "valores");
+    Lista *l = nueva_lista(d->largo ? d->largo : 1);
+    for (uint32_t i = 0; i < d->largo; i++) lista_agregar(l, d->entradas[i].valor);
+    return de_lista(l);
+}
+
+static Valor nativa_elementos(VM *v, int argc, Valor *args) {
+    (void)v;
+    Dicto *d = exigir_dicto(args[0], "elementos");
+    Lista *l = nueva_lista(d->largo ? d->largo : 1);
+    for (uint32_t i = 0; i < d->largo; i++) {
+        Lista *par = nueva_lista(2);
+        lista_agregar(par, de_texto(d->entradas[i].clave));
+        lista_agregar(par, d->entradas[i].valor);
+        lista_agregar(l, de_lista(par));
+    }
+    return de_lista(l);
+}
+
+static Valor nativa_tiene(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta == T_OBJ && args[0].v.obj->tipo == O_DICTO) {
+        if (args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO) return de_bool(0);
+        return de_bool(dicto_buscar((Dicto *)args[0].v.obj, (Texto *)args[1].v.obj) != NULL);
+    }
+    if (args[0].etiqueta == T_OBJ && args[0].v.obj->tipo == O_LISTA) {
+        Lista *l = (Lista *)args[0].v.obj;
+        for (uint32_t i = 0; i < l->largo; i++) if (iguales(l->elementos[i], args[1])) return de_bool(1);
+        return de_bool(0);
+    }
+    if (args[0].etiqueta == T_OBJ && args[0].v.obj->tipo == O_TEXTO) {
+        if (args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO) return de_bool(0);
+        Texto *a = (Texto *)args[0].v.obj, *b = (Texto *)args[1].v.obj;
+        for (uint32_t i = 0; i + b->largo <= a->largo; i++)
+            if (memcmp(a->datos + i, b->datos, b->largo) == 0) return de_bool(1);
+        return de_bool(0);
+    }
+    char texto[256];
+    texto_de(args[0], texto, sizeof(texto));
+    error_en(0, "tiene() espera diccionario, lista o texto, no '%s'", texto);
+    return de_nulo();
+}
+
+static Valor nativa_separar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
+        error_en(0, "separar() espera una cadena");
+    Texto *t = (Texto *)args[0].v.obj;
+    Lista *l = nueva_lista(8);
+    if (argc < 2) {
+        /* split() de Python: sin separador, corta por espacios y descarta vacíos */
+        uint32_t i = 0;
+        while (i < t->largo) {
+            while (i < t->largo && isspace((unsigned char)t->datos[i])) i++;
+            uint32_t inicio = i;
+            while (i < t->largo && !isspace((unsigned char)t->datos[i])) i++;
+            if (i > inicio)
+                lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + inicio, i - inicio)));
+        }
+        return de_lista(l);
+    }
+    if (args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO)
+        error_en(0, "separar() espera un separador de texto");
+    Texto *sep = (Texto *)args[1].v.obj;
+    if (sep->largo == 0) {
+        for (uint32_t i = 0; i < t->largo; i++)
+            lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, 1)));
+        return de_lista(l);
+    }
+    uint32_t inicio = 0;
+    while (inicio <= t->largo) {
+        uint32_t i = inicio;
+        int encontrado = -1;
+        while (i + sep->largo <= t->largo) {
+            if (memcmp(t->datos + i, sep->datos, sep->largo) == 0) { encontrado = (int)i; break; }
+            i++;
+        }
+        if (encontrado < 0) {
+            lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + inicio, t->largo - inicio)));
+            break;
+        }
+        lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + inicio, (uint32_t)encontrado - inicio)));
+        inicio = (uint32_t)encontrado + sep->largo;
+    }
+    return de_lista(l);
+}
+
+static Valor nativa_reemplazar(VM *v, int argc, Valor *args) {
+    (void)v;
+    for (int i = 0; i < 3; i++)
+        if (args[i].etiqueta != T_OBJ || args[i].v.obj->tipo != O_TEXTO)
+            error_en(0, "reemplazar() espera tres cadenas");
+    Texto *t = (Texto *)args[0].v.obj, *viejo = (Texto *)args[1].v.obj, *nuevo = (Texto *)args[2].v.obj;
+    if (viejo->largo == 0)
+        error_en(0, "reemplazar() no acepta un texto vacío que reemplazar");
+    size_t capacidad = (size_t)t->largo + 1;
+    char *salida = memoria(capacidad);
+    size_t usado = 0;
+    for (uint32_t i = 0; i < t->largo; ) {
+        if (i + viejo->largo <= t->largo && memcmp(t->datos + i, viejo->datos, viejo->largo) == 0) {
+            if (usado + nuevo->largo + 1 > capacidad) {
+                capacidad = (usado + nuevo->largo + 1) * 2;
+                salida = realloc(salida, capacidad);
+            }
+            memcpy(salida + usado, nuevo->datos, nuevo->largo);
+            usado += nuevo->largo;
+            i += viejo->largo;
+        } else {
+            salida[usado++] = t->datos[i++];
+        }
+    }
+    salida[usado] = '\0';
+    Texto *resultado = nuevo_texto_largo(salida, (uint32_t)usado);
+    free(salida);
+    return de_texto(resultado);
+}
+
+static Valor nativa_subtexto(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
+        error_en(0, "subtexto() espera una cadena");
+    Texto *t = (Texto *)args[0].v.obj;
+    if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
+        error_en(0, "subtexto() espera números para inicio y fin");
+    int64_t inicio = a_entero(args[1]);
+    int64_t fin = argc > 2 ? (args[2].etiqueta == T_BOOL || !es_numero(args[2])
+                                  ? (error_en(0, "subtexto() espera números para inicio y fin"), 0)
+                                  : a_entero(args[2]))
+                           : (int64_t)t->largo;
+    if (inicio < 0) inicio += t->largo;
+    if (fin < 0) fin += t->largo;
+    if (inicio < 0) inicio = 0;
+    if (fin > (int64_t)t->largo) fin = t->largo;
+    if (fin < inicio) fin = inicio;
+    return de_texto(nuevo_texto_largo(t->datos + inicio, (uint32_t)(fin - inicio)));
+}
+
+static Valor nativa_letra(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
+        error_en(0, "letra() espera una cadena");
+    Texto *t = (Texto *)args[0].v.obj;
+    if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
+        error_en(0, "letra() espera una posición numérica");
+    int64_t i = a_entero(args[1]);
+    if (i < 0) i += t->largo;
+    if (i < 0 || i >= (int64_t)t->largo)
+        error_en(0, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, t->largo);
+    return de_texto(nuevo_texto_largo(t->datos + i, 1));
+}
+
+static Valor nativa_empezar_con(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO ||
+        args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO)
+        error_en(0, "empezar_con() espera dos cadenas");
+    Texto *t = (Texto *)args[0].v.obj, *p = (Texto *)args[1].v.obj;
+    return de_bool(p->largo <= t->largo && memcmp(t->datos, p->datos, p->largo) == 0);
+}
+
+static Valor nativa_terminar_con(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO ||
+        args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO)
+        error_en(0, "terminar_con() espera dos cadenas");
+    Texto *t = (Texto *)args[0].v.obj, *s = (Texto *)args[1].v.obj;
+    return de_bool(s->largo <= t->largo &&
+                   memcmp(t->datos + (t->largo - s->largo), s->datos, s->largo) == 0);
+}
+
+static Valor nativa_buscar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO ||
+        args[1].etiqueta != T_OBJ || args[1].v.obj->tipo != O_TEXTO)
+        error_en(0, "buscar() espera dos cadenas");
+    Texto *t = (Texto *)args[0].v.obj, *aguja = (Texto *)args[1].v.obj;
+    if (aguja->largo == 0) return de_entero(0);
+    for (uint32_t i = 0; i + aguja->largo <= t->largo; i++)
+        if (memcmp(t->datos + i, aguja->datos, aguja->largo) == 0) return de_entero(i);
+    return de_entero(-1);
+}
+
+static Valor nativa_repetir(VM *v, int argc, Valor *args) {
+    (void)v;
+    int64_t veces = a_entero_estricto(args[1], "repetir");
+    if (veces < 0) veces = 0;
+    if (args[0].etiqueta == T_OBJ && args[0].v.obj->tipo == O_LISTA) {
+        Lista *l = (Lista *)args[0].v.obj;
+        Lista *nueva = nueva_lista((uint32_t)(l->largo * veces + 1));
+        for (int64_t k = 0; k < veces; k++)
+            for (uint32_t i = 0; i < l->largo; i++) lista_agregar(nueva, l->elementos[i]);
+        return de_lista(nueva);
+    }
+    return op_mult(args[0], de_entero(veces), 0);
+}
+
+static Valor nativa_indice_de(VM *v, int argc, Valor *args) {
+    (void)v;
+    Valor secuencia = args[0], valor = args[1];
+    if (secuencia.etiqueta == T_OBJ && secuencia.v.obj->tipo == O_LISTA) {
+        Lista *l = (Lista *)secuencia.v.obj;
+        for (uint32_t i = 0; i < l->largo; i++) if (iguales(l->elementos[i], valor)) return de_entero(i);
+        return de_entero(-1);
+    }
+    if (secuencia.etiqueta == T_OBJ && secuencia.v.obj->tipo == O_TEXTO) {
+        if (valor.etiqueta != T_OBJ || valor.v.obj->tipo != O_TEXTO) return de_entero(-1);
+        Texto *t = (Texto *)secuencia.v.obj, *b = (Texto *)valor.v.obj;
+        if (b->largo == 0) return de_entero(0);
+        for (uint32_t i = 0; i + b->largo <= t->largo; i++)
+            if (memcmp(t->datos + i, b->datos, b->largo) == 0) return de_entero(i);
+        return de_entero(-1);
+    }
+    error_en(0, "indice_de() espera lista o texto");
+    return de_nulo();
+}
+
+static Valor nativa_insertar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_LISTA)
+        error_en(0, "insertar() espera una lista");
+    Lista *l = (Lista *)args[0].v.obj;
+    if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
+        error_en(0, "insertar() espera un índice numérico");
+    int64_t i = a_entero(args[1]);
+    if (i < 0) i += l->largo;
+    if (i < 0) i = 0;
+    if (i > (int64_t)l->largo) i = l->largo;
+    lista_agregar(l, de_nulo());
+    for (uint32_t k = l->largo - 1; k > (uint32_t)i; k--) l->elementos[k] = l->elementos[k - 1];
+    l->elementos[i] = args[2];
+    return args[0];
+}
+
+static Valor nativa_quitar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_LISTA)
+        error_en(0, "quitar() espera una lista");
+    Lista *l = (Lista *)args[0].v.obj;
+    if (l->largo == 0) error_en(0, "quitar() de una lista vacía");
+    int64_t i = -1;
+    if (argc > 1) {
+        if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
+            error_en(0, "quitar() espera un índice numérico");
+        i = a_entero(args[1]);
+        if (i < 0) i += l->largo;
+        if (i < 0 || i >= (int64_t)l->largo)
+            error_en(0, "índice fuera de rango: %lld (lista de %u elementos)", (long long)i, l->largo);
+    } else {
+        i = (int64_t)l->largo - 1;
+    }
+    Valor quitado = l->elementos[i];
+    for (uint32_t k = (uint32_t)i; k + 1 < l->largo; k++) l->elementos[k] = l->elementos[k + 1];
+    l->largo -= 1;
+    return quitado;
+}
+
+static Valor nativa_eliminar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_LISTA)
+        error_en(0, "eliminar() espera una lista");
+    Lista *l = (Lista *)args[0].v.obj;
+    for (uint32_t i = 0; i < l->largo; i++) {
+        if (iguales(l->elementos[i], args[1])) {
+            for (uint32_t k = i; k + 1 < l->largo; k++) l->elementos[k] = l->elementos[k + 1];
+            l->largo -= 1;
+            return de_bool(1);
+        }
+    }
+    return de_bool(0);
+}
+
+static Valor nativa_esperar(VM *v, int argc, Valor *args) {
+    (void)v;
+    double segundos = argc ? exigir_numero(args[0], "esperar") : 0;
+    if (segundos > 0) {
+        struct timespec peticion;
+        peticion.tv_sec = (time_t)segundos;
+        peticion.tv_nsec = (long)((segundos - (double)peticion.tv_sec) * 1e9);
+        nanosleep(&peticion, NULL);
+    }
+    return de_nulo();
+}
+
+/* ------------------------------------------------------------ archivos
+ * Las mismas nativas que jp/archivos.py: leer, escribir, agregar, existe,
+ * tamaño y lista de una carpeta. */
+
+static Texto *ruta_de(Valor x) {
+    if (x.etiqueta != T_OBJ || x.v.obj->tipo != O_TEXTO || ((Texto *)x.v.obj)->largo == 0)
+        error_en(0, "se esperaba una ruta de archivo en texto");
+    return (Texto *)x.v.obj;
+}
+
+static Valor nativa_leer_archivo(VM *v, int argc, Valor *args) {
+    (void)v;
+    Texto *ruta = ruta_de(args[0]);
+    FILE *a = fopen(ruta->datos, "rb");
+    if (!a) {
+        if (errno == EISDIR) error_en(0, "es una carpeta, no un archivo: %s", ruta->datos);
+        error_en(0, "no existe el archivo: %s", ruta->datos);
+    }
+    size_t capacidad = 4096, usado = 0;
+    char *datos = memoria(capacidad);
+    for (;;) {
+        if (usado == capacidad) { capacidad *= 2; datos = realloc(datos, capacidad); }
+        size_t leidos = fread(datos + usado, 1, capacidad - usado, a);
+        usado += leidos;
+        if (leidos == 0) break;
+    }
+    fclose(a);
+    Texto *resultado = nuevo_texto_largo(datos, (uint32_t)usado);
+    free(datos);
+    return de_texto(resultado);
+}
+
+static Valor escribir_texto(Texto *ruta, Valor contenido, const char *modo) {
+    FILE *a = fopen(ruta->datos, modo);
+    if (!a) error_en(0, "no se pudo escribir %s: %s", ruta->datos, strerror(errno));
+    int bien = 1;
+    if (contenido.etiqueta == T_OBJ && contenido.v.obj->tipo == O_TEXTO) {
+        Texto *x = (Texto *)contenido.v.obj;
+        bien = fwrite(x->datos, 1, x->largo, a) == x->largo;
+    } else {
+        char *texto = memoria(65536);
+        texto_de(contenido, texto, 65536);
+        size_t largo = strlen(texto);
+        bien = fwrite(texto, 1, largo, a) == largo;
+        free(texto);
+    }
+    fclose(a);
+    if (!bien) error_en(0, "no se pudo escribir %s", ruta->datos);
+    return de_bool(1);
+}
+
+static Valor nativa_escribir_archivo(VM *v, int argc, Valor *args) {
+    (void)v;
+    return escribir_texto(ruta_de(args[0]), args[1], "wb");
+}
+
+static Valor nativa_agregar_archivo(VM *v, int argc, Valor *args) {
+    (void)v;
+    return escribir_texto(ruta_de(args[0]), args[1], "ab");
+}
+
+static Valor nativa_existe_archivo(VM *v, int argc, Valor *args) {
+    (void)v;
+    return de_bool(access(ruta_de(args[0])->datos, F_OK) == 0);
+}
+
+static Valor nativa_tamano_archivo(VM *v, int argc, Valor *args) {
+    (void)v;
+    struct stat info;
+    const char *ruta = ruta_de(args[0])->datos;
+    if (stat(ruta, &info) != 0) return de_entero(0);
+    return de_entero((int64_t)info.st_size);
+}
+
+static int comparar_entradas(const void *a, const void *b) {
+    return strcmp((*(struct dirent *const *)a)->d_name, (*(struct dirent *const *)b)->d_name);
+}
+
+static Valor nativa_lista_archivos(VM *v, int argc, Valor *args) {
+    (void)v;
+    const char *ruta = (argc > 0 && args[0].etiqueta != T_NULO) ? ruta_de(args[0])->datos : ".";
+    DIR *carpeta = opendir(ruta);
+    if (!carpeta) error_en(0, "no es una carpeta: %s", ruta);
+    size_t cantidad = 0, capacidad = 16;
+    struct dirent **entradas = memoria(sizeof(struct dirent *) * capacidad);
+    struct dirent *entrada;
+    while ((entrada = readdir(carpeta)) != NULL) {
+        if (strcmp(entrada->d_name, ".") == 0 || strcmp(entrada->d_name, "..") == 0) continue;
+        if (cantidad == capacidad) {
+            capacidad *= 2;
+            entradas = realloc(entradas, sizeof(struct dirent *) * capacidad);
+        }
+        entradas[cantidad] = memoria(sizeof(struct dirent));
+        memcpy(entradas[cantidad], entrada, sizeof(struct dirent));
+        cantidad += 1;
+    }
+    closedir(carpeta);
+    qsort(entradas, cantidad, sizeof(struct dirent *), comparar_entradas);
+    Lista *l = nueva_lista(cantidad ? (uint32_t)cantidad : 1);
+    for (size_t i = 0; i < cantidad; i++) {
+        lista_agregar(l, de_texto(nuevo_texto(entradas[i]->d_name)));
+        free(entradas[i]);
+    }
+    free(entradas);
+    return de_lista(l);
+}
+
+/* ---------------------------------------------------------------- JSON
+ * json_leer (texto -> valores de JP) y json_texto (valores de JP -> texto),
+ * como jp/red.py. Sin red: el JSON es análisis y composición de texto. */
+
+typedef struct {
+    Texto *texto;
+    uint32_t pos;
+} Json;
+
+static Valor json_valor(Json *j);
+
+static void json_saltar(Json *j) {
+    while (j->pos < j->texto->largo && isspace((unsigned char)j->texto->datos[j->pos])) j->pos++;
+}
+
+static void json_exigir(Json *j, char c) {
+    json_saltar(j);
+    if (j->pos >= j->texto->largo || j->texto->datos[j->pos] != c)
+        error_en(0, "el JSON no es válido (se esperaba '%c' en la posición %u)", c, j->pos);
+    j->pos++;
+}
+
+static Valor json_cadena(Json *j) {
+    json_exigir(j, '"');
+    size_t capacidad = 32, usado = 0;
+    char *salida = memoria(capacidad);
+    while (j->pos < j->texto->largo && j->texto->datos[j->pos] != '"') {
+        char c = j->texto->datos[j->pos++];
+        if (c == '\\') {
+            if (j->pos >= j->texto->largo) break;
+            char e = j->texto->datos[j->pos++];
+            if (e == 'n') c = '\n';
+            else if (e == 't') c = '\t';
+            else if (e == 'r') c = '\r';
+            else if (e == 'b') c = '\b';
+            else if (e == 'f') c = '\f';
+            else if (e == 'u') {
+                if (j->pos + 4 > j->texto->largo) error_en(0, "el JSON no es válido (\\u incompleto)");
+                char hex[5] = {j->texto->datos[j->pos], j->texto->datos[j->pos + 1],
+                               j->texto->datos[j->pos + 2], j->texto->datos[j->pos + 3], 0};
+                j->pos += 4;
+                unsigned punto = (unsigned)strtoul(hex, NULL, 16);
+                if (usado + 4 >= capacidad) { capacidad *= 2; salida = realloc(salida, capacidad); }
+                if (punto < 0x80) salida[usado++] = (char)punto;
+                else if (punto < 0x800) {
+                    salida[usado++] = (char)(0xC0 | (punto >> 6));
+                    salida[usado++] = (char)(0x80 | (punto & 0x3F));
+                } else {
+                    salida[usado++] = (char)(0xE0 | (punto >> 12));
+                    salida[usado++] = (char)(0x80 | ((punto >> 6) & 0x3F));
+                    salida[usado++] = (char)(0x80 | (punto & 0x3F));
+                }
+                continue;
+            }
+        }
+        if (usado + 4 >= capacidad) { capacidad *= 2; salida = realloc(salida, capacidad); }
+        salida[usado++] = c;
+    }
+    json_exigir(j, '"');
+    Texto *resultado = nuevo_texto_largo(salida, (uint32_t)usado);
+    free(salida);
+    return de_texto(resultado);
+}
+
+static Valor json_valor(Json *j) {
+    json_saltar(j);
+    if (j->pos >= j->texto->largo) error_en(0, "el JSON no es válido (terminó antes de tiempo)");
+    char c = j->texto->datos[j->pos];
+    if (c == '{') {
+        j->pos++;
+        Dicto *d = nuevo_dicto();
+        json_saltar(j);
+        if (j->pos < j->texto->largo && j->texto->datos[j->pos] == '}') { j->pos++; return de_objeto((Obj *)d); }
+        for (;;) {
+            Valor clave = json_cadena(j);
+            json_exigir(j, ':');
+            dicto_poner(d, (Texto *)clave.v.obj, json_valor(j));
+            json_saltar(j);
+            if (j->pos < j->texto->largo && j->texto->datos[j->pos] == ',') { j->pos++; continue; }
+            json_exigir(j, '}');
+            return de_objeto((Obj *)d);
+        }
+    }
+    if (c == '[') {
+        j->pos++;
+        Lista *l = nueva_lista(8);
+        json_saltar(j);
+        if (j->pos < j->texto->largo && j->texto->datos[j->pos] == ']') { j->pos++; return de_lista(l); }
+        for (;;) {
+            lista_agregar(l, json_valor(j));
+            json_saltar(j);
+            if (j->pos < j->texto->largo && j->texto->datos[j->pos] == ',') { j->pos++; continue; }
+            json_exigir(j, ']');
+            return de_lista(l);
+        }
+    }
+    if (c == '"') return json_cadena(j);
+    if (j->texto->largo - j->pos >= 4 && memcmp(j->texto->datos + j->pos, "true", 4) == 0) { j->pos += 4; return de_bool(1); }
+    if (j->texto->largo - j->pos >= 5 && memcmp(j->texto->datos + j->pos, "false", 5) == 0) { j->pos += 5; return de_bool(0); }
+    if (j->texto->largo - j->pos >= 4 && memcmp(j->texto->datos + j->pos, "null", 4) == 0) { j->pos += 4; return de_nulo(); }
+    if (strchr("+-0123456789", c)) {
+        const char *inicio = j->texto->datos + j->pos;
+        char *fin = NULL;
+        long long entero = strtoll(inicio, &fin, 10);
+        if (fin && (*fin == '.' || *fin == 'e' || *fin == 'E')) {
+            double decimal = strtod(inicio, &fin);
+            j->pos += (uint32_t)(fin - inicio);
+            return de_decimal(decimal);
+        }
+        if (fin == inicio) error_en(0, "el JSON no es válido (número mal formado)");
+        j->pos += (uint32_t)(fin - inicio);
+        return de_entero((int64_t)entero);
+    }
+    error_en(0, "el JSON no es válido (no entiendo '%c' en la posición %u)", c, j->pos);
+    return de_nulo();
+}
+
+static Valor nativa_json_leer(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
+        error_en(0, "json_leer() espera una cadena de texto");
+    Json j = {(Texto *)args[0].v.obj, 0};
+    Valor resultado = json_valor(&j);
+    json_saltar(&j);
+    if (j.pos != j.texto->largo) error_en(0, "el JSON no es válido (sobra texto al final)");
+    return resultado;
+}
+
+/* --- json_texto: serializa con la misma forma que json.dumps --- */
+
+typedef struct {
+    char *datos;
+    size_t usado;
+    size_t capacidad;
+} Buffer;
+
+static void buffer_agregar(Buffer *b, const char *texto) {
+    size_t largo = strlen(texto);
+    if (b->usado + largo + 1 > b->capacidad) {
+        while (b->capacidad < b->usado + largo + 1) b->capacidad *= 2;
+        b->datos = realloc(b->datos, b->capacidad);
+    }
+    memcpy(b->datos + b->usado, texto, largo);
+    b->usado += largo;
+    b->datos[b->usado] = '\0';
+}
+
+static void json_escribir_cadena(Buffer *b, Texto *t) {
+    buffer_agregar(b, "\"");
+    char trozo[16];
+    for (uint32_t i = 0; i < t->largo; i++) {
+        unsigned char c = (unsigned char)t->datos[i];
+        if (c == '"') buffer_agregar(b, "\\\"");
+        else if (c == '\\') buffer_agregar(b, "\\\\");
+        else if (c == '\n') buffer_agregar(b, "\\n");
+        else if (c == '\r') buffer_agregar(b, "\\r");
+        else if (c == '\t') buffer_agregar(b, "\\t");
+        else if (c < 0x20) { snprintf(trozo, sizeof(trozo), "\\u%04x", c); buffer_agregar(b, trozo); }
+        else { trozo[0] = (char)c; trozo[1] = '\0'; buffer_agregar(b, trozo); }
+    }
+    buffer_agregar(b, "\"");
+}
+
+static void json_escribir_numero(Buffer *b, Valor v) {
+    char numero[64];
+    if (v.etiqueta == T_INT) {
+        snprintf(numero, sizeof(numero), "%lld", (long long)v.v.entero);
+    } else {
+        double d = v.v.decimal;
+        if (d == floor(d) && fabs(d) < 1e15) {
+            snprintf(numero, sizeof(numero), "%.0f", d);
+        } else {
+            for (int precision = 15; precision <= 17; precision++) {
+                snprintf(numero, sizeof(numero), "%.*g", precision, d);
+                if (strtod(numero, NULL) == d) break;
+            }
+            /* Python escribe los exponentes como 'e+20' / 'e-07' */
+            for (char *p = numero; *p; p++) {
+                if (*p != 'e' && *p != 'E') continue;
+                char *signo = p + 1;
+                if (*signo != '+' && *signo != '-') {
+                    memmove(signo + 1, signo, strlen(signo) + 1);
+                    *signo = '+';
+                }
+                if (signo[1] != '-' && signo[1] != '\0' && signo[2] == '\0') {
+                    memmove(signo + 2, signo + 1, 2);
+                    signo[1] = '0';
+                }
+                break;
+            }
+        }
+    }
+    buffer_agregar(b, numero);
+}
+
+static void json_escribir_valor(Buffer *b, Valor v) {
+    if (v.etiqueta == T_NULO) { buffer_agregar(b, "null"); return; }
+    if (v.etiqueta == T_BOOL) { buffer_agregar(b, v.v.entero ? "true" : "false"); return; }
+    if (v.etiqueta == T_INT || v.etiqueta == T_DBL) { json_escribir_numero(b, v); return; }
+    if (v.etiqueta != T_OBJ) { buffer_agregar(b, "null"); return; }
+    switch (v.v.obj->tipo) {
+        case O_TEXTO:
+            json_escribir_cadena(b, (Texto *)v.v.obj);
+            return;
+        case O_LISTA: {
+            Lista *l = (Lista *)v.v.obj;
+            buffer_agregar(b, "[");
+            for (uint32_t i = 0; i < l->largo; i++) {
+                if (i) buffer_agregar(b, ", ");
+                json_escribir_valor(b, l->elementos[i]);
+            }
+            buffer_agregar(b, "]");
+            return;
+        }
+        case O_DICTO: {
+            Dicto *d = (Dicto *)v.v.obj;
+            buffer_agregar(b, "{");
+            for (uint32_t i = 0; i < d->largo; i++) {
+                if (i) buffer_agregar(b, ", ");
+                json_escribir_cadena(b, d->entradas[i].clave);
+                buffer_agregar(b, ": ");
+                json_escribir_valor(b, d->entradas[i].valor);
+            }
+            buffer_agregar(b, "}");
+            return;
+        }
+        default: {
+            char texto[256];
+            texto_de(v, texto, sizeof(texto));
+            error_en(0, "json_texto() no sabe serializar '%s'", texto);
+            return;
+        }
+    }
+}
+
+static Valor nativa_json_texto(VM *v, int argc, Valor *args) {
+    (void)v;
+    Buffer b;
+    b.datos = memoria(64);
+    b.usado = 0;
+    b.capacidad = 64;
+    b.datos[0] = '\0';
+    json_escribir_valor(&b, args[0]);
+    Texto *resultado = nuevo_texto_largo(b.datos, (uint32_t)b.usado);
+    free(b.datos);
+    return de_texto(resultado);
+}
+
 static Valor nativa_rango(VM *v, int argc, Valor *args) {
     (void)v;
     int64_t inicio, fin, paso = 1;
@@ -1039,7 +1930,8 @@ static Valor nativa_leer(VM *v, int argc, Valor *args) {
         fflush(stdout);
     }
     char linea[4096];
-    if (!fgets(linea, sizeof(linea), stdin)) return de_texto(nuevo_texto(""));
+    if (!fgets(linea, sizeof(linea), stdin))
+        error_en(0, "leer() no recibió entrada (fin de archivo)");
     size_t largo = strlen(linea);
     while (largo && (linea[largo - 1] == '\n' || linea[largo - 1] == '\r')) linea[--largo] = '\0';
     return de_texto(nuevo_texto_largo(linea, (uint32_t)largo));
@@ -1069,6 +1961,11 @@ static void instalar_nativa(const char *nombre, int8_t aridad, NativaPtr funcion
     n->nombre = nombre;
     n->aridad = aridad;
     n->funcion = funcion;
+    if (n_nativas_registradas < NATIVAS_MAX) {
+        nativas_por_nombre[n_nativas_registradas] = n;
+        nombres_nativas[n_nativas_registradas] = nombre;
+        n_nativas_registradas += 1;
+    }
     definir_global(nombre, de_objeto((Obj *)n));
 }
 
@@ -1207,18 +2104,337 @@ static void imprimir_linea_fuente(uint32_t numero) {
     if (actual != numero) return;
     uint32_t fin = inicio;
     while (fin < vm->largo_fuente && vm->fuente[fin] != '\n') fin++;
-    /* cuenta la columna del primer carácter no blanco */
-    uint32_t columna = 0;
-    while (inicio + columna < fin && (vm->fuente[inicio + columna] == ' ' || vm->fuente[inicio + columna] == '\t'))
-        columna++;
-    printf("    --> línea %u, columna %u\n", numero, columna + 1);
+    /* el oráculo (jp/vm.py) lanza sus errores de ejecución sin columna:
+       siempre imprime "columna 0" y el puntero en la primera columna. */
+    if (fin > inicio && vm->fuente[fin - 1] == '\r') fin--;
+    printf("    --> línea %u, columna 0\n", numero);
     printf(" %4u | %.*s\n", numero, (int)(fin - inicio), vm->fuente + inicio);
-    printf("      | %*s^\n", (int)columna, "");
+    printf("      | ^\n");
 }
+
+/* ------------------------------------------- orden superior
+ * mapear, filtrar, reducir, para_cada y ordenar: las mismas de jp/red.py y
+ * jp/interprete.py, pero llamando a funciones de JP desde C.
+ *
+ * Para llamar a un valor hay que reentrar al bucle con un marco nuevo; el
+ * bucle vuelve cuando ese marco se cierra (vm->piso_marco). Todo lo que tiene
+ * que sobrevivir a una llamada (una lista a medio construir, un acumulador) se
+ * deja en la pila del VM, que es raíz del recolector. */
+
+static void bucle(uint32_t pc_inicio);   /* adelante: lo reentran las nativas */
+static Valor llamar_valor(Valor callee, int argc, Valor *args);
+static int valor_menor(Valor a, Valor b);
+
+/* Copia de la secuencia (como _secuencia() en Python): lista, texto,
+ * diccionario (sus claves) o número (1..n). La copia es inalcanzable desde JP,
+ * así que el programa no puede cambiarla mientras se itera. */
+static Lista *secuencia_para(Valor v, const char *nombre) {
+    if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_LISTA) {
+        Lista *original = (Lista *)v.v.obj;
+        Lista *copia = nueva_lista(original->largo);
+        for (uint32_t i = 0; i < original->largo; i++) lista_agregar(copia, original->elementos[i]);
+        return copia;
+    }
+    if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_TEXTO) {
+        Texto *texto = (Texto *)v.v.obj;
+        Lista *copia = nueva_lista(8);
+        uint32_t i = 0;
+        while (i < texto->largo) {
+            uint32_t inicio = i;
+            i += 1;
+            while (i < texto->largo && ((unsigned char)texto->datos[i] & 0xC0) == 0x80) i += 1;
+            lista_agregar(copia, de_texto(nuevo_texto_largo(texto->datos + inicio, i - inicio)));
+        }
+        return copia;
+    }
+    if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_DICTO) {
+        Dicto *d = (Dicto *)v.v.obj;
+        Lista *copia = nueva_lista(d->largo);
+        for (uint32_t i = 0; i < d->largo; i++) lista_agregar(copia, de_texto(d->entradas[i].clave));
+        return copia;
+    }
+    if (v.etiqueta == T_INT || v.etiqueta == T_DBL) {
+        int64_t hasta = v.etiqueta == T_INT ? v.v.entero : (int64_t)v.v.decimal;
+        Lista *copia = nueva_lista(8);
+        for (int64_t i = 1; i <= hasta; i++) lista_agregar(copia, de_entero(i));
+        return copia;
+    }
+    char texto[256];
+    texto_de(v, texto, sizeof(texto));
+    error_en(0, "%s() espera lista, texto, diccionario o número, no '%s'", nombre, texto);
+    return NULL;
+}
+
+static const char *tipo_python(Valor v) {
+    switch (v.etiqueta) {
+        case T_NULO: return "NoneType";
+        case T_BOOL: return "bool";
+        case T_INT: return "int";
+        case T_DBL: return "float";
+        default: break;
+    }
+    switch (v.v.obj->tipo) {
+        case O_TEXTO: return "str";
+        case O_LISTA: return "list";
+        case O_DICTO: return "dict";
+        case O_NATIVA: return "FuncionNativa";
+        default: return "Cierre";
+    }
+}
+
+/* a < b con las reglas de Python (y su mismo mensaje si no se puede comparar) */
+static int valor_menor(Valor a, Valor b) {
+    int a_num = a.etiqueta == T_INT || a.etiqueta == T_DBL;
+    int b_num = b.etiqueta == T_INT || b.etiqueta == T_DBL;
+    if (a_num && b_num) {
+        if (a.etiqueta == T_INT && b.etiqueta == T_INT) return a.v.entero < b.v.entero;
+        double x = a.etiqueta == T_INT ? (double)a.v.entero : a.v.decimal;
+        double y = b.etiqueta == T_INT ? (double)b.v.entero : b.v.decimal;
+        return x < y;
+    }
+    int a_txt = a.etiqueta == T_OBJ && a.v.obj->tipo == O_TEXTO;
+    int b_txt = b.etiqueta == T_OBJ && b.v.obj->tipo == O_TEXTO;
+    if (a_txt && b_txt) {
+        Texto *ta = (Texto *)a.v.obj, *tb = (Texto *)b.v.obj;
+        uint32_t minimo = ta->largo < tb->largo ? ta->largo : tb->largo;
+        int comparacion = memcmp(ta->datos, tb->datos, minimo);
+        if (comparacion != 0) return comparacion < 0;
+        return ta->largo < tb->largo;
+    }
+    int a_lista = a.etiqueta == T_OBJ && a.v.obj->tipo == O_LISTA;
+    int b_lista = b.etiqueta == T_OBJ && b.v.obj->tipo == O_LISTA;
+    if (a_lista && b_lista) {
+        Lista *la = (Lista *)a.v.obj, *lb = (Lista *)b.v.obj;
+        uint32_t minimo = la->largo < lb->largo ? la->largo : lb->largo;
+        for (uint32_t i = 0; i < minimo; i++) {
+            if (valor_menor(la->elementos[i], lb->elementos[i])) return 1;
+            if (valor_menor(lb->elementos[i], la->elementos[i])) return 0;
+        }
+        return la->largo < lb->largo;
+    }
+    error_en(0, "ordenar() no puede comparar esos valores: '<' not supported between "
+                "instances of '%s' and '%s'", tipo_python(a), tipo_python(b));
+    return 0;
+}
+
+/* Llamar a un valor de JP (función, cierre, ligada o nativa) desde una nativa. */
+static Valor llamar_valor(Valor callee, int argc, Valor *args) {
+    if (callee.etiqueta == T_OBJ && callee.v.obj->tipo == O_LIGADA) {
+        Ligada *lig = (Ligada *)callee.v.obj;
+        Nativa *nativa = nativa_por_nombre(lig->nombre);
+        if (!nativa)
+            error_en(0, "no existe el método '%.*s'",
+                     (int)lig->nombre->largo, lig->nombre->datos);
+        Valor *guardado = vm->sp;
+        *vm->sp++ = callee;                              /* el callee va primero */
+        *vm->sp++ = lig->receptor;                       /* y el receptor, de primer argumento */
+        for (int i = 0; i < argc; i++) *vm->sp++ = args[i];
+        int total = argc + 1;
+        if (nativa->aridad >= 0 && nativa->aridad != (int8_t)total)
+            error_en(0, "%s() espera %d argumento(s), recibió %d",
+                     nativa->nombre, nativa->aridad, total);
+        Valor resultado = nativa->funcion(vm, total, vm->sp - total);
+        vm->sp = guardado;
+        return resultado;
+    }
+    if (callee.etiqueta == T_OBJ && callee.v.obj->tipo == O_NATIVA) {
+        Nativa *nativa = (Nativa *)callee.v.obj;
+        if (nativa->aridad >= 0 && nativa->aridad != (int8_t)argc)
+            error_en(0, "%s() espera %d argumento(s), recibió %d",
+                     nativa->nombre, nativa->aridad, argc);
+        Valor *guardado = vm->sp;
+        *vm->sp++ = callee;
+        for (int i = 0; i < argc; i++) *vm->sp++ = args[i];
+        Valor resultado = nativa->funcion(vm, argc, vm->sp - argc);
+        vm->sp = guardado;
+        return resultado;
+    }
+    if (callee.etiqueta != T_OBJ || callee.v.obj->tipo != O_FUNCION) {
+        char texto[512];
+        texto_de(callee, texto, sizeof(texto));
+        error_en(0, "este valor no es una función: '%s'", texto);
+    }
+    Cierre *cierre = (Cierre *)callee.v.obj;
+    Funcion *f = cierre->funcion;
+    if (f->aridad != (uint32_t)argc)
+        error_en(0, "la función '%s' espera %u argumento(s), recibió %d",
+                 f->nombre->datos, f->aridad, argc);
+    if (vm->marco - vm->marcos >= MARCOS_MAX - 1)
+        error_en(0, "desbordamiento de pila (¿recursión infinita?)");
+    Valor *guardado = vm->sp;
+    *vm->sp++ = callee;
+    for (int i = 0; i < argc; i++) *vm->sp++ = args[i];
+    Valor *nueva_base = vm->sp - argc - 1;
+    for (uint32_t i = (uint32_t)argc; i < f->n_slots; i++) *vm->sp++ = de_nulo();
+    Marco *piso_anterior = vm->piso_marco;
+    vm->piso_marco = vm->marco;
+    vm->marco += 1;
+    vm->marco->funcion = f;
+    vm->marco->base = nueva_base + 1;
+    vm->marco->ip = f->codigo;
+    vm->marco->upvalues = cierre->upvalues;
+    vm->marco->n_upvalues = cierre->n_upvalues;
+    vm->marco->n_manejadores = vm->n_manejadores;
+
+    uint32_t nivel = vm->n_niveles;
+    if (nivel >= 256) error_en(0, "demasiadas llamadas anidadas desde nativas");
+    /* el marco que llama es el suelo de este nivel: un 'intenta' de más arriba
+     * no se puede reanudar aquí (su pila de C ya no existe) */
+    vm->niveles[nivel].piso = vm->marco - 1;
+    vm->n_niveles = nivel + 1;
+    vm->pc_inicio = 0;
+    for (;;) {
+        if (setjmp(vm->niveles[nivel].salto) != 0) {
+            vm->n_niveles = nivel;
+            if (vm->n_manejadores == 0) {
+                /* nada que atrapar aquí: fuera */
+                if (vm->n_niveles > 0) longjmp(vm->niveles[vm->n_niveles - 1].salto, 1);
+                longjmp(vm->salto_error, 1);
+            }
+            Maneja *m = &vm->manejadores[vm->n_manejadores - 1];
+            if (m->marco <= vm->niveles[nivel].piso) {
+                /* el 'intenta' es de más arriba: que lo atrape un nivel de fuera */
+                if (vm->n_niveles > 0) longjmp(vm->niveles[vm->n_niveles - 1].salto, 1);
+                longjmp(vm->salto_error, 1);
+            }
+            vm->n_manejadores -= 1;
+            vm->marco = m->marco;
+            vm->sp = m->sp;
+            vm->pc_inicio = m->pc;
+            vm->piso_marco = vm->niveles[nivel].piso;
+            vm->n_niveles = nivel + 1;
+            continue;
+        }
+        bucle(vm->pc_inicio);
+        break;
+    }
+    vm->n_niveles = nivel;
+    vm->piso_marco = piso_anterior;
+    Valor resultado = vm->ultimo_valor;
+    vm->sp = guardado;
+    return resultado;
+}
+
+/* raiz[0] = secuencia copiada · raiz[1] = resultado · raiz[2] = temporal */
+#define RAICES_ORDEN()                                              \
+    Valor *raiz = vm->sp;                                           \
+    raiz[0] = de_nulo(); raiz[1] = de_nulo(); raiz[2] = de_nulo();  \
+    vm->sp += 3
+
+static Valor nativa_mapear(VM *v, int argc, Valor *args) {
+    (void)v;
+    RAICES_ORDEN();
+    raiz[0] = de_lista(secuencia_para(args[0], "mapear"));
+    Lista *original = (Lista *)raiz[0].v.obj;
+    raiz[1] = de_lista(nueva_lista(original->largo));
+    for (uint32_t i = 0; i < original->largo; i++) {
+        raiz[2] = original->elementos[i];
+        raiz[2] = llamar_valor(args[1], 1, &raiz[2]);
+        lista_agregar((Lista *)raiz[1].v.obj, raiz[2]);
+    }
+    Valor salida = raiz[1];
+    vm->sp = raiz;
+    return salida;
+}
+
+static Valor nativa_filtrar(VM *v, int argc, Valor *args) {
+    (void)v;
+    RAICES_ORDEN();
+    raiz[0] = de_lista(secuencia_para(args[0], "filtrar"));
+    Lista *original = (Lista *)raiz[0].v.obj;
+    raiz[1] = de_lista(nueva_lista(4));
+    for (uint32_t i = 0; i < original->largo; i++) {
+        raiz[2] = original->elementos[i];
+        Valor prueba = llamar_valor(args[1], 1, &raiz[2]);
+        if (es_verdad(prueba)) lista_agregar((Lista *)raiz[1].v.obj, raiz[2]);
+    }
+    Valor salida = raiz[1];
+    vm->sp = raiz;
+    return salida;
+}
+
+static Valor nativa_para_cada(VM *v, int argc, Valor *args) {
+    (void)v;
+    RAICES_ORDEN();
+    raiz[0] = de_lista(secuencia_para(args[0], "para_cada"));
+    Lista *original = (Lista *)raiz[0].v.obj;
+    for (uint32_t i = 0; i < original->largo; i++) {
+        raiz[2] = original->elementos[i];
+        llamar_valor(args[1], 1, &raiz[2]);
+    }
+    vm->sp = raiz;
+    return de_nulo();
+}
+
+static Valor nativa_reducir(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 2 && argc != 3) error_en(0, "reducir() espera 2 o 3 argumentos");
+    RAICES_ORDEN();
+    raiz[0] = de_lista(secuencia_para(args[0], "reducir"));
+    Lista *original = (Lista *)raiz[0].v.obj;
+    uint32_t inicio = 1;
+    if (argc == 3) { raiz[1] = args[2]; inicio = 0; }
+    else if (original->largo > 0) raiz[1] = original->elementos[0];
+    else {
+        vm->sp = raiz;
+        error_en(0, "reducir() de una lista vacía necesita un valor inicial");
+    }
+    for (uint32_t i = inicio; i < original->largo; i++) {
+        Valor argumentos[2];
+        argumentos[0] = raiz[1];
+        argumentos[1] = original->elementos[i];
+        raiz[1] = llamar_valor(args[1], 2, argumentos);
+    }
+    Valor salida = raiz[1];
+    vm->sp = raiz;
+    return salida;
+}
+
+/* ordenar() estable: inserción (como el binary insertion sort de CPython en
+ * listas cortas). Se comparan claves y se mueven elementos y claves a la vez. */
+static void ordenar_estable(Lista *elementos, Lista *claves) {
+    for (uint32_t i = 1; i < elementos->largo; i++) {
+        Valor clave = claves->elementos[i], elemento = elementos->elementos[i];
+        uint32_t j = i;
+        while (j > 0 && valor_menor(clave, claves->elementos[j - 1])) {
+            claves->elementos[j] = claves->elementos[j - 1];
+            elementos->elementos[j] = elementos->elementos[j - 1];
+            j -= 1;
+        }
+        claves->elementos[j] = clave;
+        elementos->elementos[j] = elemento;
+    }
+}
+
+static Valor nativa_ordenar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1 && argc != 2) error_en(0, "ordenar() espera 1 o 2 argumentos");
+    RAICES_ORDEN();
+    raiz[0] = de_lista(secuencia_para(args[0], "ordenar"));
+    Lista *original = (Lista *)raiz[0].v.obj;
+    raiz[1] = de_lista(nueva_lista(original->largo));
+    for (uint32_t i = 0; i < original->largo; i++)
+        lista_agregar((Lista *)raiz[1].v.obj, original->elementos[i]);
+    Lista *claves = nueva_lista(original->largo);
+    raiz[2] = de_lista(claves);
+    if (argc == 2) {
+        for (uint32_t i = 0; i < original->largo; i++) {
+            Valor argumento = original->elementos[i];
+            lista_agregar(claves, llamar_valor(args[1], 1, &argumento));
+        }
+    } else {
+        for (uint32_t i = 0; i < original->largo; i++) lista_agregar(claves, original->elementos[i]);
+    }
+    ordenar_estable((Lista *)raiz[1].v.obj, claves);
+    Valor salida = raiz[1];
+    vm->sp = raiz;
+    return salida;
+}
+
 
 /* -------------------------------------------------------- despachador */
 
-static void ejecutar(Funcion *principal) {
+static void bucle(uint32_t pc_inicio) {
     static const void *etiquetas[] = {
         &&L_NOP, &&L_CONST_I, &&L_CONST_D, &&L_CONST_S, &&L_NULO, &&L_VERDADERO,
         &&L_FALSO, &&L_GET_LOCAL, &&L_SET_LOCAL, &&L_GET_CELDA, &&L_SET_CELDA,
@@ -1229,21 +2445,8 @@ static void ejecutar(Funcion *principal) {
         &&L_SALTO_VERDAD_MANTENER, &&L_IMPRIMIR, &&L_LLAMAR, &&L_RETORNAR,
         &&L_RETORNAR_NULO, &&L_LISTA, &&L_RANGO, &&L_INDICE, &&L_INDICE_ASIG,
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
-        &&L_EXPR_SENT, &&L_FIN,
+        &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
     };
-
-    /* marco del programa principal */
-    Valor *base_principal = vm->sp;
-    for (uint32_t i = 0; i < principal->n_slots; i++) *vm->sp++ = de_nulo();
-    Marco *marco_principal = vm->marco + 1;
-    marco_principal->funcion = principal;
-    marco_principal->base = base_principal;
-    marco_principal->ip = principal->codigo;
-    marco_principal->upvalues = NULL;
-    marco_principal->n_upvalues = 0;
-
-    /* marca de agua para el recolector: el marco del programa es el actual */
-    vm->marco = marco_principal;
 
     #define PUSH(v) (*vm->sp++ = (v))
     #define POP() (*(--vm->sp))
@@ -1256,7 +2459,7 @@ static void ejecutar(Funcion *principal) {
             (uint64_t)ip[-2] | ((uint64_t)ip[-1] << 32)}).d)
 
     Marco *marco = vm->marco;
-    register uint32_t *ip = marco->ip;
+    register uint32_t *ip = marco->funcion->codigo + pc_inicio;
     register Valor *base = marco->base;
 
     #define SIGUIENTE() goto *etiquetas[(uint32_t)*ip++]
@@ -1486,6 +2689,25 @@ L_IMPRIMIR: {
 L_LLAMAR: {
     uint32_t argc = LEER_U32();
     Valor callee = vm->sp[-1 - (int32_t)argc];
+    if (callee.etiqueta == T_OBJ && callee.v.obj->tipo == O_LIGADA) {
+        /* "hola".mayusculas() -> mayusculas("hola"): el receptor entra como
+         * primer argumento y el callee pasa a ser la nativa. */
+        Ligada *lig = (Ligada *)callee.v.obj;
+        Nativa *nativa = nativa_por_nombre(lig->nombre);
+        if (!nativa) {
+            ACTUALIZAR_IP();
+            error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                     "no existe el método '%.*s'",
+                     (int)lig->nombre->largo, lig->nombre->datos);
+        }
+        /* se corre un hueco hacia arriba para meter el receptor como args[0] */
+        memmove(vm->sp - argc + 1, vm->sp - argc, sizeof(Valor) * argc);
+        vm->sp[-(int32_t)argc] = lig->receptor;
+        vm->sp += 1;
+        vm->sp[-2 - (int32_t)argc] = de_objeto((Obj *)nativa);
+        argc += 1;
+        callee = de_objeto((Obj *)nativa);
+    }
     if (callee.etiqueta != T_OBJ)
         error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
                  "esto no es una función");
@@ -1528,6 +2750,7 @@ L_LLAMAR: {
     vm->marco->ip = f->codigo;
     vm->marco->upvalues = cierre->upvalues;
     vm->marco->n_upvalues = cierre->n_upvalues;
+    vm->marco->n_manejadores = vm->n_manejadores;
     RECARGAR();
     SIGUIENTE();
 }
@@ -1535,10 +2758,11 @@ L_LLAMAR: {
 L_RETORNAR: {
     Valor resultado = POP();
     vm->marco->ip = ip;
+    vm->n_manejadores = vm->marco->n_manejadores;  /* se van sus 'intenta' */
     vm->sp = base;          /* descarta locales y temporales del marco */
     vm->marco -= 1;
-    if (vm->marco < vm->marcos) {
-        vm->ultimo_valor = resultado;  /* 'retorna' en el nivel superior termina en paz */
+    if (vm->marco == vm->piso_marco) {
+        vm->ultimo_valor = resultado;  /* se cierra el nivel: vuelve al que llamó */
         return;
     }
     vm->sp -= 1;            /* el callee estaba justo debajo de los locales */
@@ -1550,9 +2774,10 @@ L_RETORNAR: {
 }
 L_RETORNAR_NULO: {
     vm->marco->ip = ip;
+    vm->n_manejadores = vm->marco->n_manejadores;
     vm->sp = base;
     vm->marco -= 1;
-    if (vm->marco < vm->marcos) {
+    if (vm->marco == vm->piso_marco) {
         vm->ultimo_valor = de_nulo();
         return;
     }
@@ -1611,33 +2836,66 @@ L_RANGO: {
 
 L_INDICE: {
     Valor indice = POP(), objeto = POP();
+    int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_DICTO) {
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "la clave de un diccionario debe ser texto");
+        Dicto *d = (Dicto *)objeto.v.obj;
+        Texto *clave = (Texto *)indice.v.obj;
+        Valor *guardado = dicto_buscar(d, clave);
+        if (guardado) {
+            PUSH(*guardado);
+            SIGUIENTE();
+        }
+        Nativa *metodo = metodo_de_valor(objeto, clave);  /* la clave manda; el método es el respaldo */
+        if (metodo) {
+            PUSH(de_ligada(metodo, objeto));
+            SIGUIENTE();
+        }
+        char disponibles[512];
+        size_t usado = 0;
+        for (uint32_t i = 0; i < d->largo && usado < sizeof(disponibles) - 1; i++)
+            usado += (size_t)snprintf(disponibles + usado, sizeof(disponibles) - usado, "%s%.*s",
+                                      i ? ", " : "", (int)d->entradas[i].clave->largo,
+                                      d->entradas[i].clave->datos);
+        if (!usado) snprintf(disponibles, sizeof(disponibles), "ninguna");
+        error_en(linea, "no existe la clave '%.*s' (claves disponibles: %s)",
+                 (int)clave->largo, clave->datos, disponibles);
+    }
+    /* texto.longitud, lista.ordenar...: el nombre del método trae la nativa ligada */
+    if (objeto.etiqueta == T_OBJ && indice.etiqueta == T_OBJ && indice.v.obj->tipo == O_TEXTO &&
+        (objeto.v.obj->tipo == O_TEXTO || objeto.v.obj->tipo == O_LISTA)) {
+        Nativa *metodo = metodo_de_valor(objeto, (Texto *)indice.v.obj);
+        if (!metodo)
+            error_en(linea, "no existe el método '%.*s' para %s",
+                     (int)((Texto *)indice.v.obj)->largo, ((Texto *)indice.v.obj)->datos,
+                     nombre_tipo_objeto(objeto.v.obj->tipo));
+        PUSH(de_ligada(metodo, objeto));
+        SIGUIENTE();
+    }
     if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_LISTA) {
         Lista *l = (Lista *)objeto.v.obj;
-        int64_t i = indice_normalizado(indice, l->largo, "una lista", 
-                                      (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1));
+        int64_t i = indice_normalizado(indice, l->largo, "una lista", linea);
         if (i < 0 || i >= (int64_t)l->largo) {
             char texto[64];
             snprintf(texto, sizeof(texto), "%lld (lista de %u elementos)", (long long)i, l->largo);
-            error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1), "índice fuera de rango: %s", texto);
+            error_en(linea, "índice fuera de rango: %s", texto);
         }
         PUSH(l->elementos[i]);
         SIGUIENTE();
     }
     if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_TEXTO) {
         Texto *t = (Texto *)objeto.v.obj;
-        int64_t i = indice_normalizado(indice, t->largo, "una cadena",
-                                      (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1));
+        int64_t i = indice_normalizado(indice, t->largo, "una cadena", linea);
         if (i < 0 || i >= (int64_t)t->largo)
-            error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
-                     "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, t->largo);
+            error_en(linea, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, t->largo);
         PUSH(de_texto(nuevo_texto_largo(t->datos + i, 1)));
         SIGUIENTE();
     }
     {
         char texto[256];
         texto_de(objeto, texto, sizeof(texto));
-        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
-                 "no se puede indexar '%s'", texto);
+        error_en(linea, "no se puede indexar '%s'", texto);
     }
     SIGUIENTE();
 }
@@ -1656,8 +2914,16 @@ L_INDICE_ASIG: {
         PUSH(valor);
         SIGUIENTE();
     }
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_DICTO) {
+        int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "la clave de un diccionario debe ser texto");
+        dicto_poner((Dicto *)objeto.v.obj, (Texto *)indice.v.obj, valor);
+        PUSH(valor);
+        SIGUIENTE();
+    }
     error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
-             "solo se puede asignar por índice en listas (los diccionarios aún no están en el motor nativo)");
+             "solo se puede asignar por índice en listas y diccionarios");
     SIGUIENTE();
 }
 
@@ -1681,6 +2947,44 @@ L_CELDA: {
     SIGUIENTE();
 }
 
+L_MANEJAR: {
+    /* el compilador parcha este hueco con un salto relativo desde la palabra
+     * siguiente (parchar(): destino - (hueco + 1)) */
+    int32_t relativo = LEER_I32();
+    if (vm->n_manejadores >= 64) error_en(0, "demasiados 'intenta' anidados");
+    Maneja *m = &vm->manejadores[vm->n_manejadores++];
+    m->marco = vm->marco;
+    m->sp = vm->sp;
+    m->pc = (uint32_t)(ip - marco->funcion->codigo) + (uint32_t)relativo;
+    SIGUIENTE();
+}
+L_FIN_MANEJAR: {
+    if (vm->n_manejadores > 0) vm->n_manejadores -= 1;
+    SIGUIENTE();
+}
+L_ERROR_EN: {
+    uint32_t slot = LEER_U32();
+    base[slot] = de_texto(nuevo_texto(vm->error));
+    SIGUIENTE();
+}
+L_DICT: {
+    uint32_t n = LEER_U32();
+    Dicto *d = nuevo_dicto();
+    Valor *inicio = vm->sp - 2 * (int32_t)n;
+    for (uint32_t i = 0; i < n; i++) {
+        Valor clave = inicio[2 * i], valor = inicio[2 * i + 1];
+        if (clave.etiqueta != T_OBJ || clave.v.obj->tipo != O_TEXTO) {
+            ACTUALIZAR_IP();
+            error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                     "la clave de un diccionario debe ser texto");
+        }
+        dicto_poner(d, (Texto *)clave.v.obj, valor);
+    }
+    vm->sp -= 2 * n;
+    PUSH(de_objeto((Obj *)d));
+    quizas_recolectar();
+    SIGUIENTE();
+}
 L_ITER_INIT: {
     uint32_t slot = LEER_U32();
     Valor iterable = POP();
@@ -1691,6 +2995,10 @@ L_ITER_INIT: {
         Texto *t = (Texto *)iterable.v.obj;
         l = nueva_lista(t->largo ? t->largo : 1);
         for (uint32_t i = 0; i < t->largo; i++) lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, 1)));
+    } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_DICTO) {
+        Dicto *d = (Dicto *)iterable.v.obj;
+        l = nueva_lista(d->largo ? d->largo : 1);
+        for (uint32_t i = 0; i < d->largo; i++) lista_agregar(l, de_texto(d->entradas[i].clave));
     } else if (iterable.etiqueta == T_INT) {
         int64_t n = iterable.v.entero;
         l = nueva_lista(n > 0 ? (uint32_t)n : 1);
@@ -1742,6 +3050,51 @@ L_EXPR_SENT: {
 }
 L_FIN:
     return;
+}
+
+/* El 'intenta' vive aquí fuera del bucle: si algo falla en cualquier punto,
+ * longjmp vuelve a este setjmp, se restaura el marco y se reentra al bucle
+ * justo en el 'atrapa'. Así el bucle caliente no paga ningún setjmp. */
+static void ejecutar(Funcion *principal) {
+    /* marco del programa principal */
+    Valor *base_principal = vm->sp;
+    for (uint32_t i = 0; i < principal->n_slots; i++) *vm->sp++ = de_nulo();
+    Marco *marco_principal = vm->marco + 1;
+    marco_principal->funcion = principal;
+    marco_principal->base = base_principal;
+    marco_principal->ip = principal->codigo;
+    marco_principal->upvalues = NULL;
+    marco_principal->n_upvalues = 0;
+    marco_principal->n_manejadores = 0;
+
+    /* marca de agua para el recolector: el marco del programa es el actual */
+    vm->marco = marco_principal;
+    vm->pc_inicio = 0;
+    vm->piso_marco = vm->marcos - 1;
+    vm->n_niveles = 0;
+
+    uint32_t nivel = vm->n_niveles;
+    vm->niveles[nivel].piso = vm->marcos - 1;
+    vm->n_niveles = nivel + 1;
+
+    for (;;) {
+        if (setjmp(vm->niveles[nivel].salto) != 0) {
+            vm->n_niveles = nivel;
+            if (vm->n_manejadores == 0) return;   /* error sin 'intenta' */
+            Maneja *m = &vm->manejadores[vm->n_manejadores - 1];
+            if (m->marco <= vm->niveles[nivel].piso) return;  /* no puede ser */
+            vm->n_manejadores -= 1;
+            vm->marco = m->marco;
+            vm->sp = m->sp;
+            vm->pc_inicio = m->pc;
+            vm->piso_marco = vm->niveles[nivel].piso;
+            vm->n_niveles = nivel + 1;
+            continue;
+        }
+        bucle(vm->pc_inicio);
+        vm->n_niveles = nivel;
+        return;
+    }
 }
 
 /* --------------------------------------------------------- diagnóstico */
@@ -1829,6 +3182,36 @@ int main(int argc, char **argv) {
     instalar_nativa("unir", -1, nativa_unir);
     instalar_nativa("rango", -1, nativa_rango);
     instalar_nativa("leer", -1, nativa_leer);
+    instalar_nativa("claves", 1, nativa_claves);
+    instalar_nativa("valores", 1, nativa_valores);
+    instalar_nativa("elementos", 1, nativa_elementos);
+    instalar_nativa("tiene", 2, nativa_tiene);
+    instalar_nativa("separar", -1, nativa_separar);
+    instalar_nativa("reemplazar", 3, nativa_reemplazar);
+    instalar_nativa("subtexto", -1, nativa_subtexto);
+    instalar_nativa("letra", 2, nativa_letra);
+    instalar_nativa("empezar_con", 2, nativa_empezar_con);
+    instalar_nativa("terminar_con", 2, nativa_terminar_con);
+    instalar_nativa("buscar", 2, nativa_buscar);
+    instalar_nativa("repetir", 2, nativa_repetir);
+    instalar_nativa("indice_de", 2, nativa_indice_de);
+    instalar_nativa("insertar", 3, nativa_insertar);
+    instalar_nativa("quitar", -1, nativa_quitar);
+    instalar_nativa("eliminar", 2, nativa_eliminar);
+    instalar_nativa("esperar", -1, nativa_esperar);
+    instalar_nativa("leer_archivo", 1, nativa_leer_archivo);
+    instalar_nativa("escribir_archivo", 2, nativa_escribir_archivo);
+    instalar_nativa("agregar_archivo", 2, nativa_agregar_archivo);
+    instalar_nativa("existe_archivo", 1, nativa_existe_archivo);
+    instalar_nativa("tamano_archivo", 1, nativa_tamano_archivo);
+    instalar_nativa("lista_archivos", 1, nativa_lista_archivos);
+    instalar_nativa("json_leer", 1, nativa_json_leer);
+    instalar_nativa("json_texto", 1, nativa_json_texto);
+    instalar_nativa("mapear", 2, nativa_mapear);
+    instalar_nativa("filtrar", 2, nativa_filtrar);
+    instalar_nativa("reducir", -1, nativa_reducir);
+    instalar_nativa("para_cada", 2, nativa_para_cada);
+    instalar_nativa("ordenar", -1, nativa_ordenar);
 
     if (modo_info) {
         mostrar_info(vm->funciones);

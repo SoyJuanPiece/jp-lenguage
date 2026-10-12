@@ -20,6 +20,7 @@ El formato .jpb es little-endian y está documentado en el encabezado de
 
 from __future__ import annotations
 
+import os
 import struct
 
 from .arbol import (
@@ -108,6 +109,10 @@ OP_ITER_NEXT = 47                # u32 slot_iter, u32 slot_var, i32 rel_si_fin
 OP_ITER_NEXT_CELDA = 48          # igual pero slot_var = celda nueva
 OP_EXPR_SENT = 49                # pop y guarda como último valor (REPL)
 OP_FIN = 50
+OP_DICT = 51                     # u32 n: n pares clave/valor en la pila
+OP_MANEJAR = 52                  # u32 pc del bloque 'atrapa'
+OP_FIN_MANEJAR = 53
+OP_ERROR_EN = 54                 # u32 slot: guarda el mensaje del error capturado
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -128,10 +133,50 @@ NOMBRES_OP = {
     OP_INDICE: "INDICE", OP_INDICE_ASIG: "INDICE_ASIG", OP_CIERRE: "CIERRE",
     OP_CELDA: "CELDA", OP_ITER_INIT: "ITER_INIT", OP_ITER_NEXT: "ITER_NEXT",
     OP_ITER_NEXT_CELDA: "ITER_NEXT_CELDA", OP_EXPR_SENT: "EXPR_SENT", OP_FIN: "FIN",
+    OP_DICT: "DICT", OP_MANEJAR: "MANEJAR", OP_FIN_MANEJAR: "FIN_MANEJAR",
+    OP_ERROR_EN: "ERROR_EN",
 }
 
 MAGIA = b"JPB1"
 VERSION_FORMATO = 1
+
+
+# Métodos que el motor en C todavía no implementa (se rechazan al compilar para
+# que el CLI caiga al motor de Python con un aviso, en vez de fallar al ejecutar).
+# Ahora mismo no queda ninguno: las funciones de orden superior ya están en C.
+MÉTODOS_PENDIENTES: set[str] = set()
+
+
+def _nativas_del_motor_c() -> frozenset[str]:
+    """Nombres que el motor en C instala (`instalar_nativa(...)` en jpvm.c).
+
+    Se leen de la fuente del motor para no tener dos listas que se
+    desincronicen; si el archivo no está, se usa una copia congelada.
+    """
+    fuente = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "motor-c", "jpvm.c")
+    if os.path.exists(fuente):
+        import re
+
+        with open(fuente, encoding="utf-8") as archivo:
+            nombres = re.findall(r'instalar_nativa\("([a-z_]+)"', archivo.read())
+        if nombres:
+            return frozenset(nombres)
+    return frozenset({
+        "absoluto", "agregar", "agregar_archivo", "aleatorio", "azar", "buscar",
+        "claves", "contiene", "coseno", "elementos", "eliminar", "empezar_con",
+        "entero", "escribir_archivo", "esperar", "existe_archivo", "exp",
+        "imprime", "indice_de", "insertar", "invertir", "json_leer", "json_texto",
+        "leer", "leer_archivo", "letra", "lista_archivos", "log", "longitud",
+        "maximo", "mayusculas", "minimo", "minusculas", "muestra", "numero",
+        "pi", "piso", "potencia", "quitar", "raiz", "rango", "recortar",
+        "redondear", "reemplazar", "reloj", "repetir", "seno", "separar",
+        "subtexto", "sumar", "tamano_archivo", "techo", "terminar_con", "texto",
+        "tiene", "tipo", "unir", "valores",
+    })
+
+
+NATIVAS_EN_C = _nativas_del_motor_c()
 
 
 class NoSoportadoNativo(Exception):
@@ -398,6 +443,7 @@ class CompiladorNativo:
         self.funciones: list[_Funcion] = []
         self.globales: dict[str, int] = {}
         self.globales_orden: list[str] = []
+        self.declarados: set[str] = set()  # globales que el programa define
         self.pila: list[_Funcion] = []
         self.iteradores: list[tuple[int, list[int], int]] = []  # (inicio, saltos_romper, fin_esperado)
 
@@ -543,13 +589,54 @@ class CompiladorNativo:
             actual.salto_a(inicio, linea)
 
         elif tipo is NodoDiccionario:
-            raise NoSoportadoNativo("los diccionarios aún no están en el motor nativo", linea)
+            for clave, valor in nodo.pares:
+                self._expresion(clave)
+                self._expresion(valor)
+            actual.emitir(OP_DICT, len(nodo.pares), linea=linea)
 
         elif tipo is NodoElegir:
-            raise NoSoportadoNativo("'elegir' aún no está en el motor nativo", linea)
+            # el valor se guarda en un slot oculto: se evalúa una sola vez
+            self._expresion(nodo.expresion)
+            reservado = actual.reservar()
+            actual.emitir(OP_SET_LOCAL, reservado, linea=linea)
+            actual.emitir(OP_POP, linea=linea)
+            saltos_fin: list[int] = []
+            for valores, cuerpo in nodo.casos:
+                for indice_candidato, candidato in enumerate(valores):
+                    actual.emitir(OP_GET_LOCAL, reservado, linea=linea)
+                    self._expresion(candidato)
+                    actual.emitir(OP_IGUAL, linea=linea)
+                    hueco = actual.emitir_salto(OP_SALTO_FALSO, linea)
+                    if indice_candidato < len(valores) - 1:
+                        # el salto cae al siguiente candidato: no hay nada que parchar
+                        continue
+                    salto_cuerpo = hueco
+                self._bloque(cuerpo.sentencias, ambito_nuevo=True)
+                saltos_fin.append(actual.emitir_salto(OP_SALTO, linea))
+                # si ningún candidato coincidió, se salta el cuerpo
+                actual.parchar_aqui(salto_cuerpo)
+            if nodo.sino is not None:
+                self._bloque(nodo.sino.sentencias, ambito_nuevo=True)
+            for hueco in saltos_fin:
+                actual.parchar_aqui(hueco)
 
         elif tipo is NodoIntentar:
-            raise NoSoportadoNativo("'intenta/atrapa' aún no está en el motor nativo", linea)
+            manejador = actual.emitir(OP_MANEJAR, 0, linea=linea)
+            hueco = len(actual.palabras) - 1
+            self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
+            actual.emitir(OP_FIN_MANEJAR, linea=linea)
+            salto_fin = actual.emitir_salto(OP_SALTO, linea)
+            actual.parchar(hueco, len(actual.palabras))
+            self._abrir()
+            if nodo.nombre_error is not None:
+                slot = actual.declarar(nodo.nombre_error)
+                actual.emitir(OP_ERROR_EN, slot, linea=linea)
+                if actual.es_celda[slot]:
+                    actual.emitir(OP_CELDA, slot, linea=linea)
+            self._bloque(nodo.captura.sentencias)
+            self._cerrar()
+            actual.parchar_aqui(salto_fin)
+            del manejador
 
         else:
             raise NoSoportadoNativo(f"sentencia no soportada: {tipo.__name__}", linea)
@@ -562,6 +649,7 @@ class CompiladorNativo:
                 self._expresion(inicializador)
             else:
                 actual.emitir(OP_NULO, linea=linea)
+            self.declarados.add(nombre)
             actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
             return
@@ -581,6 +669,7 @@ class CompiladorNativo:
         linea = nodo.linea
         indice = self._compilar_funcion(nodo)
         if len(self.pila) == 1 and len(actual.scopes) == 1:
+            self.declarados.add(nodo.nombre)
             actual.emitir(OP_CIERRE, indice, linea=linea)
             actual.emitir(OP_DECL_GLOBAL, self._global(nodo.nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
@@ -593,8 +682,15 @@ class CompiladorNativo:
         actual.emitir(OP_POP, linea=linea)
 
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
-        funcion = _Funcion(nodo.nombre or "<anónima>", len(nodo.parametros),
-                           _capturadas_por_anidadas(nodo.cuerpo))
+        # los parámetros también pueden acabar en una closure: si una función
+        # anidada los usa, el parámetro tiene que vivir en una celda desde el
+        # primer instante (si no, la closure capturaría el valor crudo).
+        usados: set[str] = set()
+        for interno in _caminar(nodo.cuerpo):
+            if isinstance(interno, NodoFuncion):
+                _nombres_usados(interno.cuerpo, usados)
+        capturadas = _capturadas_por_anidadas(nodo.cuerpo) | (usados & set(nodo.parametros))
+        funcion = _Funcion(nodo.nombre or "<anónima>", len(nodo.parametros), capturadas)
         for parametro in nodo.parametros:
             funcion.declarar(parametro)
         self.funciones.append(funcion)
@@ -701,10 +797,14 @@ class CompiladorNativo:
                 raise NoSoportadoNativo(f"operador unario desconocido: {nodo.operador}", linea)
 
         elif tipo is NodoLlamada:
-            if isinstance(nodo.callee, NodoIndice):
-                raise NoSoportadoNativo(
-                    "las llamadas a métodos (valor.metodo()) aún no están en el motor nativo", linea
-                )
+            if isinstance(nodo.callee, NodoIndice) and MÉTODOS_PENDIENTES:
+                # Solo se rechaza lo que el motor en C todavía no sabe hacer: si no,
+                # sería un error en tiempo de ejecución en vez de una caída limpia.
+                indice = nodo.callee.indice
+                if isinstance(indice, NodoCadena) and indice.valor in MÉTODOS_PENDIENTES:
+                    raise NoSoportadoNativo(
+                        f"el método '{indice.valor}()' aún no está en el motor nativo", linea
+                    )
             self._expresion(nodo.callee)
             for argumento in nodo.argumentos:
                 self._expresion(argumento)
@@ -740,7 +840,10 @@ class CompiladorNativo:
             actual.emitir(OP_CIERRE, indice, linea=linea)
 
         elif tipo is NodoDiccionario:
-            raise NoSoportadoNativo("los diccionarios aún no están en el motor nativo", linea)
+            for clave, valor in nodo.pares:
+                self._expresion(clave)
+                self._expresion(valor)
+            actual.emitir(OP_DICT, len(nodo.pares), linea=linea)
 
         elif tipo is NodoInterpolacion:
             # "hola {nombre}!" es azúcar de suma: texto + valor + texto, y el
@@ -791,6 +894,17 @@ class CompiladorNativo:
     # -------------------------------------------------------- empaquetar
 
     def _empaquetar(self) -> bytes:
+        # Un nombre global que el programa no declara tiene que ser una nativa:
+        # si el motor en C no la trae, se rechaza aquí (y el CLI sigue con el
+        # motor de Python) en vez de fallar en tiempo de ejecución.
+        for nombre in self.globales_orden:
+            if nombre in self.declarados or nombre in NATIVAS_EN_C:
+                continue
+            raise NoSoportadoNativo(
+                f"la función nativa '{nombre}' aún no está en el motor nativo "
+                "(el motor de Python sí la tiene)"
+            )
+
         # tabla de cadenas global (nombres de globales + cadenas por función)
         cadenas: dict[str, int] = {}
 

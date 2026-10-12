@@ -15,17 +15,19 @@
 > los T-20/T-21 (optimizar la VM de Python) pasan a segundo plano, porque el
 > trabajo equivalente se hace ahora en el motor propio.
 
-### Lo que ya está hecho y medido (v1.4.0-alpha)
+### Lo que ya está hecho y medido (v1.5.0)
 
 | Pieza | Archivo | Estado |
 |---|---|---|
 | Compilador JP → bytecode `.jpb` (palabras u32, slots, celdas para closures, saltos relativos) | `jp/compilar_nativo.py` | ✅ |
 | VM en C11 sin dependencias: despacho con *computed goto*, enteros con caminos rápidos, GC mark-and-sweep, closures por celdas, upvalues, iteradores, errores con línea y fuente | `motor-c/jpvm.c` | ✅ |
-| Nativas en C: `muestra/imprime`, `longitud`, `entero`, `numero`, `texto`, `tipo`, `raiz`, `absoluto`, `piso`, `techo`, `redondear`, `log`, `exp`, `seno`, `coseno`, `potencia`, `minimo`, `maximo`, `sumar`, `pi`, `reloj`, `aleatorio`, `azar`, `mayusculas`, `minusculas`, `recortar`, `contiene`, `agregar`, `invertir`, `unir`, `rango`, `leer` | `motor-c/jpvm.c` | ✅ 32 |
+| Nativas en C: lenguaje (`longitud`, `entero`, `numero`, `texto`, `tipo`, `agregar`, `invertir`, `unir`, `rango`, `leer`), matemáticas (`raiz`, `absoluto`, `piso`, `techo`, `redondear`, `log`, `exp`, `seno`, `coseno`, `potencia`, `minimo`, `maximo`, `sumar`, `pi`, `reloj`, `aleatorio`, `azar`, `muestra/imprime`), texto (`mayusculas`, `minusculas`, `recortar`, `contiene`), **orden superior** (`mapear`, `filtrar`, `reducir`, `para_cada`, `ordenar`) y **archivos/JSON** (`existe_archivo`, `leer_archivo`, `escribir_archivo`, `tamano_archivo`, `lista_archivos`, `json_leer`, `json_texto`) | `motor-c/jpvm.c` | ✅ 63 |
 | CLI: `--c` (ejecuta), `--compilar` (`.jpb`), `--bytecode` (desensambla), `--binario` (ELF independiente) | `jp/cli.py` | ✅ |
 | **Ejecutables independientes**: el bytecode se enlaza con la VM y el resultado no necesita Python ni JP | `jp/cli.py` + símbolos débiles en `jpvm.c` | ✅ |
-| Arnés de paridad ejemplo por ejemplo (0 fallos) | `herramientas/paridad.py` | ✅ |
-| Tests de paridad integrados en la suite (250 en total) | `tests/test_motor_c.py` | ✅ |
+| Semántica completa: diccionarios, métodos de valor, `elegir/caso`, `intenta/atrapa` con **niveles de protección** (`jmp_buf` por llamada: un error dentro de un callback atrapado en un marco externo no corrompe la pila) | `motor-c/jpvm.c` | ✅ |
+| Arnés de paridad ejemplo por ejemplo (**20 idénticos · 2 no soportados · 0 fallos**) | `herramientas/paridad.py` | ✅ |
+| Tests de paridad integrados en la suite (252 en total) | `tests/test_motor_c.py` | ✅ |
+| CI: compila el motor en gcc y clang, corre la suite y la paridad, y publica `jpvm` + binarios de ejemplo como artefactos | `.github/workflows/motor-c.yml` | ✅ |
 
 **Números (esta máquina, Xeon 2.6 GHz, gcc 12 -O2):**
 
@@ -46,19 +48,22 @@ precisión arbitraria) — nunca hay números distintos en silencio.
 
 | # | Tarea | Criterio de aceptación | Esf. |
 |---|---|---|---|
-| N-1 | **Métodos de valor en C** (`"x".mayusculas()`, `lista.agregar(v)`) | los 14 ejemplos que hoy se rechazan por esto pasan a idénticos | L |
-| N-2 | **Diccionarios en C** (tabla hash con claves de texto + `claves/valores/elementos/tiene`) | `agenda.jp`, `api-json.jp`, `discord-webhook.jp` con paridad | L |
-| N-3 | **`intenta/atrapa` y `elegir` en C** | `seguro.jp`, `calculadora.jp` con paridad; el motor nunca aborta el proceso ante un error capturable | M |
-| N-4 | **Red y archivos nativos** (`leer_archivo`, `escribir_archivo`, `http_get/post`, `json_leer/texto`) | `bot-telegram.jp` y `api-json.jp` nativos | M |
-| N-5 | **`mapear/filtrar/reducir/para_cada/ordenar`** (nativas de orden superior, que ya saben llamar a un cierre desde el motor) | `funcional.jp` con paridad | M |
+| N-1 | **Métodos de valor en C** (`"x".mayusculas()`, `lista.agregar(v)`) | los 14 ejemplos que hoy se rechazan por esto pasan a idénticos | L | ✅ **hecho** |
+| N-2 | **Diccionarios en C** (tabla hash con claves de texto + `claves/valores/elementos/tiene`) | `agenda.jp`, `api-json.jp`, `discord-webhook.jp` con paridad | L | ✅ **hecho** (`discord-webhook` espera N-4) |
+| N-3 | **`intenta/atrapa` y `elegir` en C** | `seguro.jp`, `calculadora.jp` con paridad; el motor nunca aborta el proceso ante un error capturable | M | ✅ **hecho** |
+| N-4 | **Red y archivos nativos** (`leer_archivo`, `escribir_archivo`, `http_get/post`, `json_leer/texto`) | `bot-telegram.jp` y `api-json.jp` nativos | M | 🔶 archivos y JSON sí; red (`http_get/post`, telegram) pendiente |
+| N-5 | **`mapear/filtrar/reducir/para_cada/ordenar`** (nativas de orden superior, que ya saben llamar a un cierre desde el motor) | `funcional.jp` con paridad | M | ✅ **hecho** |
 | N-6 | **Frontend propio** (lexer+parser en C, o bootstrap del compilador en JP) | `jpvm` compila y ejecuta un `.jp` **sin Python**; `jp` queda como comando de conveniencia | L |
 | N-7 | **Tier de compilación a máquina** dentro del motor C (AOT por función numérica, como el JIT actual pero sin Python) | superar al JIT en `benchmark-nativo.jp` y acercarse a C puro | L |
 | N-8 | **Extras de tipo**: bignums (o error claro), GC generacional, cache de métodos, superinstrucciones | 500+ tests verdes y menos tiempo por despacho | L |
 | N-9 | **Distribución**: `make install`, binarios para Linux/macOS/Windows, wheels en PyPI con el binario dentro | `pipx install jp-lang && jp --c hola.jp` en una máquina limpia | M |
 
 **Meta de paridad:** los 23 ejemplos en verde bajo el motor en C
-(hoy: 7 idénticos, 14 esperando una de las tareas N-1…N-5, 2 no deterministas
-o interactivos). El arnés `herramientas/paridad.py` es el marcador.
+(**hoy: 20 idénticos · 2 no soportados todavía (`bot-telegram`,
+`discord-webhook`, ambos esperando N-4) · 0 fallos** · 2 no deterministas
+(`red-neuronal`, `red-profunda`: misma estructura, números distintos) ·
+`espiral.jp` y `benchmark-nativo.jp` se omiten por tiempo/cronometraje).
+El arnés `herramientas/paridad.py` es el marcador.
 
 ---
 

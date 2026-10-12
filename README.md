@@ -367,7 +367,8 @@ jp-lang/
 ├── tests/
 │   ├── test_jp.py       # lenguaje completo (81 tests)
 │   ├── test_vm.py       # paridad VM vs árbol (32 tests)
-│   └── test_v13.py      # elegir, intenta, paso, **, += y orden superior (72)
+│   ├── test_v13.py      # elegir, intenta, paso, **, += y orden superior (72)
+│   └── test_motor_c.py  # paridad del motor en C con los motores de Python (252 en total)
 ├── ejemplos/            # programas de muestra .jp
 │   ├── funcional.jp     # funciones anónimas y orden superior
 │   ├── seguro.jp        # intenta/atrapa en acción
@@ -386,7 +387,7 @@ JP trae cinco formas de ejecutar el mismo código, con la misma semántica
 | **VM** | *(por defecto)* | Bytecode + threaded code (cierres compilados) | Todo el lenguaje, siempre correcto | Vive dentro de Python |
 | **JIT** | `--nativo` | Compila funciones numéricas a **x86-64 real** | 19–73x más rápido que Python en cálculo | Solo enteros/decimales; ≤3 parámetros; lo demás va a la VM |
 | **Turbo** | `--turbo` | Evalúa todo en compilación y cachea la salida | Microsegundos en corridas repetidas | Solo programas puros (sin `leer`, `azar`, red, archivos, `reloj`) |
-| ⚡ **C (nativo)** | `--c` | Compila a bytecode **.jpb** y lo ejecuta una VM en C11 **sin dependencias** | Corre todo el programa (bucles incluidos), es un binario independiente y le gana a CPython | Todavía no tiene métodos, diccionarios, `intenta` ni `elegir` |
+| ⚡ **C (nativo)** | `--c` | Compila a bytecode **.jpb** y lo ejecuta una VM en C11 **sin dependencias** | Corre todo el programa (bucles incluidos), es un binario independiente, entiende todo el lenguaje (diccionarios, métodos, `intenta`, `elegir`, orden superior, archivos y JSON) y le gana a CPython | Le falta la red (`http_get`/`http_post`, bots) y los enteros de más de 64 bits |
 
 ### El motor en C: independiente de verdad
 
@@ -409,6 +410,11 @@ Si un programa usa algo que el motor en C todavía no implementa, el compilador
 se **niega con un mensaje claro** y `--c` sigue con el motor de Python: nunca
 hay resultados silenciosamente distintos. (Los enteros de más de 64 bits
 también se rechazan, porque Python usa precisión arbitraria y el nativo no.)
+
+El motor se compila solo en GitHub Actions (`.github/workflows/motor-c.yml`)
+en cada push: corre la suite completa, compara la salida de los 23 ejemplos
+Python vs C y publica `jpvm` (más binarios de ejemplo autónomos) como
+**artefacto descargable** del workflow.
 
 ### Números medidos (misma máquina, Linux x86-64, Python 3.12)
 
@@ -446,6 +452,23 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.5.0 — **el motor en C entiende todo el lenguaje**. Nuevo:
+
+- ⚡ El motor nativo (`motor-c/jpvm`, C11 sin dependencias) ya soporta
+  **diccionarios**, **métodos de valor** (`"x".mayusculas()`, `lista.agregar(v)`),
+  **`elegir/caso`**, **`intenta/atrapa`** (con niveles de protección por
+  llamada: un error capturado dentro de un callback no corrompe la pila) y
+  **orden superior** (`mapear`, `filtrar`, `reducir`, `para_cada`, `ordenar`),
+  además de archivos y JSON. 63 nativas en C.
+- 🧪 Arnés de paridad: **20 ejemplos idénticos, 0 fallos**; solo quedan fuera
+  `bot-telegram` y `discord-webhook` (esperan `http_get/post` y telegram).
+- 🐛 Dos bugs de paridad corregidos por el camino: los parámetros que una
+  función anidada captura no se convertían en celda (`funcional.jp` se caía
+  con un fallo de segmentación) y el oráculo de Python truncaba la salida en
+  silencio cuando un callback atrapaba un error con `intenta`.
+- 🤖 CI en GitHub Actions: compila el motor (gcc y clang), corre los 252 tests
+  y publica `jpvm` como artefacto.
 
 v1.3.0 — **más expresivo y a prueba de errores**. Nuevo:
 

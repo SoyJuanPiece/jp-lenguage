@@ -157,9 +157,22 @@ class MaquinaVM:
         self.ambito = Ambito(callee.ambito)
         for nombre, valor in zip(fun.parametros, argumentos):
             self.ambito.vars[nombre] = valor
+        # Los 'intenta' que viven dentro de esta llamada se atrapan aquí: el
+        # bucle de fuera no puede reanudar el chunk de esta función.
+        manejadores_de_fuera = len(self.manejadores)
         op = ops_fun[0]
         while op is not None:
-            op = op()
+            try:
+                op = op()
+            except ErrorEjecucion as error:
+                if len(self.manejadores) <= manejadores_de_fuera:
+                    raise
+                ops_manejador, destino, largo_pila, largo_frames, ambito = self.manejadores.pop()
+                del pila[largo_pila:]
+                del self.frames[largo_frames:]
+                self.ambito = ambito
+                self.error_actual = error.mensaje
+                op = ops_manejador[destino]
         return pila.pop()
 
     # ---------------- compilación a cierres ----------------

@@ -9,7 +9,11 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 from . import __version__
 from .errores import ErrorEjecucion, ErrorJP, ErrorLexico, ErrorSintaxis
@@ -21,6 +25,38 @@ from .vm import MaquinaVM
 _USA_VM = "--interprete" not in sys.argv[1:]
 _TURBO = "--turbo" in sys.argv[1:]
 _NATIVO = "--nativo" in sys.argv[1:]
+_MOTOR_C = "--c" in sys.argv[1:]
+
+RAIZ = Path(__file__).resolve().parent.parent
+MOTOR_C = RAIZ / "motor-c" / "jpvm"
+
+
+def _compilar_nativo(fuente: str, ruta: str, codigo: str):
+    """Compila a bytecode .jpb; devuelve None si el motor nativo no lo soporta."""
+    from .compilar_nativo import NoSoportadoNativo, compilar_a_bytes
+
+    try:
+        programa = parsear(tokenizar(fuente))
+        return compilar_a_bytes(programa, ruta, fuente)
+    except NoSoportadoNativo as error:
+        return error
+
+
+def _ejecutar_motor_c(blob: bytes, aviso: bool = False) -> tuple[bool, str]:
+    """Ejecuta bytecode en el motor nativo. Devuelve (ok, motivo_del_fallo)."""
+    if not MOTOR_C.exists():
+        return False, (
+            f"no encuentro el motor nativo ({MOTOR_C}).\n"
+            "Compílalo una vez con:  make -C motor-c"
+        )
+    with tempfile.NamedTemporaryFile(suffix=".jpb", delete=False) as archivo:
+        archivo.write(blob)
+        ruta_jpb = archivo.name
+    try:
+        proceso = subprocess.run([str(MOTOR_C), ruta_jpb])
+    finally:
+        os.unlink(ruta_jpb)
+    return proceso.returncode == 0, f"el programa terminó con código {proceso.returncode}"
 
 _BANNER = r"""
      ██╗██╗
@@ -74,6 +110,20 @@ def _modo_archivo(ruta: str) -> int:
         run_turbo = False
         print(f"jp: es un directorio: {ruta}", file=sys.stderr)
         return 66
+
+    # Motor nativo en C: compila a .jpb y ejecuta el binario independiente.
+    # Si el programa usa algo que el motor nativo aún no tiene, se avisa y
+    # sigue el camino normal (los motores de Python), sin romper nada.
+    if _MOTOR_C:
+        compilado = _compilar_nativo(fuente, ruta, fuente)
+        if isinstance(compilado, bytes):
+            ok, motivo = _ejecutar_motor_c(compilado)
+            return 0 if ok else 65
+        print(
+            f"jp: el motor nativo aún no soporta esto: {compilado.que} "
+            f"(línea {compilado.linea}). Uso el motor de Python, sin problema.",
+            file=sys.stderr,
+        )
 
     # Modo turbo: cache total del programa si es puro (ver jp/turbo.py)
     if run_turbo := (_TURBO and _USA_VM):
@@ -180,12 +230,74 @@ def _llaves_desbalanceadas(fuente: str) -> bool:
     return balance > 0
 
 
+def _modo_bytecode(ruta: str, escribir: str | None, desensamblar: bool = False) -> int:
+    """Compila a .jpb (y opcionalmente lo desensambla). Nunca ejecuta."""
+    from .compilar_nativo import NoSoportadoNativo, desensamblar_blob
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no puedo leer {ruta}: {error}", file=sys.stderr)
+        return 66
+    compilado = _compilar_nativo(fuente, ruta, fuente)
+    if isinstance(compilado, NoSoportadoNativo):
+        print(f"jp: el motor nativo aún no soporta esto: {compilado.que} (línea {compilado.linea})")
+        return 3
+    if escribir is not None:
+        Path(escribir).write_bytes(compilado)
+        print(f"jp: {ruta} -> {escribir} ({len(compilado)} bytes)")
+    if desensamblar or escribir is None:
+        print(desensamblar_blob(compilado))
+    return 0
+
+
+def _modo_binario(ruta: str, salida: str) -> int:
+    """Crea un ejecutable independiente: sin Python, sin JP, solo el binario."""
+    import shutil
+
+    fuente_path = Path(ruta)
+    try:
+        fuente = fuente_path.read_text(encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no puedo leer {ruta}: {error}", file=sys.stderr)
+        return 66
+    compilado = _compilar_nativo(fuente, ruta, fuente)
+    if not isinstance(compilado, bytes):
+        print(f"jp: el motor nativo aún no soporta esto: {compilado.que} (línea {compilado.linea})")
+        return 3
+    compilador = os.environ.get("CC", "cc")
+    if shutil.which(compilador) is None:
+        print(f"jp: no encuentro un compilador de C ({compilador})", file=sys.stderr)
+        return 69
+    with tempfile.TemporaryDirectory() as carpeta:
+        embebido = Path(carpeta) / "jp_chunk.c"
+        bytes_c = ",".join(str(b) for b in compilado)
+        embebido.write_text(
+            "/* Generado por jp --binario: el bytecode del programa, pegado. */\n"
+            f"const unsigned char jp_chunk_embebido[] = {{{bytes_c}}};\n"
+            "const unsigned long jp_chunk_largo = sizeof(jp_chunk_embebido);\n",
+            encoding="utf-8",
+        )
+        orden = [
+            compilador, "-O2", "-std=c11", "-w",
+            str(RAIZ / "motor-c" / "jpvm.c"), str(embebido), "-o", salida, "-lm",
+        ]
+        proceso = subprocess.run(orden)
+    if proceso.returncode != 0:
+        print("jp: falló la compilación del binario", file=sys.stderr)
+        return 70
+    mostrado = salida if salida.startswith("/") else f"./{salida}"
+    print(f"jp: ejecutable creado: {mostrado}  (no necesita Python ni JP)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    global _USA_VM, _TURBO, _NATIVO
+    global _USA_VM, _TURBO, _NATIVO, _MOTOR_C
     argumentos = argv if argv is not None else sys.argv[1:]
     _USA_VM = "--interprete" not in argumentos
     _TURBO = "--turbo" in argumentos
     _NATIVO = "--nativo" in argumentos
+    _MOTOR_C = "--c" in argumentos or os.environ.get("JP_MOTOR") == "c"
     parser = argparse.ArgumentParser(
         prog="jp",
         description="JP — un pequeño lenguaje de programación en español.",
@@ -207,9 +319,39 @@ def main(argv: list[str] | None = None) -> int:
         help="JIT: compila funciones numéricas a código de máquina x86-64",
     )
     parser.add_argument("-c", "--codigo", help="ejecuta una línea de código JP")
+    parser.add_argument(
+        "--c",
+        action="store_true",
+        help="ejecuta con el motor nativo en C (compila a bytecode .jpb y lo corre)",
+    )
+    parser.add_argument(
+        "--compilar",
+        action="store_true",
+        help="compila el archivo .jp a bytecode nativo (.jpb)",
+    )
+    parser.add_argument(
+        "--binario",
+        action="store_true",
+        help="crea un ejecutable independiente (sin Python y sin JP)",
+    )
+    parser.add_argument(
+        "--bytecode",
+        action="store_true",
+        help="desensambla el bytecode del archivo (sin ejecutarlo)",
+    )
+    parser.add_argument("-o", "--salida", help="nombre del archivo de salida")
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.compilar or args.bytecode or args.binario:
+        if args.archivo is None:
+            parser.error("--compilar/--bytecode/--binario necesitan un archivo .jp")
+        if args.bytecode:
+            return _modo_bytecode(args.archivo, escribir=None)
+        if args.compilar:
+            salida = args.salida or (args.archivo + ".jpb")
+            return _modo_bytecode(args.archivo, escribir=salida)
+        return _modo_binario(args.archivo, args.salida or "programa")
     if args.codigo is not None:
         return _modo_codigo(args.codigo)
     if args.archivo is not None:

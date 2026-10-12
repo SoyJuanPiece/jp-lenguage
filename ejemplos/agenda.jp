@@ -29,7 +29,7 @@ funcion guardar(contactos) {
 
 variable contactos = cargar()
 
-muestra("=== MI AGENDA === (", contactos.longitud(), "contactos guardados)")
+muestra("=== MI AGENDA === (", longitud(contactos), "contactos guardados)")
 
 mientras verdadero {
     muestra("")
@@ -37,7 +37,7 @@ mientras verdadero {
     variable opcion = leer("Opción: ").recortar()
 
     si opcion == "1" {
-        si contactos.longitud() == 0 {
+        si longitud(contactos) == 0 {
             muestra("(agenda vacía)")
         }
         para nombre en contactos.claves() {
@@ -66,7 +66,7 @@ mientras verdadero {
     }
 
     si opcion == "4" {
-        muestra("¡Hasta pronto! Tus", contactos.longitud(), "contactos quedaron guardados.")
+        muestra("¡Hasta pronto! Tus", longitud(contactos), "contactos quedaron guardados.")
         romper
     }
 

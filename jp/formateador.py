@@ -126,6 +126,8 @@ class Formateador:
         tipo = type(nodo)
         if tipo is NodoDeclaracionVar:
             texto = f"variable {nodo.nombre}"
+            if nodo.tipo is not None:
+                texto += f": {nodo.tipo}"
             if nodo.inicializador is not None:
                 texto += " = " + self._expr(nodo.inicializador, nivel)
             self._linea(nivel, texto)
@@ -258,15 +260,21 @@ class Formateador:
             self._caso("sino:", nodo.sino, nivel + 1)
         self._linea(nivel, "}")
 
-    def _funcion(self, nodo: NodoFuncion, nivel: int) -> None:
+    def _parametros_texto(self, nodo: NodoFuncion, nivel: int) -> str:
         parametros = []
         for i, parametro in enumerate(nodo.parametros):
+            texto = parametro
+            if i < len(nodo.tipos) and nodo.tipos[i] is not None:
+                texto += f": {nodo.tipos[i]}"
             if i < len(nodo.defectos) and nodo.defectos[i] is not None:
-                parametros.append(f"{parametro} = {self._expr(nodo.defectos[i], nivel)}")
-            else:
-                parametros.append(parametro)
+                texto += f" = {self._expr(nodo.defectos[i], nivel)}"
+            parametros.append(texto)
+        retorno = f": {nodo.tipo_retorno}" if nodo.tipo_retorno is not None else ""
+        return f"({', '.join(parametros)}){retorno}"
+
+    def _funcion(self, nodo: NodoFuncion, nivel: int) -> None:
         nombre = f" {nodo.nombre}" if nodo.nombre else ""
-        self._bloque(nodo.cuerpo, nivel, f"funcion{nombre}({', '.join(parametros)})")
+        self._bloque(nodo.cuerpo, nivel, f"funcion{nombre}{self._parametros_texto(nodo, nivel)}")
 
     # ---------------- expresiones ----------------
 
@@ -347,13 +355,7 @@ class Formateador:
             return f"{callee}{apertura}{argumentos})", _PREC["sufijo"]
         if tipo is NodoFuncion:
             # Funcion anonima como valor: se imprime con su cuerpo en lineas.
-            parametros = []
-            for i, parametro in enumerate(nodo.parametros):
-                if i < len(nodo.defectos) and nodo.defectos[i] is not None:
-                    parametros.append(f"{parametro} = {self._expr(nodo.defectos[i], nivel)}")
-                else:
-                    parametros.append(parametro)
-            cabecera = f"funcion({', '.join(parametros)})"
+            cabecera = f"funcion{self._parametros_texto(nodo, nivel)}"
             if not nodo.cuerpo.sentencias:
                 return cabecera + " {}", _PREC["primario"]
             guardadas = self.lineas

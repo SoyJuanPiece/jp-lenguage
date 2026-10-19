@@ -81,6 +81,7 @@ class Codigo(Enum):
     DESESTRUCTURAR_ASIG = auto()  # operando=(nombres,); asigna a variables existentes
     IMPORTAR = auto()         # operando=(ruta, alias); ejecuta el módulo una vez y define sus nombres
     CREAR_CLASE = auto()      # operando=(nombre, (metodos...)); pila: padre, metodos... -> clase
+    VERIFICAR_TIPO = auto()   # operando=(tipo, nombre); mira el tope y falla si no cumple
     ITERAR_RANGO = auto()     # inicio, fin[, paso] en pila -> IteradorJP perezoso (sin crear la lista)
     # (romper/continuar no necesitan opcode: el compilador emite los
     #  AMBITO_POP necesarios y un SALTAR normal)
@@ -122,6 +123,7 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.DESESTRUCTURAR_ASIG: "DESESTRUCTURAR_ASIG",
     Codigo.IMPORTAR: "IMPORTAR",
     Codigo.CREAR_CLASE: "CREAR_CLASE",
+    Codigo.VERIFICAR_TIPO: "VERIFICAR_TIPO",
     Codigo.ITERAR_RANGO: "ITERAR_RANGO",
     Codigo.SUMAR: "SUMAR",
     Codigo.RESTAR: "RESTAR",
@@ -159,7 +161,7 @@ class Chunk:
     de tuplas ni busque atributos por instrucción.
     """
 
-    __slots__ = ("codigo", "constantes", "_c", "_o", "_l", "ops")
+    __slots__ = ("codigo", "constantes", "_c", "_o", "_l", "ops", "tipo_retorno_esperado", "nombre_funcion")
 
     def __init__(self) -> None:
         self.codigo: list[tuple[Codigo, object, int]] = []
@@ -168,6 +170,9 @@ class Chunk:
         self._o: list[object] | None = None
         self._l: list[int] | None = None
         self.ops: list | None = None  # closures compiladas (las construye la VM)
+        # Tipos opcionales (v1.23): lo que la funcion debe devolver.
+        self.tipo_retorno_esperado: str | None = None
+        self.nombre_funcion: str = ""
 
     def preparar(self) -> None:
         """Aplana las columnas del bytecode (solo se llama antes de ejecutar)."""

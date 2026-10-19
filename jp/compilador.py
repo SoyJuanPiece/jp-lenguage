@@ -72,6 +72,9 @@ class FunCerrada:
     # Cada chunk es un mini-programa que deja el valor y hace RETORNAR; la VM
     # lo ejecuta en el ámbito local de la llamada cuando falta ese argumento.
     defectos: list = field(default_factory=list)
+    # Tipos opcionales (v1.23): alineados con parametros; None = sin anotar.
+    tipos: list = field(default_factory=list)
+    tipo_retorno: str | None = None
 
     @property
     def aridad_minima(self) -> int:
@@ -170,6 +173,8 @@ class Compilador:
         if tipo is NodoDeclaracionVar:
             if nodo.inicializador is not None:
                 self._expresion(nodo.inicializador, chunk)
+                if nodo.tipo is not None:
+                    self._emitir(chunk, Codigo.VERIFICAR_TIPO, (nodo.tipo, nodo.nombre), nodo.linea)
             else:
                 self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
             if self.ambitos and self.ambitos[-1] is not _SENTINELA:
@@ -791,7 +796,12 @@ class Compilador:
         self.bucles = bucles_externos
         self.intentos = intentos_externos
         self.ambitos.pop()
-        return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros), defectos_chunks)
+        # La VM lee el retorno esperado del propio chunk al ejecutar RETORNAR.
+        chunk.tipo_retorno_esperado = nodo.tipo_retorno
+        chunk.nombre_funcion = nodo.nombre
+        tipos = list(nodo.tipos or [])
+        tipos += [None] * (len(nodo.parametros) - len(tipos))
+        return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros), defectos_chunks, tipos, nodo.tipo_retorno)
 
 
 _OP_BINARIOS: dict[str, Codigo] = {

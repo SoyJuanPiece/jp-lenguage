@@ -1,0 +1,20 @@
+# Tipos opcionales: anota lo que quieras y JP lo comprueba al ejecutar.
+# Sin anotaciones, todo sigue valiendo, como siempre.
+
+funcion sumar(a: numero, b: numero): numero {
+    devuelve a + b
+}
+
+funcion saludar(nombre: texto, veces: entero = 1): texto {
+    devuelve repetir("¡Hola " + nombre + "! ", veces)
+}
+
+variable edad: numero = sumar(20, 22)
+imprime(saludar("Ana", 2), "| edad:", edad)
+
+# Y si te equivocas, el error dice qué esperaba y qué llegó:
+intenta {
+    sumar("veinte", 22)
+} atrapa e {
+    imprime("error atrapado:", e)
+}

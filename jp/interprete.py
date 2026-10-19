@@ -268,6 +268,52 @@ def crear_error_valor(error: ErrorEjecucion) -> ErrorValor:
 
 # ----------------- Utilidades de tipos -----------------
 
+def nombre_tipo(valor: object) -> str:
+    """El nombre JP del tipo de un valor: nulo, booleano, número, texto..."""
+    if valor is None:
+        return "nulo"
+    if isinstance(valor, bool):
+        return "booleano"
+    if isinstance(valor, (int, float)):
+        return "número"
+    if isinstance(valor, str):
+        return "texto"
+    if isinstance(valor, list):
+        return "lista"
+    if isinstance(valor, dict):
+        return "diccionario"
+    if isinstance(valor, Instancia):
+        return "objeto"
+    if isinstance(valor, ClaseJP):
+        return "clase"
+    if isinstance(valor, (FuncionJP, FuncionNativa, MetodoLigado)) or callable(valor):
+        return "función"
+    return "valor"
+
+
+def cumple_tipo(valor: object, tipo: str) -> bool:
+    """¿El valor cumple el tipo anotado? ('variable x: numero', v1.23.)"""
+    if tipo == "cualquiera":
+        return True
+    if tipo == "nulo":
+        return valor is None
+    if tipo == "numero":
+        return isinstance(valor, (int, float)) and not isinstance(valor, bool)
+    if tipo == "entero":
+        return isinstance(valor, int) and not isinstance(valor, bool)
+    if tipo == "texto":
+        return isinstance(valor, str)
+    if tipo == "booleano":
+        return isinstance(valor, bool)
+    if tipo == "lista":
+        return isinstance(valor, list)
+    if tipo == "diccionario":
+        return isinstance(valor, dict)
+    if tipo == "funcion":
+        return isinstance(valor, (FuncionJP, FuncionNativa, MetodoLigado, ClaseJP)) or callable(valor)
+    return True
+
+
 def jp_a_texto(valor: object) -> str:
     """Convierte un valor de JP a su representación textual (como print)."""
     if valor is None:
@@ -472,6 +518,12 @@ class Interprete:
         valor = None
         if nodo.inicializador is not None:
             valor = self._evaluar(nodo.inicializador, entorno)
+            if nodo.tipo is not None and not cumple_tipo(valor, nodo.tipo):
+                raise ErrorEjecucion(
+                    f"la variable '{nodo.nombre}' es de tipo {nodo.tipo} "
+                    f"y recibió {nombre_tipo(valor)} ({jp_a_texto(valor)!r})",
+                    nodo.linea,
+                )
         entorno.definir(nodo.nombre, valor)
 
     def _desestructurar(self, valor: object, nombres: list[str], linea: int) -> list:
@@ -1058,11 +1110,23 @@ class Interprete:
                 # El defecto se evalúa en el ámbito local: puede usar los
                 # parámetros anteriores (funcion f(a, b = a + 1) { ... }).
                 entorno_local.definir(nombre, self._evaluar(defectos[indice], entorno_local))
+        tipos = declaracion.tipos or []
+        for indice, nombre in enumerate(declaracion.parametros):
+            if indice < len(tipos) and tipos[indice] is not None:
+                valor = entorno_local.obtener(nombre)
+                if not cumple_tipo(valor, tipos[indice]):
+                    raise ErrorEjecucion(
+                        f"el parámetro '{nombre}' de '{declaracion.nombre or '<anónima>'}' "
+                        f"es de tipo {tipos[indice]} y recibió {nombre_tipo(valor)} "
+                        f"({jp_a_texto(valor)!r})",
+                        linea,
+                    )
         self._profundidad += 1
+        resultado = None
         try:
             self._ejecutar_bloque(declaracion.cuerpo.sentencias, entorno_local)
         except Retornar as retorno:
-            return retorno.valor
+            resultado = retorno.valor
         except _Romper as senal:
             # Un 'romper' no puede cruzar el límite de la función.
             raise ErrorEjecucion("'romper' fuera de un bucle", senal.linea) from None
@@ -1070,7 +1134,14 @@ class Interprete:
             raise ErrorEjecucion("'continuar' fuera de un bucle", senal.linea) from None
         finally:
             self._profundidad -= 1
-        return None
+        if declaracion.tipo_retorno is not None and not cumple_tipo(resultado, declaracion.tipo_retorno):
+            raise ErrorEjecucion(
+                f"la función '{declaracion.nombre or '<anónima>'}' debe devolver "
+                f"{declaracion.tipo_retorno} y devolvió {nombre_tipo(resultado)} "
+                f"({jp_a_texto(resultado)!r})",
+                linea,
+            )
+        return resultado
 
     # ---------- helpers ----------
 

@@ -1,5 +1,18 @@
 # Cambios de JP
 
+## 1.23.0 — «Tipos» (2026-10-19)
+
+- **Tipos opcionales con chequeo al ejecutar**, en el árbol y en la VM:
+  `funcion sumar(a: numero, b: numero): numero { ... }`,
+  `variable edad: numero = 42`. Tipos: `numero`, `entero`, `texto`,
+  `booleano`, `lista`, `diccionario`, `funcion`, `nulo`, `cualquiera`
+  (también `número`). Se comprueban los parámetros (también cuando
+  entra el valor por defecto), el valor devuelto y la declaración; el
+  error dice qué se esperaba y qué llegó («el parámetro 'a' de 'sumar'
+  es de tipo numero y recibió texto»). Sin anotar, todo vale como
+  siempre: es gradual, no un idioma nuevo. El formateador los conserva;
+  el motor en C los rechaza limpiamente por ahora.
+
 ## 1.22.0 — «En paralelo» (2026-10-19)
 
 - **Concurrencia real por procesos** (`jp/procesos.py`):

@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.23.0 — **tipos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏷️ **Tipos opcionales**: `funcion f(a: numero): numero` y
+  `variable x: numero = 3` se comprueban al ejecutar en ambos motores,
+  con errores que dicen qué se esperaba (`ejemplos/tipos.jp`).
+
 v1.22.0 — **en paralelo** (ver `CHANGELOG.md`). Nuevo:
 
 - ⚡ **Concurrencia real**: `iniciar_proceso` / `esperar_proceso` lanzan

@@ -32,6 +32,8 @@ from .interprete import (
     MetodoLigado,
     _instalar_nativas,
     buscar_metodo,
+    cumple_tipo,
+    nombre_tipo,
     crear_error_valor,
     _metodo_de_valor,
     es_verdad,
@@ -227,6 +229,16 @@ class MaquinaVM:
                 ambito.vars[nombre] = self._evaluar_defecto(
                     fun.defectos[indice], ambito, callee.globales, linea
                 )
+        for indice, nombre in enumerate(fun.parametros):
+            if indice < len(fun.tipos) and fun.tipos[indice] is not None:
+                valor = ambito.vars[nombre]
+                if not cumple_tipo(valor, fun.tipos[indice]):
+                    raise ErrorEjecucion(
+                        f"el parámetro '{nombre}' de '{fun.nombre or '<anónima>'}' "
+                        f"es de tipo {fun.tipos[indice]} y recibió {nombre_tipo(valor)} "
+                        f"({jp_a_texto(valor)!r})",
+                        linea,
+                    )
         return ambito
 
     def _llamar_valor(self, callee: object, argumentos: list, linea: int = 0) -> object:
@@ -1058,8 +1070,18 @@ class MaquinaVM:
             return op
 
         if codigo is Codigo.RETORNAR:
+            tipo_retorno = getattr(chunk, "tipo_retorno_esperado", None)
+            nombre_fun = getattr(chunk, "nombre_funcion", "")
+
             def op():
                 valor = pila.pop()
+                if tipo_retorno is not None and frames and not cumple_tipo(valor, tipo_retorno):
+                    raise ErrorEjecucion(
+                        f"la función '{nombre_fun or '<anónima>'}' debe devolver "
+                        f"{tipo_retorno} y devolvió {nombre_tipo(valor)} "
+                        f"({jp_a_texto(valor)!r})",
+                        linea,
+                    )
                 if not frames:
                     # 'retorna' en el nivel superior: termina el programa
                     # (misma conducta que el intérprete de árbol).
@@ -1078,6 +1100,20 @@ class MaquinaVM:
             return op
 
         # ---------- sentencias ----------
+
+        if codigo is Codigo.VERIFICAR_TIPO:
+            tipo_esperado, nombre_var = operando
+
+            def op():
+                valor = pila[-1]
+                if not cumple_tipo(valor, tipo_esperado):
+                    raise ErrorEjecucion(
+                        f"la variable '{nombre_var}' es de tipo {tipo_esperado} "
+                        f"y recibió {nombre_tipo(valor)} ({jp_a_texto(valor)!r})",
+                        linea,
+                    )
+                return lista[sig]
+            return op
 
         if codigo is Codigo.POP:
             def op():

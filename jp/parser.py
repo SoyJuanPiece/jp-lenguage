@@ -48,6 +48,11 @@ from .tokens import TToken, Token
 
 # Palabras clave que también sirven como claves de diccionario (ej: {y: 1})
 # o después de un punto (ej: d.no), igual que en Python o JavaScript.
+_TIPOS_ANOTABLES = {
+    "numero", "entero", "texto", "booleano", "lista", "diccionario",
+    "funcion", "nulo", "cualquiera",
+}
+
 _CLAVES_VALIDAS = {
     TToken.IDENTIFICADOR,
     TToken.SI,
@@ -161,8 +166,9 @@ class Parser:
             inicializador = self._expresion()
             return NodoDeclaracionLista(nombres=nombres, inicializador=inicializador, linea=cierre.linea)
         token = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre de variable")
+        tipo = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
         inicializador = self._expresion() if self._coincide(TToken.IGUAL) else None
-        return NodoDeclaracionVar(nombre=token.lexema, inicializador=inicializador, linea=token.linea)
+        return NodoDeclaracionVar(nombre=token.lexema, inicializador=inicializador, linea=token.linea, tipo=tipo)
 
     def _es_patron_desestructuracion(self) -> bool:
         """¿Viene '[a, b] ='? (patrón de nombres seguido de asignación)."""
@@ -234,24 +240,45 @@ class Parser:
 
     def _sentencia_fun(self) -> Nodo:
         token = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la función")
-        parametros, defectos = self._parametros("el nombre de la función")
+        parametros, defectos, tipos = self._parametros("el nombre de la función")
+        tipo_retorno = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
         self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
         cuerpo = self._bloque()
-        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos)
+        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos, tipos=tipos, tipo_retorno=tipo_retorno)
 
-    def _parametros(self, tras_que: str) -> tuple[list[str], list]:
+    def _tipo_anotado(self) -> str:
+        """Lee ': tipo' ya consumido el ':' y valida el nombre del tipo."""
+        token = self._esperar(
+            TToken.IDENTIFICADOR,
+            "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, funcion, nulo o cualquiera",
+        )
+        tipo = token.lexema.replace("número", "numero")
+        if tipo not in _TIPOS_ANOTABLES:
+            raise ErrorSintaxis(
+                f"tipo desconocido '{token.lexema}': usa numero, entero, texto, booleano, "
+                "lista, diccionario, funcion, nulo o cualquiera",
+                token.linea, token.columna,
+            )
+        return tipo
+
+    def _parametros(self, tras_que: str) -> tuple[list[str], list, list]:
         """Parámetros, con valores por defecto opcionales: funcion f(a, b = 2).
 
-        Devuelve (nombres, defectos) alineados; defectos[i] es None si el
-        parámetro i es obligatorio. Tras el primer defecto, todos deben tenerlo.
+        Devuelve (nombres, defectos, tipos) alineados; defectos[i] y
+        tipos[i] son None si el parámetro i es obligatorio / va sin anotar.
+        Tras el primer defecto, todos deben tenerlo.
         """
         self._esperar(TToken.PAREN_IZQ, f"se esperaba '(' tras {tras_que}")
         parametros: list[str] = []
         defectos: list = []
+        tipos: list = []
         ya_hay_defecto = False
         if self._actual().tipo != TToken.PAREN_DER:
             while True:
                 parametro = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre de parámetro")
+                tipo = None
+                if self._coincide(TToken.DOSPUNTOS):
+                    tipo = self._tipo_anotado()
                 defecto = None
                 if self._coincide(TToken.IGUAL):
                     defecto = self._expresion()
@@ -264,10 +291,11 @@ class Parser:
                     )
                 parametros.append(parametro.lexema)
                 defectos.append(defecto)
+                tipos.append(tipo)
                 if not self._coincide(TToken.COMA):
                     break
         self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los parámetros")
-        return parametros, defectos
+        return parametros, defectos, tipos
 
     def _sentencia_retorna(self) -> Nodo:
         token = self._actual()
@@ -622,10 +650,11 @@ class Parser:
             return NodoVariable(nombre=token.lexema, linea=token.linea)
         if token.tipo == TToken.FUN:
             # Función anónima como valor:  funcion(x) { devuelve x * 2 }
-            parametros, defectos = self._parametros("'funcion'")
+            parametros, defectos, tipos = self._parametros("'funcion'")
+            tipo_retorno = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
             self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
             cuerpo = self._bloque()
-            return NodoFuncion(nombre="", parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos)
+            return NodoFuncion(nombre="", parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos, tipos=tipos, tipo_retorno=tipo_retorno)
         if token.tipo == TToken.CORCHETE_IZQ:
             elementos: list[Nodo] = []
             if self._actual().tipo != TToken.CORCHETE_DER:

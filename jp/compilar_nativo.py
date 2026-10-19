@@ -537,6 +537,8 @@ class CompiladorNativo:
             self._bloque(nodo.sentencias)
 
         elif tipo is NodoDeclaracionVar:
+            if getattr(nodo, "tipo", None) is not None:
+                raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", linea)
             self._declarar(nodo.nombre, nodo.inicializador, linea)
 
         elif tipo is NodoFuncion:
@@ -703,6 +705,8 @@ class CompiladorNativo:
         actual.emitir(OP_POP, linea=linea)
 
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
+        if nodo.tipo_retorno is not None or any(t is not None for t in (nodo.tipos or [])):
+            raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", nodo.linea)
         if any(d is not None for d in getattr(nodo, "defectos", []) or []):
             raise NoSoportadoNativo(
                 "los valores por defecto aún no están en el motor nativo", nodo.linea

@@ -140,6 +140,7 @@ class NodoDeclaracionVar(Nodo):
     nombre: str
     inicializador: Nodo | None
     linea: int = 0
+    tipo: str | None = None  # 'variable x: numero = ...' (tipos opcionales v1.23)
 
 
 @dataclass
@@ -218,6 +219,10 @@ class NodoFuncion(Nodo):
     # Valores por defecto alineados con `parametros` (None = obligatorio):
     # funcion f(a, b = 2) { ... } -> defectos [None, NodoNumero(2)].
     defectos: list = field(default_factory=list)
+    # Tipos opcionales alineados con `parametros` (None = sin anotar) y el
+    # tipo de retorno: funcion f(a: numero): numero { ... } (v1.23).
+    tipos: list = field(default_factory=list)
+    tipo_retorno: str | None = None
 
 
 @dataclass

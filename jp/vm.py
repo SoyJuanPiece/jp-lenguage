@@ -729,6 +729,15 @@ class MaquinaVM:
                 return lista[sig]
             return op
 
+        if codigo is Codigo.SALTAR_SI_NO_NULO:
+            destino = operando
+
+            def op():
+                if pila[-1] is not None:
+                    return lista[destino]
+                return lista[sig]
+            return op
+
         # ---------- estructuras ----------
 
         if codigo is Codigo.LISTA:

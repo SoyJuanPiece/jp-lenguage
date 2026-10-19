@@ -34,6 +34,8 @@ class TToken(Enum):
     MAYOR_IGUAL = auto()      # >=
     PUNTO_PUNTO = auto()      # ..
     POTENCIA = auto()         # **
+    DOBLE_INTERROGACION = auto()  # ?? (si es nulo)
+    INTERROGACION_PUNTO = auto()  # ?. (acceso seguro)
     MAS_IGUAL = auto()        # +=
     MENOS_IGUAL = auto()      # -=
     POR_IGUAL = auto()        # *=

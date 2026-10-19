@@ -63,6 +63,7 @@ class NodoLlamada(Nodo):
     callee: Nodo
     argumentos: list[Nodo] = field(default_factory=list)
     linea: int = 0
+    seguro: bool = False  # f?.(): si el callee es nulo, el resultado es nulo
 
 
 @dataclass
@@ -70,6 +71,7 @@ class NodoIndice(Nodo):
     objeto: Nodo
     indice: Nodo
     linea: int = 0
+    seguro: bool = False  # a?.b: si a es nulo, el resultado es nulo (sin tocar b)
 
 
 @dataclass

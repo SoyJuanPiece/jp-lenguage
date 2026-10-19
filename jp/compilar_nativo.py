@@ -823,6 +823,8 @@ class CompiladorNativo:
                 raise NoSoportadoNativo(f"operador unario desconocido: {nodo.operador}", linea)
 
         elif tipo is NodoLlamada:
+            if nodo.seguro:
+                raise NoSoportadoNativo("la llamada segura '?.()' aún no está en el motor nativo", linea)
             if isinstance(nodo.callee, NodoIndice) and MÉTODOS_PENDIENTES:
                 # Solo se rechaza lo que el motor en C todavía no sabe hacer: si no,
                 # sería un error en tiempo de ejecución en vez de una caída limpia.
@@ -837,6 +839,8 @@ class CompiladorNativo:
             actual.emitir(OP_LLAMAR, len(nodo.argumentos), linea=linea)
 
         elif tipo is NodoIndice:
+            if nodo.seguro:
+                raise NoSoportadoNativo("el acceso seguro '?.' aún no está en el motor nativo", linea)
             self._expresion(nodo.objeto)
             self._expresion(nodo.indice)
             actual.emitir(OP_INDICE, linea=linea)
@@ -900,6 +904,8 @@ class CompiladorNativo:
             self._expresion(nodo.derecha)
             actual.parchar_aqui(hueco)
             return
+        if operador == "??":
+            raise NoSoportadoNativo("el operador '??' aún no está en el motor nativo", linea)
         if operador == "o":
             self._expresion(nodo.izquierda)
             hueco = actual.emitir_salto(OP_SALTO_VERDAD_MANTENER, linea)

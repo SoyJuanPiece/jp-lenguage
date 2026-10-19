@@ -650,6 +650,19 @@ class Compilador:
             return
 
         if tipo is NodoIndice:
+            if nodo.seguro:
+                # [objeto]; si es nulo salta al fin (queda el nulo como
+                # resultado); si no, indice + INDICE como siempre.
+                self._expresion(nodo.objeto, chunk)
+                a_cont = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+                al_fin = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+                destino = len(chunk.codigo)
+                self._expresion(nodo.indice, chunk)
+                self._emitir(chunk, Codigo.INDICE, linea=nodo.linea)
+                fin = len(chunk.codigo)
+                chunk.codigo[a_cont] = (Codigo.SALTAR_SI_NO_NULO, destino, nodo.linea)
+                chunk.codigo[al_fin] = (Codigo.SALTAR, fin, nodo.linea)
+                return
             self._expresion(nodo.objeto, chunk)
             self._expresion(nodo.indice, chunk)
             self._emitir(chunk, Codigo.INDICE, linea=nodo.linea)
@@ -690,6 +703,19 @@ class Compilador:
             chunk.codigo[al_fin] = (Codigo.SALTAR_SI_VERDAD, fin, nodo.linea)
             chunk.codigo[a_der] = (Codigo.SALTAR, destino, nodo.linea)
             return
+        if operador == "??":
+            # Como 'o' pero la condicion es "no es nulo": si lo de la
+            # izquierda no es nulo se conserva; si es nulo, se calcula lo otro.
+            self._expresion(nodo.izquierda, chunk)
+            al_fin = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+            a_der = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+            destino = len(chunk.codigo)
+            self._emitir(chunk, Codigo.POP, linea=nodo.linea)
+            self._expresion(nodo.derecha, chunk)
+            fin = len(chunk.codigo)
+            chunk.codigo[al_fin] = (Codigo.SALTAR_SI_NO_NULO, fin, nodo.linea)
+            chunk.codigo[a_der] = (Codigo.SALTAR, destino, nodo.linea)
+            return
 
         opcode = _OP_BINARIOS.get(operador)
         if opcode is None:
@@ -701,6 +727,21 @@ class Compilador:
     def _llamada(self, nodo: NodoLlamada, chunk: Chunk) -> None:
         callee = nodo.callee
         argumentos = nodo.argumentos
+
+        if nodo.seguro:
+            # [callee]; si es nulo salta al fin (nulo como resultado, sin
+            # evaluar argumentos); si no, llamada normal.
+            self._expresion(callee, chunk)
+            a_cont = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+            al_fin = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+            destino = len(chunk.codigo)
+            for a in argumentos:
+                self._expresion(a, chunk)
+            self._emitir(chunk, Codigo.LLAMAR, len(argumentos), nodo.linea)
+            fin = len(chunk.codigo)
+            chunk.codigo[a_cont] = (Codigo.SALTAR_SI_NO_NULO, destino, nodo.linea)
+            chunk.codigo[al_fin] = (Codigo.SALTAR, fin, nodo.linea)
+            return
 
         # muestra()/imprime() con solo constantes -> IMPRIMIR directo (sin llamadas)
         if (

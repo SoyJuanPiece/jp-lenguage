@@ -1,5 +1,19 @@
 # Cambios de JP
 
+## 1.14.0 — «Sin nulos» (2026-10-19)
+
+- **`a ?? b` (por defecto si es nulo)**: devuelve `a` salvo que sea
+  `nulo`, y solo entonces calcula `b` (cortocircuito de verdad: la derecha
+  ni se evalúa si no hace falta). Ojo: `falso ?? x` es `falso` y `0 ?? x`
+  es `0` — solo manda el nulo. Asocia a la derecha (`a ?? b ?? c`).
+- **`a?.b` / `a?.b()` / `a?.[i]` (acceso seguro)**: si `a` es `nulo`, toda
+  la cadena da `nulo` sin evaluar el resto (ni índices ni argumentos). Sin
+  el `?`, tocar un nulo sigue fallando como siempre, y asignar a un acceso
+  seguro (`a?.b = 1`) es error de sintaxis con explicación.
+- En el árbol y en la VM con paridad total (opcode nuevo
+  `SALTAR_SI_NO_NULO`); el motor en C lo rechaza limpiamente y el CLI cae
+  al motor de Python, como con el resto de novedades.
+
 ## 1.13.0 — «Persistencia» (2026-10-19)
 
 - **Bases de datos SQLite** (`jp/basedatos.py`): `abrir_bd(ruta)` (o

@@ -153,6 +153,18 @@ class Lexer:
                 raise ErrorLexico("carácter inesperado '!'. ¿Quisiste decir '!=' ?", self.linea, self.columna - 1)
             return
 
+        if c == "?":
+            if self._coincide("?"):
+                self._agregar(TToken.DOBLE_INTERROGACION)   # a ?? b
+            elif self._coincide("."):
+                self._agregar(TToken.INTERROGACION_PUNTO)   # a?.clave
+            else:
+                raise ErrorLexico(
+                    "carácter inesperado '?'. ¿Quisiste decir '??' (valor si es nulo) o '?.' (acceso seguro)?",
+                    self.linea, self.columna - 1,
+                )
+            return
+
         # Cadenas (comillas dobles o simples)
         if c in ('"', "'"):
             self._cadena(c)

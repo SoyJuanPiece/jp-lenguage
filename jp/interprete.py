@@ -817,6 +817,11 @@ class Interprete:
             if es_verdad(izquierda):
                 return izquierda
             return self._evaluar(nodo.derecha, entorno)
+        if operador == "??":
+            izquierda = self._evaluar(nodo.izquierda, entorno)
+            if izquierda is not None:
+                return izquierda
+            return self._evaluar(nodo.derecha, entorno)
 
         izquierda = self._evaluar(nodo.izquierda, entorno)
         derecha = self._evaluar(nodo.derecha, entorno)
@@ -893,6 +898,8 @@ class Interprete:
 
     def _indice(self, nodo: NodoIndice, entorno: Entorno) -> object:
         objeto = self._evaluar(nodo.objeto, entorno)
+        if objeto is None and nodo.seguro:
+            return None  # a?.b con a nulo: nulo, sin evaluar el indice
         indice = self._evaluar(nodo.indice, entorno)
         return self._indexar(objeto, indice, nodo.linea)
 
@@ -961,6 +968,8 @@ class Interprete:
 
     def _llamada(self, nodo: NodoLlamada, entorno: Entorno) -> object:
         callee = self._evaluar(nodo.callee, entorno)
+        if callee is None and nodo.seguro:
+            return None  # f?.() con f nulo: nulo, sin evaluar los argumentos
         argumentos = [self._evaluar(arg, entorno) for arg in nodo.argumentos]
         return self._llamar_valor(callee, argumentos, nodo.linea)
 

@@ -436,6 +436,11 @@ class Parser:
         if isinstance(expr, NodoVariable):
             return NodoAsignacion(nombre=expr.nombre, valor=valor, linea=expr.linea)
         if isinstance(expr, NodoIndice):
+            if expr.seguro:
+                raise ErrorSintaxis(
+                    "no se puede asignar a un acceso seguro '?.': quita el '?' para asignar",
+                    token.linea, token.columna,
+                )
             return NodoAsignarIndice(objeto=expr.objeto, indice=expr.indice, valor=valor, linea=expr.linea)
         raise ErrorSintaxis(
             f"el objetivo de {token.lexema!r} debe ser una variable, lista[i] o d.clave",
@@ -448,14 +453,23 @@ class Parser:
 
         Admite paso: 1..10 paso 2 -> 1, 3, 5, 7, 9 (también en 'para').
         """
-        expr = self._o()
+        expr = self._por_defecto()
         if (token := self._coincide(TToken.PUNTO_PUNTO)):
-            derecha = self._o()
+            derecha = self._por_defecto()
             paso = None
             if self._actual().tipo is TToken.IDENTIFICADOR and self._actual().lexema == "paso":
                 self._avanzar()
-                paso = self._o()
+                paso = self._por_defecto()
             return NodoRango(izquierda=expr, derecha=derecha, paso=paso, linea=token.linea)
+        return expr
+
+    def _por_defecto(self) -> Nodo:
+        """'a ?? b': a si no es nulo; si es nulo, b. Asocia a la derecha:
+        a ?? b ?? c es a ?? (b ?? c). La derecha solo se calcula si hace falta."""
+        expr = self._o()
+        if (token := self._coincide(TToken.DOBLE_INTERROGACION)):
+            derecha = self._por_defecto()
+            return NodoBinario(operador="??", izquierda=expr, derecha=derecha, linea=token.linea)
         return expr
 
     def _o(self) -> Nodo:
@@ -518,18 +532,50 @@ class Parser:
             return _plegar("**", expr, derecha, token.linea)
         return expr
 
+    def _argumentos(self) -> tuple[list[Nodo], int]:
+        """Consume '(a, b, ...)': devuelve los argumentos y la línea del ')'."""
+        argumentos: list[Nodo] = []
+        if self._actual().tipo != TToken.PAREN_DER:
+            while True:
+                argumentos.append(self._expresion())
+                if not self._coincide(TToken.COMA):
+                    break
+        parentesis = self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los argumentos")
+        return argumentos, parentesis.linea
+
     def _llamada(self) -> Nodo:
         expr = self._primario()
+        # '?.' vuelve segura TODA la cadena que sigue (como en JS/TS):
+        # a?.b.c() con a nulo da nulo sin evaluar ni .c ni la llamada.
+        cadena_segura = False
         while True:
-            if self._coincide(TToken.PAREN_IZQ):
-                argumentos: list[Nodo] = []
-                if self._actual().tipo != TToken.PAREN_DER:
-                    while True:
-                        argumentos.append(self._expresion())
-                        if not self._coincide(TToken.COMA):
-                            break
-                parentesis = self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los argumentos")
-                expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=parentesis.linea)
+            if self._actual().tipo == TToken.INTERROGACION_PUNTO:
+                self._avanzar()
+                cadena_segura = True
+                if self._coincide(TToken.PAREN_IZQ):
+                    argumentos, linea = self._argumentos()
+                    expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=linea, seguro=True)
+                elif self._coincide(TToken.CORCHETE_IZQ):
+                    indice = self._expresion()
+                    cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
+                    expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea, seguro=True)
+                else:
+                    clave = self._avanzar()
+                    if clave.tipo not in _CLAVES_VALIDAS:
+                        raise ErrorSintaxis(
+                            "después de '?.' va el nombre de la clave",
+                            clave.linea,
+                            clave.columna,
+                        )
+                    expr = NodoIndice(
+                        objeto=expr,
+                        indice=NodoCadena(valor=clave.lexema, linea=clave.linea),
+                        linea=clave.linea,
+                        seguro=True,
+                    )
+            elif self._coincide(TToken.PAREN_IZQ):
+                argumentos, linea = self._argumentos()
+                expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=linea, seguro=cadena_segura)
             elif (
                 self._actual().tipo == TToken.CORCHETE_IZQ
                 and self._actual().linea != self.tokens[self.pos - 1].linea
@@ -539,7 +585,7 @@ class Parser:
             elif self._coincide(TToken.CORCHETE_IZQ):
                 indice = self._expresion()
                 cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
-                expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea)
+                expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea, seguro=cadena_segura)
             elif self._coincide(TToken.PUNTO):
                 clave = self._avanzar()
                 if clave.tipo not in _CLAVES_VALIDAS:
@@ -552,6 +598,7 @@ class Parser:
                     objeto=expr,
                     indice=NodoCadena(valor=clave.lexema, linea=clave.linea),
                     linea=clave.linea,
+                    seguro=cadena_segura,
                 )
             else:
                 break

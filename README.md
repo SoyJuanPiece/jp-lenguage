@@ -498,6 +498,13 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.14.0 — **sin nulos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🛟 **Operadores anti-nulo**: `dato ?? "defecto"` (solo el nulo dispara
+  el defecto, con cortocircuito) y `usuario?.direccion?.ciudad` (si algo
+  es nulo por el camino, todo da nulo sin explotar). En árbol y VM; el
+  motor en C avisa y cae a Python (`ejemplos/acceso-seguro.jp`).
+
 v1.13.0 — **persistencia** (ver `CHANGELOG.md`). Nuevo:
 
 - 🗄️ **SQLite de verdad**: `abrir_bd`, `bd_consultar` (lista de

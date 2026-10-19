@@ -59,6 +59,7 @@ class Codigo(Enum):
     SALTAR = auto()         # operando=destino absoluto
     SALTAR_SI_FALSO = auto()  # Popea la condición; salta si no es verdad
     SALTAR_SI_VERDAD = auto() # NO popea; salta si es verdad (para 'o')
+    SALTAR_SI_NO_NULO = auto() # NO popea; salta si no es nulo (para '??' y '?.')
     LLAMAR = auto()         # operando=nargs; callee y args en pila
     RETORNAR = auto()       # Popea el valor y sale de la función
 
@@ -139,6 +140,7 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.SALTAR: "SALTAR",
     Codigo.SALTAR_SI_FALSO: "SALTAR_SI_FALSO",
     Codigo.SALTAR_SI_VERDAD: "SALTAR_SI_VERDAD",
+    Codigo.SALTAR_SI_NO_NULO: "SALTAR_SI_NO_NULO",
     Codigo.LLAMAR: "LLAMAR",
     Codigo.RETORNAR: "RETORNAR",
     Codigo.POP: "POP",

@@ -1,0 +1,14 @@
+# saludos — el primer paquete de JP.
+# Uso: importar "@saludos" como s · s.saludar("Ana")
+
+funcion saludar(nombre) {
+    devuelve "¡Hola, " + nombre + "! (desde el paquete saludos)"
+}
+
+funcion despedir(nombre) {
+    devuelve "¡Chao, " + nombre + "!"
+}
+
+funcion formal(nombre, apellido) {
+    devuelve "Buenas, " + nombre + " " + apellido + "."
+}

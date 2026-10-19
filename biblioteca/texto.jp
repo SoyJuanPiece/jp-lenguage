@@ -1,0 +1,52 @@
+# biblioteca/texto.jp — utilidades de texto en JP puro.
+
+funcion es_palindromo(texto) {
+    variable limpio = ""
+    para caracter en minusculas(texto) {
+        si caracter != " " { limpio = limpio + caracter }
+    }
+    devuelve limpio == invertir(limpio)
+}
+
+funcion contar_vocales(texto) {
+    variable total = 0
+    para caracter en minusculas(texto) {
+        si contiene("aeiouáéíóú", caracter) { total = total + 1 }
+    }
+    devuelve total
+}
+
+# "hola mundo" -> "Hola Mundo" (como el title() de Python)
+funcion titulo(texto) {
+    variable palabras = separar(texto)
+    variable bonitas = mapear(palabras, funcion(p) {
+        devuelve mayusculas(letra(p, 0)) + subtexto(p, 1)
+    })
+    devuelve unir(bonitas, " ")
+}
+
+# Cifrado César: mueve cada letra del abecedario unas posiciones.
+funcion cesar(texto, desplazamiento) {
+    variable abc = "abcdefghijklmnñopqrstuvwxyz"
+    variable salida = ""
+    para caracter en texto {
+        variable posicion = indice_de(abc, caracter)
+        si posicion == -1 {
+            salida = salida + caracter
+        } sino {
+            variable nueva = (posicion + desplazamiento) % longitud(abc)
+            salida = salida + letra(abc, nueva)
+        }
+    }
+    devuelve salida
+}
+
+funcion letras_de(texto) {
+    variable letras = []
+    para caracter en minusculas(texto) { letras.agregar(caracter) }
+    devuelve letras
+}
+
+funcion es_anagrama(a, b) {
+    devuelve ordenar(letras_de(a)) == ordenar(letras_de(b))
+}

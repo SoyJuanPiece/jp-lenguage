@@ -131,7 +131,7 @@ class Lexer:
             tipo = _SIGNOS_SIMPLES[c]
             if c == "*" and self._coincide("*"):
                 self._agregar(TToken.POTENCIA)          # **
-            elif self._coincide("="):
+            elif (c in _COMPUESTOS or c in "=<>") and self._coincide("="):
                 if c in _COMPUESTOS:
                     self._agregar(_COMPUESTOS[c])       # += -= *= /= %=
                 elif c == "=":
@@ -141,6 +141,8 @@ class Lexer:
                 else:
                     self._agregar(TToken.MAYOR_IGUAL)   # >=
             else:
+                # Ojo: ']' ')' '}' ',' ';' ':' '.' seguidos de '=' NO forman un
+                # signo compuesto: '[a]=1' son dos tokens, no un '>= ' raro.
                 self._agregar(tipo)
             return
 
@@ -149,6 +151,18 @@ class Lexer:
                 self._agregar(TToken.DIFERENTE)
             else:
                 raise ErrorLexico("carácter inesperado '!'. ¿Quisiste decir '!=' ?", self.linea, self.columna - 1)
+            return
+
+        if c == "?":
+            if self._coincide("?"):
+                self._agregar(TToken.DOBLE_INTERROGACION)   # a ?? b
+            elif self._coincide("."):
+                self._agregar(TToken.INTERROGACION_PUNTO)   # a?.clave
+            else:
+                raise ErrorLexico(
+                    "carácter inesperado '?'. ¿Quisiste decir '??' (valor si es nulo) o '?.' (acceso seguro)?",
+                    self.linea, self.columna - 1,
+                )
             return
 
         # Cadenas (comillas dobles o simples)

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+<rect width="600" height="400" fill="#ffffff"/>
+<path d="M 190 200 L 190 50 A 150 150 0 0 1 303.84 102.33 Z" fill="#4e79a7"/>
+<path d="M 190 200 L 303.84 102.33 A 150 150 0 0 1 187.31 349.98 Z" fill="#f28e2b"/>
+<path d="M 190 200 L 187.31 349.98 A 150 150 0 0 1 46.53 243.78 Z" fill="#e15759"/>
+<path d="M 190 200 L 46.53 243.78 A 150 150 0 0 1 190 50 Z" fill="#76b7b2"/>
+<rect x="380" y="66" width="14" height="14" fill="#4e79a7"/>
+<text x="402" y="79" font-size="13" fill="black" font-family="sans-serif">Maturín: 14%</text>
+<rect x="380" y="92" width="14" height="14" fill="#f28e2b"/>
+<text x="402" y="105" font-size="13" fill="black" font-family="sans-serif">Caracas: 37%</text>
+<rect x="380" y="118" width="14" height="14" fill="#e15759"/>
+<text x="402" y="131" font-size="13" fill="black" font-family="sans-serif">Valencia: 20%</text>
+<rect x="380" y="144" width="14" height="14" fill="#76b7b2"/>
+<text x="402" y="157" font-size="13" fill="black" font-family="sans-serif">Maracaibo: 30%</text>
+</svg>

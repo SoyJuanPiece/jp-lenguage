@@ -63,6 +63,7 @@ class NodoLlamada(Nodo):
     callee: Nodo
     argumentos: list[Nodo] = field(default_factory=list)
     linea: int = 0
+    seguro: bool = False  # f?.(): si el callee es nulo, el resultado es nulo
 
 
 @dataclass
@@ -70,6 +71,7 @@ class NodoIndice(Nodo):
     objeto: Nodo
     indice: Nodo
     linea: int = 0
+    seguro: bool = False  # a?.b: si a es nulo, el resultado es nulo (sin tocar b)
 
 
 @dataclass
@@ -138,6 +140,7 @@ class NodoDeclaracionVar(Nodo):
     nombre: str
     inicializador: Nodo | None
     linea: int = 0
+    tipo: str | None = None  # 'variable x: numero = ...' (tipos opcionales v1.23)
 
 
 @dataclass
@@ -174,6 +177,12 @@ class NodoPara(Nodo):
     iterable: Nodo
     cuerpo: NodoBloque
     linea: int = 0
+    # Segundo nombre opcional: 'para i, valor en lista' (índice, valor),
+    # 'para clave, valor en diccionario' (clave, valor).
+    variable2: str | None = None
+    # Segundo nombre opcional: 'para i, valor en lista' (índice, valor),
+    # 'para clave, valor en diccionario' (clave, valor).
+    variable2: str | None = None
 
 
 @dataclass
@@ -187,15 +196,18 @@ class NodoElegir(Nodo):
 
 @dataclass
 class NodoIntentar(Nodo):
-    """intenta { ... } atrapa error { ... }
+    """intenta { ... } atrapa error { ... } finalmente { ... }
 
     `nombre_error` es el nombre con el que el bloque `atrapa` ve el mensaje
-    del error (None si se escribió un `atrapa` anónimo).
+    del error (None si se escribió un `atrapa` anónimo). `captura` puede ser
+    None si solo hay `finalmente`; `finalmente` (opcional) se ejecuta siempre:
+    haya error o no, e incluso antes de un `devuelve`/`romper`/`continuar`.
     """
     cuerpo: NodoBloque
     nombre_error: str | None
-    captura: NodoBloque
+    captura: NodoBloque | None
     linea: int = 0
+    finalmente: NodoBloque | None = None
 
 
 @dataclass
@@ -204,6 +216,13 @@ class NodoFuncion(Nodo):
     parametros: list[str]
     cuerpo: NodoBloque
     linea: int = 0
+    # Valores por defecto alineados con `parametros` (None = obligatorio):
+    # funcion f(a, b = 2) { ... } -> defectos [None, NodoNumero(2)].
+    defectos: list = field(default_factory=list)
+    # Tipos opcionales alineados con `parametros` (None = sin anotar) y el
+    # tipo de retorno: funcion f(a: numero): numero { ... } (v1.23).
+    tipos: list = field(default_factory=list)
+    tipo_retorno: str | None = None
 
 
 @dataclass
@@ -219,4 +238,54 @@ class NodoRomper(Nodo):
 
 @dataclass
 class NodoContinuar(Nodo):
+    linea: int = 0
+
+
+@dataclass
+class NodoLanzar(Nodo):
+    """lanzar expr — crea un error atrapable con ese mensaje (como 'throw')."""
+    expresion: Nodo
+    linea: int = 0
+
+
+@dataclass
+class NodoDeclaracionLista(Nodo):
+    """variable [a, b] = expr — desestructuración: reparte una lista en nombres."""
+    nombres: list[str]
+    inicializador: Nodo
+    linea: int = 0
+
+
+@dataclass
+class NodoAsignacionLista(Nodo):
+    """[a, b] = expr — como la declaración, pero con variables ya existentes
+    (permite el intercambio sin temporal: [a, b] = [b, a])."""
+    nombres: list[str]
+    valor: Nodo
+    linea: int = 0
+
+
+@dataclass
+class NodoImportar(Nodo):
+    """importar "ruta.jp" [como nombre] — ejecuta otro archivo .jp una sola vez.
+
+    Sin `como`, los nombres del módulo quedan disponibles directamente; con
+    `como util`, se accede con `util.nombre`. La ruta es relativa al archivo
+    que importa (o al directorio actual en el REPL / -c).
+    """
+    ruta: str
+    alias: str | None = None
+    linea: int = 0
+
+
+@dataclass
+class NodoClase(Nodo):
+    """clase Nombre [hereda Padre] { funcion metodo(...) { ... } ... }
+
+    El constructor es el método 'iniciar' (opcional). Dentro de los métodos,
+    'este' es el objeto. Los métodos pueden tener valores por defecto.
+    """
+    nombre: str
+    metodos: list = field(default_factory=list)  # list[NodoFuncion]
+    padre: str | None = None
     linea: int = 0

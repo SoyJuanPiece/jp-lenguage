@@ -21,20 +21,25 @@ from dataclasses import dataclass, field
 from .arbol import (
     Nodo,
     NodoAsignacion,
+    NodoClase,
+    NodoAsignacionLista,
     NodoAsignarIndice,
     NodoBinario,
     NodoBloque,
     NodoBooleano,
     NodoCadena,
     NodoContinuar,
+    NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoImportar,
     NodoIntentar,
     NodoIndice,
     NodoInterpolacion,
+    NodoLanzar,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -63,6 +68,19 @@ class FunCerrada:
     chunk: Chunk
     aridad: int
     parametros: list[str] = field(default_factory=list)
+    # Chunks de los valores por defecto (uno por parámetro, None = obligatorio).
+    # Cada chunk es un mini-programa que deja el valor y hace RETORNAR; la VM
+    # lo ejecuta en el ámbito local de la llamada cuando falta ese argumento.
+    defectos: list = field(default_factory=list)
+    # Tipos opcionales (v1.23): alineados con parametros; None = sin anotar.
+    tipos: list = field(default_factory=list)
+    tipo_retorno: str | None = None
+
+    @property
+    def aridad_minima(self) -> int:
+        if not self.defectos:
+            return self.aridad
+        return sum(1 for d in self.defectos if d is None)
 
 
 class Compilador:
@@ -78,8 +96,8 @@ class Compilador:
         # y 'romper' popea ambos; en 'mientras' son 0.
         self.bucles: list[dict[str, int]] = []
         # TRYs activos en el cuerpo que se está compilando: 'romper',
-        # 'continuar' y 'retorna' deben cerrarlos (ENDTRY) al salir.
-        self.intentos: list[int] = []
+        # 'continuar' y 'retorna' deben cerrarlos (ENDTRY + su 'finalmente').
+        self.intentos: list[dict] = []
 
     # ---------------- API ----------------
 
@@ -118,6 +136,22 @@ class Compilador:
         if self.ambitos and self.ambitos[-1] is _SENTINELA:
             self.ambitos.pop()
 
+    def _emitir_cierre_intentos(self, chunk: Chunk, hasta: int, linea: int) -> None:
+        """Emite ENDTRY (+ el 'finalmente' en línea) de los intentos sobre `hasta`.
+
+        Lo usan 'devuelve', 'romper' y 'continuar' al salir de un 'intenta':
+        el finalmente se duplica en ese camino de salida, como hacen los
+        compiladores clásicos. La lista de intentos se restaura al final
+        porque, sintácticamente, el código siguiente sigue dentro del intenta.
+        """
+        objetivos = self.intentos[hasta:]
+        del self.intentos[hasta:]
+        for intento in reversed(objetivos):
+            self._emitir(chunk, Codigo.ENDTRY, linea=linea)
+            if intento["finalmente"] is not None:
+                self._sentencia(intento["finalmente"], chunk)
+        self.intentos.extend(objetivos)
+
     # ---------------- cuerpos ----------------
 
     def _cuerpo(self, sentencias: list[Nodo], chunk: Chunk, es_fun: bool) -> None:
@@ -139,11 +173,30 @@ class Compilador:
         if tipo is NodoDeclaracionVar:
             if nodo.inicializador is not None:
                 self._expresion(nodo.inicializador, chunk)
+                if nodo.tipo is not None:
+                    self._emitir(chunk, Codigo.VERIFICAR_TIPO, (nodo.tipo, nodo.nombre), nodo.linea)
             else:
                 self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
             if self.ambitos and self.ambitos[-1] is not _SENTINELA:
                 self.ambitos[-1][nodo.nombre] = True
             self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
+            return
+
+        if tipo is NodoLanzar:
+            self._expresion(nodo.expresion, chunk)
+            self._emitir(chunk, Codigo.LANZAR, linea=nodo.linea)
+            return
+
+        if tipo is NodoImportar:
+            self._emitir(chunk, Codigo.IMPORTAR, (nodo.ruta, nodo.alias), nodo.linea)
+            return
+
+        if tipo is NodoDeclaracionLista:
+            self._expresion(nodo.inicializador, chunk)
+            if self.ambitos and self.ambitos[-1] is not _SENTINELA:
+                for nombre in nodo.nombres:
+                    self.ambitos[-1][nombre] = True
+            self._emitir(chunk, Codigo.DESESTRUCTURAR, tuple(nodo.nombres), nodo.linea)
             return
 
         if tipo is NodoExpresion:
@@ -213,6 +266,24 @@ class Compilador:
             self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
             return
 
+        if tipo is NodoClase:
+            # pila: [padre o NULO, metodo1, metodo2, ...] -> CREAR_CLASE -> clase
+            if nodo.padre is not None:
+                self._expresion(NodoVariable(nombre=nodo.padre, linea=nodo.linea), chunk)
+            else:
+                self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
+            nombres_metodos = []
+            for metodo in nodo.metodos:
+                fun_cerrada = self._compilar_funcion(metodo)
+                indice = chunk.agregar_constante(fun_cerrada)
+                self._emitir(chunk, Codigo.CONSTANTE, indice, metodo.linea)
+                nombres_metodos.append(metodo.nombre)
+            self._emitir(chunk, Codigo.CREAR_CLASE, (nodo.nombre, tuple(nombres_metodos)), nodo.linea)
+            if self.ambitos and self.ambitos[-1] is not _SENTINELA:
+                self.ambitos[-1][nodo.nombre] = True
+            self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
+            return
+
         if tipo is NodoRetorna:
             # El valor se evalúa DENTRO del 'intenta' (si falla, lo atrapa).
             if nodo.valor is not None:
@@ -220,9 +291,9 @@ class Compilador:
             else:
                 self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
             # Ya con el valor: un 'retorna' dentro de un 'intenta' abandona la
-            # función, así que hay que quitar sus manejadores de error.
-            for _ in range(len(self.intentos)):
-                self._emitir(chunk, Codigo.ENDTRY, linea=nodo.linea)
+            # función: hay que quitar sus manejadores y correr su 'finalmente'
+            # (el valor ya quedó en la pila, debajo de lo que el finalmente use).
+            self._emitir_cierre_intentos(chunk, 0, nodo.linea)
             self._emitir(chunk, Codigo.RETORNAR, linea=nodo.linea)
             return
 
@@ -287,38 +358,67 @@ class Compilador:
         self._emitir(chunk, Codigo.POP, linea=linea)
 
     def _intentar(self, nodo: NodoIntentar, chunk: Chunk) -> None:
-        """intenta { ... } atrapa error { ... }
+        """intenta { ... } atrapa error { ... } finalmente { ... }
 
-        pila en el camino feliz: [manejador] TRY ... cuerpo ... ENDTRY SALTAR fin
-        pila en el camino de error: la VM restaura pila/frames/ámbito y salta al
-        'atrapa', que recibe el mensaje (ERROR_ACTUAL) en un ámbito propio.
+        Camino feliz: TRY cuerpo ENDTRY [finalmente] SALTAR fin.
+        Camino de error: la VM restaura pila/frames/ámbito y salta al destino:
+        ERROR_ACTUAL abre el ámbito del 'atrapa'; tras el 'atrapa' corre el
+        [finalmente]. Sin 'atrapa' (solo finalmente): finalmente + RELANZAR.
+        Un 'devuelve'/'romper'/'continuar' que sale del intenta emite su propio
+        ENDTRY + finalmente en línea (ver _emitir_cierre_intentos).
         """
         linea = nodo.linea
         ix_try = self._emitir(chunk, Codigo.TRY, 0, linea)
-        self.intentos.append(ix_try)
+        self.intentos.append({"finalmente": nodo.finalmente})
         self._marcar()
         self._sentencia(nodo.cuerpo, chunk)
         self._desmarcar()
         self.intentos.pop()
         self._emitir(chunk, Codigo.ENDTRY, linea=linea)
+        if nodo.finalmente is not None:
+            self._sentencia(nodo.finalmente, chunk)
         al_fin = self._emitir(chunk, Codigo.SALTAR, 0, linea)
 
         destino = len(chunk.codigo)
         chunk.codigo[ix_try] = (Codigo.TRY, destino, linea)
         # ---- camino del error ----
-        self._marcar()
-        self._emitir(chunk, Codigo.ERROR_ACTUAL, linea=linea)
-        self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)
-        self.ambitos.append({})
-        if nodo.nombre_error is not None:
-            self._emitir(chunk, Codigo.DECLARAR, nodo.nombre_error, linea)
-            self.ambitos[-1][nodo.nombre_error] = True
+        if nodo.captura is None:
+            if nodo.finalmente is not None:
+                self._sentencia(nodo.finalmente, chunk)
+            self._emitir(chunk, Codigo.RELANZAR, linea=linea)
         else:
-            self._emitir(chunk, Codigo.POP, linea=linea)
-        self._sentencia(nodo.captura, chunk)
-        self.ambitos.pop()
-        self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
-        self._desmarcar()
+            self._marcar()
+            self._emitir(chunk, Codigo.ERROR_ACTUAL, linea=linea)
+            self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)
+            self.ambitos.append({})
+            if nodo.nombre_error is not None:
+                self._emitir(chunk, Codigo.DECLARAR, nodo.nombre_error, linea)
+                self.ambitos[-1][nodo.nombre_error] = True
+            else:
+                self._emitir(chunk, Codigo.POP, linea=linea)
+            # El 'atrapa' queda protegido por un segundo TRY: si el propio
+            # atrapa falla (o devuelve/rompe, que lo cierra en línea), el
+            # 'finalmente' corre igualmente antes de relanzar/salir.
+            ix_try2 = None
+            if nodo.finalmente is not None:
+                ix_try2 = self._emitir(chunk, Codigo.TRY, 0, linea)
+                self.intentos.append({"finalmente": nodo.finalmente})
+            self._sentencia(nodo.captura, chunk)
+            if ix_try2 is not None:
+                self.intentos.pop()
+                self._emitir(chunk, Codigo.ENDTRY, linea=linea)
+            self.ambitos.pop()
+            self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
+            self._desmarcar()
+            if nodo.finalmente is not None:
+                self._sentencia(nodo.finalmente, chunk)
+            if ix_try2 is not None:
+                al_fin2 = self._emitir(chunk, Codigo.SALTAR, 0, linea)
+                destino2 = len(chunk.codigo)
+                chunk.codigo[ix_try2] = (Codigo.TRY, destino2, linea)
+                self._sentencia(nodo.finalmente, chunk)
+                self._emitir(chunk, Codigo.RELANZAR, linea=linea)
+                chunk.codigo[al_fin2] = (Codigo.SALTAR, len(chunk.codigo), linea)
         chunk.codigo[al_fin] = (Codigo.SALTAR, len(chunk.codigo), linea)
         # Netas 0: el valor de la sentencia
         self._emitir(chunk, Codigo.NULO, linea=linea)
@@ -372,12 +472,31 @@ class Compilador:
         """
         linea = nodo.linea
         base = len(self.ambitos)
-        self._expresion(nodo.iterable, chunk)   # se evalúa en el ámbito exterior
-        self._emitir(chunk, Codigo.ITERAR, linea=linea)           # pila: iter
-        self.ambitos.append({nodo.variable: True})  # el cuerpo ve la var como local
+        if type(nodo.iterable) is NodoRango:
+            # Rango perezoso: 'para i en 1..1000000' no crea la lista entera.
+            # operando: bit0 = tiene paso, bit1 = pares (para a, b en).
+            rango = nodo.iterable
+            self._expresion(rango.izquierda, chunk)
+            self._expresion(rango.derecha, chunk)
+            operando_rango = 2 if nodo.variable2 else 0
+            if rango.paso is not None:
+                self._expresion(rango.paso, chunk)
+                operando_rango += 1
+            self._emitir(chunk, Codigo.ITERAR_RANGO, operando_rango, linea)  # pila: iter
+        else:
+            self._expresion(nodo.iterable, chunk)   # se evalúa en el ámbito exterior
+            # ITERAR con operando 1 = pares (índice/clave, valor) para 'para a, b en'
+            self._emitir(chunk, Codigo.ITERAR, 1 if nodo.variable2 else 0, linea)  # pila: iter
+        nombres = {nodo.variable: True}
+        if nodo.variable2:
+            nombres[nodo.variable2] = True
+        self.ambitos.append(nombres)  # el cuerpo ve las variables como locales
         vuelta = len(chunk.codigo)  # tras ITERAR se cae AQUÍ (sin salto de entrada)
         self._emitir(chunk, Codigo.AMBITO_PUSH, linea=linea)      # ámbito de la vuelta
-        ix_iter = self._emitir(chunk, Codigo.ITERAR_SIGUIENTE, (nodo.variable, 0), linea)
+        if nodo.variable2:
+            ix_iter = self._emitir(chunk, Codigo.ITERAR_SIGUIENTE, (nodo.variable, nodo.variable2, 0), linea)
+        else:
+            ix_iter = self._emitir(chunk, Codigo.ITERAR_SIGUIENTE, (nodo.variable, 0), linea)
         marco = {
             "vuelta": vuelta,
             "base": base,
@@ -393,7 +512,10 @@ class Compilador:
         self._emitir(chunk, Codigo.AMBITO_POP, linea=linea)
         self._emitir(chunk, Codigo.SALTAR, vuelta, linea)
         fin = len(chunk.codigo)  # aquí se salta al agotarse el iterable
-        chunk.codigo[ix_iter] = (Codigo.ITERAR_SIGUIENTE, (nodo.variable, fin), linea)
+        if nodo.variable2:
+            chunk.codigo[ix_iter] = (Codigo.ITERAR_SIGUIENTE, (nodo.variable, nodo.variable2, fin), linea)
+        else:
+            chunk.codigo[ix_iter] = (Codigo.ITERAR_SIGUIENTE, (nodo.variable, fin), linea)
         self._parchar_pendientes(chunk, marco, fin, linea)
         self._emitir(chunk, Codigo.POP, linea=linea)              # quita el centinela
         self._emitir(chunk, Codigo.NULO, linea=linea)             # valor de la sentencia
@@ -416,9 +538,8 @@ class Compilador:
             raise ErrorEjecucion(f"'{palabra}' fuera de un bucle", linea)
         marco = self.bucles[-1]
         # Salir de un 'intenta' activo dentro del bucle: quitar sus manejadores
-        # de error (si no, quedarían vivos tras el salto).
-        for _ in range(len(self.intentos) - marco["intentos_base"]):
-            self._emitir(chunk, Codigo.ENDTRY, linea=linea)
+        # y correr su 'finalmente' antes de saltar.
+        self._emitir_cierre_intentos(chunk, marco["intentos_base"], linea)
         # Cerrar SOLO los ámbitos abiertos desde la base de este bucle (los suyos
         # y los de bloques/si anidados en el camino actual); los bucles externos
         # conservan los suyos porque siguen vivos.
@@ -464,6 +585,11 @@ class Compilador:
                 self._emitir(chunk, Codigo.ASIGNAR_LOCAL, nombre, nodo.linea)
             else:
                 self._emitir(chunk, Codigo.ASIGNAR_GLOBAL, nombre, nodo.linea)
+            return
+
+        if tipo is NodoAsignacionLista:
+            self._expresion(nodo.valor, chunk)
+            self._emitir(chunk, Codigo.DESESTRUCTURAR_ASIG, tuple(nodo.nombres), nodo.linea)
             return
 
         if tipo is NodoAsignarIndice:
@@ -529,6 +655,19 @@ class Compilador:
             return
 
         if tipo is NodoIndice:
+            if nodo.seguro:
+                # [objeto]; si es nulo salta al fin (queda el nulo como
+                # resultado); si no, indice + INDICE como siempre.
+                self._expresion(nodo.objeto, chunk)
+                a_cont = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+                al_fin = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+                destino = len(chunk.codigo)
+                self._expresion(nodo.indice, chunk)
+                self._emitir(chunk, Codigo.INDICE, linea=nodo.linea)
+                fin = len(chunk.codigo)
+                chunk.codigo[a_cont] = (Codigo.SALTAR_SI_NO_NULO, destino, nodo.linea)
+                chunk.codigo[al_fin] = (Codigo.SALTAR, fin, nodo.linea)
+                return
             self._expresion(nodo.objeto, chunk)
             self._expresion(nodo.indice, chunk)
             self._emitir(chunk, Codigo.INDICE, linea=nodo.linea)
@@ -569,6 +708,19 @@ class Compilador:
             chunk.codigo[al_fin] = (Codigo.SALTAR_SI_VERDAD, fin, nodo.linea)
             chunk.codigo[a_der] = (Codigo.SALTAR, destino, nodo.linea)
             return
+        if operador == "??":
+            # Como 'o' pero la condicion es "no es nulo": si lo de la
+            # izquierda no es nulo se conserva; si es nulo, se calcula lo otro.
+            self._expresion(nodo.izquierda, chunk)
+            al_fin = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+            a_der = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+            destino = len(chunk.codigo)
+            self._emitir(chunk, Codigo.POP, linea=nodo.linea)
+            self._expresion(nodo.derecha, chunk)
+            fin = len(chunk.codigo)
+            chunk.codigo[al_fin] = (Codigo.SALTAR_SI_NO_NULO, fin, nodo.linea)
+            chunk.codigo[a_der] = (Codigo.SALTAR, destino, nodo.linea)
+            return
 
         opcode = _OP_BINARIOS.get(operador)
         if opcode is None:
@@ -580,6 +732,21 @@ class Compilador:
     def _llamada(self, nodo: NodoLlamada, chunk: Chunk) -> None:
         callee = nodo.callee
         argumentos = nodo.argumentos
+
+        if nodo.seguro:
+            # [callee]; si es nulo salta al fin (nulo como resultado, sin
+            # evaluar argumentos); si no, llamada normal.
+            self._expresion(callee, chunk)
+            a_cont = self._emitir(chunk, Codigo.SALTAR_SI_NO_NULO, 0, nodo.linea)
+            al_fin = self._emitir(chunk, Codigo.SALTAR, 0, nodo.linea)
+            destino = len(chunk.codigo)
+            for a in argumentos:
+                self._expresion(a, chunk)
+            self._emitir(chunk, Codigo.LLAMAR, len(argumentos), nodo.linea)
+            fin = len(chunk.codigo)
+            chunk.codigo[a_cont] = (Codigo.SALTAR_SI_NO_NULO, destino, nodo.linea)
+            chunk.codigo[al_fin] = (Codigo.SALTAR, fin, nodo.linea)
+            return
 
         # muestra()/imprime() con solo constantes -> IMPRIMIR directo (sin llamadas)
         if (
@@ -611,11 +778,30 @@ class Compilador:
         self.bucles = []
         intentos_externos = self.intentos
         self.intentos = []
+        # Valores por defecto: cada uno se compila a un mini-chunk que la VM
+        # ejecuta en el ámbito de la llamada cuando falta ese argumento (así
+        # el defecto puede usar parámetros anteriores y el cierre, como el árbol).
+        defectos = list(getattr(nodo, "defectos", []) or [])
+        defectos += [None] * (len(nodo.parametros) - len(defectos))
+        defectos_chunks: list = []
+        for defecto in defectos:
+            if defecto is None:
+                defectos_chunks.append(None)
+            else:
+                chunk_defecto = Chunk()
+                self._expresion(defecto, chunk_defecto)
+                self._emitir(chunk_defecto, Codigo.RETORNAR, linea=nodo.linea)
+                defectos_chunks.append(chunk_defecto)
         self._cuerpo(nodo.cuerpo.sentencias, chunk, es_fun=True)
         self.bucles = bucles_externos
         self.intentos = intentos_externos
         self.ambitos.pop()
-        return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros))
+        # La VM lee el retorno esperado del propio chunk al ejecutar RETORNAR.
+        chunk.tipo_retorno_esperado = nodo.tipo_retorno
+        chunk.nombre_funcion = nodo.nombre
+        tipos = list(nodo.tipos or [])
+        tipos += [None] * (len(nodo.parametros) - len(tipos))
+        return FunCerrada(nodo.nombre, chunk, len(nodo.parametros), list(nodo.parametros), defectos_chunks, tipos, nodo.tipo_retorno)
 
 
 _OP_BINARIOS: dict[str, Codigo] = {

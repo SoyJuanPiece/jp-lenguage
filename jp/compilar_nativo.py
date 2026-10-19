@@ -35,10 +35,15 @@ from .arbol import (
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
+    NodoAsignacionLista,
+    NodoClase,
+    NodoDeclaracionLista,
     NodoFuncion,
+    NodoImportar,
     NodoIndice,
     NodoIntentar,
     NodoInterpolacion,
+    NodoLanzar,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -113,6 +118,7 @@ OP_DICT = 51                     # u32 n: n pares clave/valor en la pila
 OP_MANEJAR = 52                  # u32 pc del bloque 'atrapa'
 OP_FIN_MANEJAR = 53
 OP_ERROR_EN = 54                 # u32 slot: guarda el mensaje del error capturado
+OP_SALTO_NO_NULO_MANTENER = 55   # i32 rel  (para '??' y '?.': mira el tope, no popea)
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -134,7 +140,7 @@ NOMBRES_OP = {
     OP_CELDA: "CELDA", OP_ITER_INIT: "ITER_INIT", OP_ITER_NEXT: "ITER_NEXT",
     OP_ITER_NEXT_CELDA: "ITER_NEXT_CELDA", OP_EXPR_SENT: "EXPR_SENT", OP_FIN: "FIN",
     OP_DICT: "DICT", OP_MANEJAR: "MANEJAR", OP_FIN_MANEJAR: "FIN_MANEJAR",
-    OP_ERROR_EN: "ERROR_EN",
+    OP_ERROR_EN: "ERROR_EN", OP_SALTO_NO_NULO_MANTENER: "SALTO_NO_NULO_MANTENER",
 }
 
 MAGIA = b"JPB1"
@@ -169,7 +175,8 @@ def _nativas_del_motor_c() -> frozenset[str]:
         "imprime", "indice_de", "insertar", "invertir", "json_leer", "json_texto",
         "leer", "leer_archivo", "letra", "lista_archivos", "log", "longitud",
         "maximo", "mayusculas", "minimo", "minusculas", "muestra", "numero",
-        "pi", "piso", "potencia", "quitar", "raiz", "rango", "recortar",
+        "pi", "piso", "potencia", "producto_punto", "promedio", "mediana", "norma",
+        "distancia", "softmax", "sigmoide", "quitar", "raiz", "rango", "recortar",
         "redondear", "reemplazar", "reloj", "repetir", "seno", "separar",
         "subtexto", "sumar", "tamano_archivo", "techo", "terminar_con", "texto",
         "tiene", "tipo", "unir", "valores",
@@ -530,10 +537,24 @@ class CompiladorNativo:
             self._bloque(nodo.sentencias)
 
         elif tipo is NodoDeclaracionVar:
+            if getattr(nodo, "tipo", None) is not None:
+                raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", linea)
             self._declarar(nodo.nombre, nodo.inicializador, linea)
 
         elif tipo is NodoFuncion:
             self._declarar_funcion(nodo)
+
+        elif tipo is NodoImportar:
+            raise NoSoportadoNativo("los módulos ('importar') aún no están en el motor nativo", linea)
+
+        elif tipo is NodoClase:
+            raise NoSoportadoNativo("las clases ('clase') aún no están en el motor nativo", linea)
+
+        elif tipo is NodoLanzar:
+            raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)
+
+        elif tipo is NodoDeclaracionLista:
+            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
 
         elif tipo is NodoExpresion:
             self._expresion(nodo.expresion)
@@ -621,6 +642,8 @@ class CompiladorNativo:
                 actual.parchar_aqui(hueco)
 
         elif tipo is NodoIntentar:
+            if nodo.finalmente is not None or nodo.captura is None:
+                raise NoSoportadoNativo("'finalmente' aún no está en el motor nativo", linea)
             manejador = actual.emitir(OP_MANEJAR, 0, linea=linea)
             hueco = len(actual.palabras) - 1
             self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
@@ -682,6 +705,12 @@ class CompiladorNativo:
         actual.emitir(OP_POP, linea=linea)
 
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
+        if nodo.tipo_retorno is not None or any(t is not None for t in (nodo.tipos or [])):
+            raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", nodo.linea)
+        if any(d is not None for d in getattr(nodo, "defectos", []) or []):
+            raise NoSoportadoNativo(
+                "los valores por defecto aún no están en el motor nativo", nodo.linea
+            )
         # los parámetros también pueden acabar en una closure: si una función
         # anidada los usa, el parámetro tiene que vivir en una celda desde el
         # primer instante (si no, la closure capturaría el valor crudo).
@@ -707,6 +736,8 @@ class CompiladorNativo:
         return indice
 
     def _para(self, nodo: NodoPara) -> None:
+        if nodo.variable2 is not None:
+            raise NoSoportadoNativo("'para a, b en' aún no está en el motor nativo", nodo.linea)
         actual = self.actual
         linea = nodo.linea
         slot_iter = actual.reservar()
@@ -797,6 +828,19 @@ class CompiladorNativo:
                 raise NoSoportadoNativo(f"operador unario desconocido: {nodo.operador}", linea)
 
         elif tipo is NodoLlamada:
+            if nodo.seguro:
+                # [callee]; si es nulo salta al fin (queda el nulo, sin
+                # evaluar argumentos); si no, llamada normal.
+                actual = self.actual
+                self._expresion(nodo.callee)
+                a_cont = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
+                al_fin = actual.emitir_salto(OP_SALTO, linea)
+                actual.parchar_aqui(a_cont)
+                for argumento in nodo.argumentos:
+                    self._expresion(argumento)
+                actual.emitir(OP_LLAMAR, len(nodo.argumentos), linea=linea)
+                actual.parchar_aqui(al_fin)
+                return
             if isinstance(nodo.callee, NodoIndice) and MÉTODOS_PENDIENTES:
                 # Solo se rechaza lo que el motor en C todavía no sabe hacer: si no,
                 # sería un error en tiempo de ejecución en vez de una caída limpia.
@@ -811,6 +855,18 @@ class CompiladorNativo:
             actual.emitir(OP_LLAMAR, len(nodo.argumentos), linea=linea)
 
         elif tipo is NodoIndice:
+            if nodo.seguro:
+                # [objeto]; si es nulo salta al fin (queda el nulo); si no,
+                # indice + INDICE como siempre.
+                actual = self.actual
+                self._expresion(nodo.objeto)
+                a_cont = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
+                al_fin = actual.emitir_salto(OP_SALTO, linea)
+                actual.parchar_aqui(a_cont)
+                self._expresion(nodo.indice)
+                actual.emitir(OP_INDICE, linea=linea)
+                actual.parchar_aqui(al_fin)
+                return
             self._expresion(nodo.objeto)
             self._expresion(nodo.indice)
             actual.emitir(OP_INDICE, linea=linea)
@@ -838,6 +894,9 @@ class CompiladorNativo:
         elif tipo is NodoFuncion:
             indice = self._compilar_funcion(nodo)
             actual.emitir(OP_CIERRE, indice, linea=linea)
+
+        elif tipo is NodoAsignacionLista:
+            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
 
         elif tipo is NodoDiccionario:
             for clave, valor in nodo.pares:
@@ -867,6 +926,15 @@ class CompiladorNativo:
         if operador == "y":
             self._expresion(nodo.izquierda)
             hueco = actual.emitir_salto(OP_SALTO_FALSO_MANTENER, linea)
+            actual.emitir(OP_POP, linea=linea)
+            self._expresion(nodo.derecha)
+            actual.parchar_aqui(hueco)
+            return
+        if operador == "??":
+            # Igual que 'o' pero la condicion es "no es nulo": si lo de la
+            # izquierda no es nulo se conserva; si es nulo, se calcula lo otro.
+            self._expresion(nodo.izquierda)
+            hueco = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
             actual.emitir(OP_POP, linea=linea)
             self._expresion(nodo.derecha)
             actual.parchar_aqui(hueco)

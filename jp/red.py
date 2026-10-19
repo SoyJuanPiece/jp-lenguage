@@ -5,6 +5,7 @@ Todo usa solo la librería estándar de Python (urllib + json): cero dependencia
 Nativas que instala:
     http_get(url)                  -> texto con la respuesta
     http_post(url, cuerpo, [tipo]) -> texto con la respuesta (dict/lista -> JSON automático)
+    pedir(url, [metodo, datos, cabeceras]) -> {estado, cuerpo, json, cabeceras}
     json_leer(texto)               -> diccionario / lista / valor JSON
     json_texto(valor)              -> texto JSON
     tiene(contenedor, clave)       -> verdadero / falso
@@ -97,6 +98,49 @@ def instalar(entorno: Entorno) -> None:
             content_type = tipo
         return _http_post(url, texto_cuerpo, content_type)
 
+    def pedir(url: object, metodo: object = "GET", datos: object = None, cabeceras: object = None) -> dict:
+        """pedir(url[, metodo, datos, cabeceras]) -> {estado, cuerpo, json, cabeceras}.
+
+        Como http_get/http_post pero sin lanzar por un 404: el estado viene
+        en el diccionario y el cuerpo ya viene leído también en `json` si el
+        servidor mandó JSON. Los datos dict/lista salen como JSON.
+        """
+        if not isinstance(url, str):
+            raise ErrorEjecucion("pedir() espera una dirección en texto")
+        if not isinstance(metodo, str) or metodo.upper() not in ("GET", "POST", "PUT", "DELETE", "PATCH"):
+            raise ErrorEjecucion("pedir() espera un método como \"GET\", \"POST\", \"PUT\" o \"DELETE\"")
+        if cabeceras is not None and not isinstance(cabeceras, dict):
+            raise ErrorEjecucion("pedir() espera las cabeceras como diccionario")
+        texto_cuerpo, content_type = _json_o_texto(datos) if datos is not None else ("", "")
+        cabeceras_final = {str(k): jp_a_texto(v) for k, v in (cabeceras or {}).items()}
+        if content_type and datos is not None:
+            cabeceras_final.setdefault("Content-Type", content_type)
+        peticion = urllib.request.Request(
+            url,
+            data=texto_cuerpo.encode("utf-8") if datos is not None else None,
+            method=metodo.upper(),
+            headers=cabeceras_final,
+        )
+        try:
+            respuesta = urllib.request.urlopen(peticion, timeout=15)
+        except urllib.error.HTTPError as error:
+            respuesta = error  # un 404/500 también es una respuesta válida
+        except urllib.error.URLError as error:
+            raise ErrorEjecucion(f"no se pudo conectar ({getattr(error, 'reason', error)})")
+        except (TimeoutError, OSError) as error:
+            raise ErrorEjecucion(f"fallo de red: {error}")
+        cuerpo = respuesta.read().decode("utf-8", "replace")
+        try:
+            datos_json = json.loads(cuerpo) if cuerpo else None
+        except ValueError:
+            datos_json = None
+        return {
+            "estado": respuesta.status,
+            "cuerpo": cuerpo,
+            "json": datos_json,
+            "cabeceras": {k.lower(): v for k, v in respuesta.headers.items()},
+        }
+
     def json_leer(texto: object) -> object:
         if not isinstance(texto, str):
             raise ErrorEjecucion("json_leer() espera una cadena de texto")
@@ -181,6 +225,7 @@ def instalar(entorno: Entorno) -> None:
     nativas = {
         "http_get": FuncionNativa("http_get", http_get, aridad=1),
         "http_post": FuncionNativa("http_post", http_post),
+        "pedir": FuncionNativa("pedir", pedir),
         "json_leer": FuncionNativa("json_leer", json_leer, aridad=1),
         "json_texto": FuncionNativa("json_texto", json_texto, aridad=1),
         "tiene": FuncionNativa("tiene", tiene, aridad=2),

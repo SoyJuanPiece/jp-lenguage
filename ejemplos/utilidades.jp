@@ -1,0 +1,23 @@
+# Utilidades de ejemplo: este archivo es un MÓDULO.
+# Otro programa lo trae con:  importar "utilidades.jp" como util
+# (Al ejecutarlo solo no imprime nada: solo define cosas.)
+
+variable version_utilidades = 1
+
+funcion doble(n) {
+    devuelve n * 2
+}
+
+# 'saludo' tiene un valor por defecto: saluda("Ana") usa "Hola".
+funcion saluda(nombre, saludo = "Hola") {
+    devuelve saludo + ", " + nombre
+}
+
+# El mayor de una lista, recorriéndola con posición y valor a la vez.
+funcion mayor(lista) {
+    variable campeon = lista[0]
+    para i, valor en lista {
+        si valor > campeon { campeon = valor }
+    }
+    devuelve campeon
+}

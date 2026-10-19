@@ -1,0 +1,119 @@
+# biblioteca/web.jp — un mini-framework web en JP puro, sobre servir().
+#
+# Uso:
+#   importar "../biblioteca/web.jp" como web
+#   variable app = web.Aplicacion()
+#   app.get("/", funcion(p) { devuelve web.pagina("<h1>Hola</h1>") })
+#   app.get("/saludar/:nombre", funcion(p) {
+#       devuelve "Hola " + p.parametros.nombre
+#   })
+#   app.post("/api/notas", funcion(p) {
+#       devuelve web.json({recibido: p.json}, 201)
+#   })
+#   app.escuchar(8080)
+#
+# Sin red también se puede probar: app.atender({metodo: "GET",
+# ruta: "/saludar/Ana", consulta: {}, cuerpo: "", cabeceras: {}})
+# devuelve lo mismo que respondería el servidor.
+
+# /saludar/:nombre contra /saludar/Ana → {nombre: "Ana"}; si no casa, nulo.
+# Un patron que termina en /* casa todo lo que siga: /static/* contra
+# /static/css/web.css → {resto: "css/web.css"}.
+funcion emparejar(patron, ruta) {
+    variable partes_p = separar(patron, "/")
+    variable partes_r = separar(ruta, "/")
+    variable parametros = {}
+    para i, parte en partes_p {
+        si parte == "*" {
+            parametros.resto = unir(sublista(partes_r, i), "/")
+            devuelve parametros
+        }
+        si i >= longitud(partes_r) { devuelve nulo }
+        si empezar_con(parte, ":") {
+            parametros[subtexto(parte, 1)] = partes_r[i]
+        } sino {
+            si parte != partes_r[i] { devuelve nulo }
+        }
+    }
+    si longitud(partes_r) != longitud(partes_p) { devuelve nulo }
+    devuelve parametros
+}
+
+# Atajos para responder.
+funcion json(datos, estado = 200) {
+    devuelve {cuerpo: datos, estado: estado}
+}
+
+funcion pagina(html, estado = 200) {
+    devuelve {cuerpo: html, estado: estado, tipo: "text/html; charset=utf-8"}
+}
+
+funcion redirigir(destino) {
+    devuelve {cuerpo: "", estado: 302, cabeceras: {Location: destino}}
+}
+
+# Servir un archivo tal cual (el servidor pone el tipo segun la extension).
+funcion archivo(ruta) {
+    devuelve {archivo: ruta}
+}
+
+clase Aplicacion {
+    funcion iniciar() {
+        este.rutas = []
+        este.intermediarios = []
+    }
+
+    # Programas que se ejecutan antes de las rutas, en orden. Si uno
+    # devuelve una respuesta, la petición se corta ahí (ideal para
+    # comprobar una clave, registrar visitas...).
+    funcion usar(intermediario) {
+        este.intermediarios.agregar(intermediario)
+        devuelve este
+    }
+
+    funcion ruta(metodo, patron, manejador) {
+        este.rutas.agregar({metodo: metodo, patron: patron, manejador: manejador})
+        devuelve este
+    }
+
+    funcion get(patron, manejador) { devuelve este.ruta("GET", patron, manejador) }
+    funcion post(patron, manejador) { devuelve este.ruta("POST", patron, manejador) }
+    funcion put(patron, manejador) { devuelve este.ruta("PUT", patron, manejador) }
+    funcion delete(patron, manejador) { devuelve este.ruta("DELETE", patron, manejador) }
+
+    funcion atender(peticion) {
+        para intermediario en este.intermediarios {
+            variable respuesta = intermediario(peticion)
+            si respuesta != nulo { devuelve respuesta }
+        }
+        para r en este.rutas {
+            si r.metodo != peticion.metodo { continuar }
+            variable parametros = emparejar(r.patron, peticion.ruta)
+            si parametros != nulo {
+                peticion["parametros"] = parametros
+                variable respuesta = r.manejador(peticion)
+                si tipo(respuesta) == "texto" {
+                    devuelve {cuerpo: respuesta, estado: 200}
+                }
+                si tipo(respuesta) == "diccionario" y no tiene(respuesta, "estado") {
+                    respuesta["estado"] = 200
+                }
+                devuelve respuesta
+            }
+        }
+        devuelve {cuerpo: {error: "ruta no encontrada", ruta: peticion.ruta}, estado: 404}
+    }
+
+    # Sirve una carpeta entera: app.estatico("/static", "publica") hace que
+    # /static/estilo.css responda con publica/estilo.css.
+    funcion estatico(prefijo, carpeta) {
+        devuelve este.get(prefijo + "/*", funcion(p) {
+            devuelve archivo(carpeta + "/" + p.parametros.resto)
+        })
+    }
+
+    funcion escuchar(puerto, anfitrion = "127.0.0.1") {
+        imprime("Aplicación web escuchando en http://" + anfitrion + ":" + texto(puerto))
+        servir(puerto, este.atender, anfitrion)
+    }
+}

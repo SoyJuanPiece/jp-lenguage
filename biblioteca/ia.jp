@@ -1,0 +1,113 @@
+# biblioteca/ia.jp — una red neuronal multicapa en JP puro.
+#
+# Uso:
+#   importar "../biblioteca/ia.jp" como ia
+#   variable red = ia.RedNeuronal(2, 4, 1)          # entradas, ocultas, salidas
+#   red.entrenar([[0,0],[0,1],[1,0],[1,1]], [[0],[1],[1],[0]], 3000)
+#   imprime(red.predecir([1, 0]))                    # ≈ [1]  (el XOR)
+#
+# Aprende con descenso de gradiente y la sigmoide, usando producto_punto.
+
+clase RedNeuronal {
+    funcion iniciar(entradas, ocultas, salidas) {
+        este.pesos_oculta = este._pesos(ocultas, entradas, 17)
+        este.sesgo_oculta = este._sesgos(ocultas, 71)
+        este.pesos_salida = este._pesos(salidas, ocultas, 137)
+        este.sesgo_salida = este._sesgos(salidas, 231)
+    }
+
+    # Pesos "al azar" pero deterministas (misma red en cada corrida y motor):
+    # un generador basado en seno, como los de los shaders.
+    funcion _azar(semilla) {
+        variable r = (seno(semilla * 127.1) * 311.7) % 1
+        devuelve r - 0.5
+    }
+
+    funcion _pesos(filas, columnas, semilla) {
+        variable matriz = []
+        variable contador = semilla
+        para f en 1..filas {
+            variable fila = []
+            para c en 1..columnas {
+                contador = contador + 1
+                fila.agregar(este._azar(contador))
+            }
+            matriz.agregar(fila)
+        }
+        devuelve matriz
+    }
+
+    funcion _sesgos(cantidad, semilla) {
+        variable sesgos = []
+        para i en 1..cantidad { sesgos.agregar(este._azar(semilla + i)) }
+        devuelve sesgos
+    }
+
+    funcion _capa(pesos, sesgos, entrada) {
+        variable salida = []
+        para i, fila en pesos {
+            salida.agregar(sigmoide(producto_punto(fila, entrada) + sesgos[i]))
+        }
+        devuelve salida
+    }
+
+    funcion adelante(entrada) {
+        este._oculta = este._capa(este.pesos_oculta, este.sesgo_oculta, entrada)
+        devuelve este._capa(este.pesos_salida, este.sesgo_salida, este._oculta)
+    }
+
+    funcion predecir(entrada) { devuelve este.adelante(entrada) }
+
+    funcion entrenar_uno(entrada, meta, tasa) {
+        variable salida = este.adelante(entrada)
+        variable oculta = este._oculta
+
+        # Deltas de la salida: (meta - salida) * salida * (1 - salida)
+        variable delta_salida = []
+        para i, valor en salida {
+            delta_salida.agregar((meta[i] - valor) * valor * (1 - valor))
+        }
+        # Deltas de la capa oculta (con los pesos de salida AÚN sin tocar)
+        variable delta_oculta = []
+        para j, valor en oculta {
+            variable suma = 0
+            para i, delta en delta_salida {
+                suma = suma + delta * este.pesos_salida[i][j]
+            }
+            delta_oculta.agregar(suma * valor * (1 - valor))
+        }
+        # Ajustes: pesos += tasa * delta * entrada_de_su_capa
+        para i, delta en delta_salida {
+            para j, valor en oculta {
+                este.pesos_salida[i][j] = este.pesos_salida[i][j] + tasa * delta * valor
+            }
+            este.sesgo_salida[i] = este.sesgo_salida[i] + tasa * delta
+        }
+        para j, delta en delta_oculta {
+            para k, valor en entrada {
+                este.pesos_oculta[j][k] = este.pesos_oculta[j][k] + tasa * delta * valor
+            }
+            este.sesgo_oculta[j] = este.sesgo_oculta[j] + tasa * delta
+        }
+    }
+
+    funcion entrenar(datos, metas, epocas, tasa = 0.5) {
+        para epoca en 1..epocas {
+            para i, entrada en datos {
+                este.entrenar_uno(entrada, metas[i], tasa)
+            }
+        }
+    }
+
+    funcion error_total(datos, metas) {
+        variable total = 0
+        para i, entrada en datos {
+            variable salida = este.adelante(entrada)
+            para j, valor en salida {
+                variable diferencia = metas[i][j] - valor
+                total = total + diferencia * diferencia
+            }
+        }
+        devuelve total
+    }
+}

@@ -9,18 +9,23 @@ from __future__ import annotations
 from .arbol import (
     Nodo,
     NodoAsignacion,
+    NodoAsignacionLista,
     NodoAsignarIndice,
     NodoBinario,
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoClase,
+    NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
     NodoFuncion,
     NodoIntentar,
+    NodoImportar,
     NodoIndice,
+    NodoLanzar,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -43,6 +48,11 @@ from .tokens import TToken, Token
 
 # Palabras clave que también sirven como claves de diccionario (ej: {y: 1})
 # o después de un punto (ej: d.no), igual que en Python o JavaScript.
+_TIPOS_ANOTABLES = {
+    "numero", "entero", "texto", "booleano", "lista", "diccionario",
+    "funcion", "nulo", "cualquiera",
+}
+
 _CLAVES_VALIDAS = {
     TToken.IDENTIFICADOR,
     TToken.SI,
@@ -122,12 +132,20 @@ class Parser:
                 return self._sentencia_elegir()
             if self._coincide(TToken.INTENTA):
                 return self._sentencia_intenta()
+            if self._coincide(TToken.LANZAR):
+                return self._sentencia_lanzar()
+            if self._coincide(TToken.IMPORTAR):
+                return self._sentencia_importar()
+            if self._coincide(TToken.CLASE):
+                return self._sentencia_clase()
             if self._coincide(TToken.MIENTRAS):
                 return self._sentencia_mientras()
             if self._coincide(TToken.PARA):
                 return self._sentencia_para()
             if self._coincide(TToken.LLAVE_IZQ):
                 return self._bloque()
+            if self._actual().tipo == TToken.CORCHETE_IZQ and self._es_patron_desestructuracion():
+                return self._sentencia_desestructuracion()
             return self._sentencia_expresion()
         finally:
             # punto y coma opcional al final de cada sentencia
@@ -135,28 +153,149 @@ class Parser:
                 pass
 
     def _sentencia_var(self) -> Nodo:
+        if self._coincide(TToken.CORCHETE_IZQ):
+            # variable [a, b] = expr  (desestructuración de una lista)
+            nombres: list[str] = []
+            while True:
+                nombre = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre dentro de '[...]'")
+                nombres.append(nombre.lexema)
+                if not self._coincide(TToken.COMA):
+                    break
+            cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras los nombres")
+            self._esperar(TToken.IGUAL, "se esperaba '=' tras 'variable [a, b]' (ej: variable [a, b] = [1, 2])")
+            inicializador = self._expresion()
+            return NodoDeclaracionLista(nombres=nombres, inicializador=inicializador, linea=cierre.linea)
         token = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre de variable")
+        tipo = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
         inicializador = self._expresion() if self._coincide(TToken.IGUAL) else None
-        return NodoDeclaracionVar(nombre=token.lexema, inicializador=inicializador, linea=token.linea)
+        return NodoDeclaracionVar(nombre=token.lexema, inicializador=inicializador, linea=token.linea, tipo=tipo)
+
+    def _es_patron_desestructuracion(self) -> bool:
+        """¿Viene '[a, b] ='? (patrón de nombres seguido de asignación)."""
+        i = self.pos + 1
+        def tipo(k: int):
+            return self.tokens[k].tipo if k < len(self.tokens) else TToken.FIN_DE_ARCHIVO
+        if tipo(i) != TToken.IDENTIFICADOR:
+            return False
+        i += 1
+        while tipo(i) == TToken.COMA:
+            if tipo(i + 1) != TToken.IDENTIFICADOR:
+                return False
+            i += 2
+        return tipo(i) == TToken.CORCHETE_DER and tipo(i + 1) == TToken.IGUAL
+
+    def _sentencia_desestructuracion(self) -> Nodo:
+        inicio = self._avanzar()  # '['
+        nombres: list[str] = []
+        while True:
+            nombres.append(self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre").lexema)
+            if not self._coincide(TToken.COMA):
+                break
+        self._esperar(TToken.CORCHETE_DER, "se esperaba ']'")
+        self._esperar(TToken.IGUAL, "se esperaba '='")
+        valor = self._expresion()
+        asignacion = NodoAsignacionLista(nombres=nombres, valor=valor, linea=inicio.linea)
+        return NodoExpresion(expresion=asignacion, linea=inicio.linea)
+
+    def _sentencia_clase(self) -> Nodo:
+        """clase Nombre [hereda Padre] { funcion metodo(...) { ... } ... }"""
+        token = self._actual()
+        nombre = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la clase: 'clase Persona { ... }'")
+        padre = None
+        if self._coincide(TToken.HEREDA):
+            padre = self._esperar(TToken.IDENTIFICADOR, "se esperaba la clase madre tras 'hereda'").lexema
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras el nombre de la clase")
+        metodos: list = []
+        while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
+            while self._coincide(TToken.PUNTO_Y_COMA):
+                pass
+            if self._actual().tipo == TToken.LLAVE_DER:
+                break
+            if not self._coincide(TToken.FUN):
+                raise self._error(
+                    "dentro de una clase solo van métodos: 'funcion nombre(...) { ... }'"
+                )
+            metodos.append(self._sentencia_fun())
+        self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar la clase")
+        return NodoClase(nombre=nombre.lexema, metodos=metodos, padre=padre, linea=token.linea)
+
+    def _sentencia_lanzar(self) -> Nodo:
+        token = self._actual()
+        expresion = self._expresion()
+        return NodoLanzar(expresion=expresion, linea=token.linea)
+
+    def _sentencia_importar(self) -> Nodo:
+        token = self._actual()
+        ruta_token = self._avanzar()
+        if ruta_token.tipo != TToken.CADENA:
+            raise ErrorSintaxis(
+                'importar espera la ruta entre comillas: importar "utilidades.jp"',
+                ruta_token.linea, ruta_token.columna,
+            )
+        alias = None
+        if self._actual().tipo == TToken.IDENTIFICADOR and self._actual().lexema == "como":
+            self._avanzar()
+            alias = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre tras 'como'").lexema
+        return NodoImportar(ruta=str(ruta_token.literal), alias=alias, linea=token.linea)
 
     def _sentencia_fun(self) -> Nodo:
         token = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la función")
-        parametros = self._parametros("el nombre de la función")
+        parametros, defectos, tipos = self._parametros("el nombre de la función")
+        tipo_retorno = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
         self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
         cuerpo = self._bloque()
-        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea)
+        return NodoFuncion(nombre=token.lexema, parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos, tipos=tipos, tipo_retorno=tipo_retorno)
 
-    def _parametros(self, tras_que: str) -> list[str]:
+    def _tipo_anotado(self) -> str:
+        """Lee ': tipo' ya consumido el ':' y valida el nombre del tipo."""
+        token = self._esperar(
+            TToken.IDENTIFICADOR,
+            "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, funcion, nulo o cualquiera",
+        )
+        tipo = token.lexema.replace("número", "numero")
+        if tipo not in _TIPOS_ANOTABLES:
+            raise ErrorSintaxis(
+                f"tipo desconocido '{token.lexema}': usa numero, entero, texto, booleano, "
+                "lista, diccionario, funcion, nulo o cualquiera",
+                token.linea, token.columna,
+            )
+        return tipo
+
+    def _parametros(self, tras_que: str) -> tuple[list[str], list, list]:
+        """Parámetros, con valores por defecto opcionales: funcion f(a, b = 2).
+
+        Devuelve (nombres, defectos, tipos) alineados; defectos[i] y
+        tipos[i] son None si el parámetro i es obligatorio / va sin anotar.
+        Tras el primer defecto, todos deben tenerlo.
+        """
         self._esperar(TToken.PAREN_IZQ, f"se esperaba '(' tras {tras_que}")
         parametros: list[str] = []
+        defectos: list = []
+        tipos: list = []
+        ya_hay_defecto = False
         if self._actual().tipo != TToken.PAREN_DER:
             while True:
                 parametro = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre de parámetro")
+                tipo = None
+                if self._coincide(TToken.DOSPUNTOS):
+                    tipo = self._tipo_anotado()
+                defecto = None
+                if self._coincide(TToken.IGUAL):
+                    defecto = self._expresion()
+                    ya_hay_defecto = True
+                elif ya_hay_defecto:
+                    raise ErrorSintaxis(
+                        f"el parámetro '{parametro.lexema}' necesita un valor por defecto: "
+                        "tras el primer 'parametro = valor', todos deben llevarlo",
+                        parametro.linea, parametro.columna,
+                    )
                 parametros.append(parametro.lexema)
+                defectos.append(defecto)
+                tipos.append(tipo)
                 if not self._coincide(TToken.COMA):
                     break
         self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los parámetros")
-        return parametros
+        return parametros, defectos, tipos
 
     def _sentencia_retorna(self) -> Nodo:
         token = self._actual()
@@ -196,7 +335,7 @@ class Parser:
             return self._bloque()
         if self._coincide(TToken.DOSPUNTOS):
             sentencia = self._sentencia()
-            declara = isinstance(sentencia, (NodoDeclaracionVar, NodoFuncion))
+            declara = isinstance(sentencia, (NodoDeclaracionVar, NodoDeclaracionLista, NodoImportar, NodoFuncion))
             return NodoBloque(sentencias=[sentencia], declara=declara)
         raise self._error(f"se esperaba '{{' (varias sentencias) o ':' (una sola) {que}")
 
@@ -227,24 +366,33 @@ class Parser:
         return NodoElegir(expresion=expresion, casos=casos, sino=sino, linea=token.linea)
 
     def _sentencia_intenta(self) -> Nodo:
-        """intenta { ... } atrapa error { ... }
+        """intenta { ... } atrapa error { ... } finalmente { ... }
 
         El nombre del error es opcional; solo existe dentro del bloque 'atrapa'.
+        'finalmente' es opcional y se ejecuta siempre. Se necesita al menos
+        uno de los dos: atrapa o finalmente.
         """
         token = self._actual()
         self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras 'intenta'")
         cuerpo = self._bloque()
-        self._esperar(
-            TToken.ATRAPA,
-            "se esperaba 'atrapa' tras el bloque de 'intenta' "
-            "(así: intenta { ... } atrapa error { ... })",
-        )
         nombre_error = None
-        if self._actual().tipo == TToken.IDENTIFICADOR:
-            nombre_error = self._avanzar().lexema
-        captura = self._cuerpo_sentencia("tras 'atrapa'")
+        captura = None
+        if self._coincide(TToken.ATRAPA):
+            if self._actual().tipo == TToken.IDENTIFICADOR:
+                nombre_error = self._avanzar().lexema
+            captura = self._cuerpo_sentencia("tras 'atrapa'")
+        finalmente = None
+        if self._coincide(TToken.FINALMENTE):
+            finalmente = self._cuerpo_sentencia("tras 'finalmente'")
+        if captura is None and finalmente is None:
+            raise ErrorSintaxis(
+                "se esperaba 'atrapa' o 'finalmente' tras el bloque de 'intenta' "
+                "(así: intenta { ... } atrapa error { ... })",
+                token.linea, token.columna,
+            )
         return NodoIntentar(
-            cuerpo=cuerpo, nombre_error=nombre_error, captura=captura, linea=token.linea
+            cuerpo=cuerpo, nombre_error=nombre_error, captura=captura,
+            linea=token.linea, finalmente=finalmente,
         )
 
     def _sentencia_mientras(self) -> Nodo:
@@ -257,19 +405,25 @@ class Parser:
         token = self._actual()
         en_parentesis = self._coincide(TToken.PAREN_IZQ)
         variable = self._esperar(TToken.IDENTIFICADOR, "se esperaba la variable: 'para i en ...'")
+        variable2 = None
+        if self._coincide(TToken.COMA):
+            variable2 = self._esperar(
+                TToken.IDENTIFICADOR, "se esperaba el segundo nombre: 'para i, valor en ...'"
+            ).lexema
         self._esperar(TToken.EN, "se esperaba 'en' (ej: 'para i en 1..10')")
         iterable = self._expresion()
         if en_parentesis:
             self._esperar(TToken.PAREN_DER, "se esperaba ')' tras el 'para'")
         cuerpo = self._cuerpo_sentencia()
-        return NodoPara(variable=variable.lexema, iterable=iterable, cuerpo=cuerpo, linea=token.linea)
+        return NodoPara(variable=variable.lexema, iterable=iterable, cuerpo=cuerpo,
+                        linea=token.linea, variable2=variable2)
 
     def _bloque(self) -> NodoBloque:
         sentencias: list[Nodo] = []
         while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
             sentencias.append(self._sentencia())
         self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar el bloque")
-        declara = any(isinstance(s, (NodoDeclaracionVar, NodoFuncion)) for s in sentencias)
+        declara = any(isinstance(s, (NodoDeclaracionVar, NodoDeclaracionLista, NodoImportar, NodoFuncion)) for s in sentencias)
         return NodoBloque(sentencias=sentencias, declara=declara)
 
     def _sentencia_expresion(self) -> Nodo:
@@ -299,9 +453,22 @@ class Parser:
             # x += 2  se convierte en  x = x + 2 (también con lista[i] y d.clave)
             operador = _OPERADORES_COMPUESTOS[token.tipo]
             valor = NodoBinario(operador=operador, izquierda=expr, derecha=valor, linea=token.linea)
+        if isinstance(expr, NodoLista) and expr.elementos and all(
+            isinstance(e, NodoVariable) for e in expr.elementos
+        ):
+            # [a, b] = [b, a]: desestructuración sobre variables ya existentes
+            return NodoAsignacionLista(
+                nombres=[e.nombre for e in expr.elementos if isinstance(e, NodoVariable)],
+                valor=valor, linea=expr.linea,
+            )
         if isinstance(expr, NodoVariable):
             return NodoAsignacion(nombre=expr.nombre, valor=valor, linea=expr.linea)
         if isinstance(expr, NodoIndice):
+            if expr.seguro:
+                raise ErrorSintaxis(
+                    "no se puede asignar a un acceso seguro '?.': quita el '?' para asignar",
+                    token.linea, token.columna,
+                )
             return NodoAsignarIndice(objeto=expr.objeto, indice=expr.indice, valor=valor, linea=expr.linea)
         raise ErrorSintaxis(
             f"el objetivo de {token.lexema!r} debe ser una variable, lista[i] o d.clave",
@@ -314,14 +481,23 @@ class Parser:
 
         Admite paso: 1..10 paso 2 -> 1, 3, 5, 7, 9 (también en 'para').
         """
-        expr = self._o()
+        expr = self._por_defecto()
         if (token := self._coincide(TToken.PUNTO_PUNTO)):
-            derecha = self._o()
+            derecha = self._por_defecto()
             paso = None
             if self._actual().tipo is TToken.IDENTIFICADOR and self._actual().lexema == "paso":
                 self._avanzar()
-                paso = self._o()
+                paso = self._por_defecto()
             return NodoRango(izquierda=expr, derecha=derecha, paso=paso, linea=token.linea)
+        return expr
+
+    def _por_defecto(self) -> Nodo:
+        """'a ?? b': a si no es nulo; si es nulo, b. Asocia a la derecha:
+        a ?? b ?? c es a ?? (b ?? c). La derecha solo se calcula si hace falta."""
+        expr = self._o()
+        if (token := self._coincide(TToken.DOBLE_INTERROGACION)):
+            derecha = self._por_defecto()
+            return NodoBinario(operador="??", izquierda=expr, derecha=derecha, linea=token.linea)
         return expr
 
     def _o(self) -> Nodo:
@@ -384,22 +560,60 @@ class Parser:
             return _plegar("**", expr, derecha, token.linea)
         return expr
 
+    def _argumentos(self) -> tuple[list[Nodo], int]:
+        """Consume '(a, b, ...)': devuelve los argumentos y la línea del ')'."""
+        argumentos: list[Nodo] = []
+        if self._actual().tipo != TToken.PAREN_DER:
+            while True:
+                argumentos.append(self._expresion())
+                if not self._coincide(TToken.COMA):
+                    break
+        parentesis = self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los argumentos")
+        return argumentos, parentesis.linea
+
     def _llamada(self) -> Nodo:
         expr = self._primario()
+        # '?.' vuelve segura TODA la cadena que sigue (como en JS/TS):
+        # a?.b.c() con a nulo da nulo sin evaluar ni .c ni la llamada.
+        cadena_segura = False
         while True:
-            if self._coincide(TToken.PAREN_IZQ):
-                argumentos: list[Nodo] = []
-                if self._actual().tipo != TToken.PAREN_DER:
-                    while True:
-                        argumentos.append(self._expresion())
-                        if not self._coincide(TToken.COMA):
-                            break
-                parentesis = self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los argumentos")
-                expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=parentesis.linea)
+            if self._actual().tipo == TToken.INTERROGACION_PUNTO:
+                self._avanzar()
+                cadena_segura = True
+                if self._coincide(TToken.PAREN_IZQ):
+                    argumentos, linea = self._argumentos()
+                    expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=linea, seguro=True)
+                elif self._coincide(TToken.CORCHETE_IZQ):
+                    indice = self._expresion()
+                    cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
+                    expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea, seguro=True)
+                else:
+                    clave = self._avanzar()
+                    if clave.tipo not in _CLAVES_VALIDAS:
+                        raise ErrorSintaxis(
+                            "después de '?.' va el nombre de la clave",
+                            clave.linea,
+                            clave.columna,
+                        )
+                    expr = NodoIndice(
+                        objeto=expr,
+                        indice=NodoCadena(valor=clave.lexema, linea=clave.linea),
+                        linea=clave.linea,
+                        seguro=True,
+                    )
+            elif self._coincide(TToken.PAREN_IZQ):
+                argumentos, linea = self._argumentos()
+                expr = NodoLlamada(callee=expr, argumentos=argumentos, linea=linea, seguro=cadena_segura)
+            elif (
+                self._actual().tipo == TToken.CORCHETE_IZQ
+                and self._actual().linea != self.tokens[self.pos - 1].linea
+                and self._es_patron_desestructuracion()
+            ):
+                break  # '[a, b] = ...' en otra línea es la sentencia siguiente, no un índice
             elif self._coincide(TToken.CORCHETE_IZQ):
                 indice = self._expresion()
                 cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
-                expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea)
+                expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea, seguro=cadena_segura)
             elif self._coincide(TToken.PUNTO):
                 clave = self._avanzar()
                 if clave.tipo not in _CLAVES_VALIDAS:
@@ -412,6 +626,7 @@ class Parser:
                     objeto=expr,
                     indice=NodoCadena(valor=clave.lexema, linea=clave.linea),
                     linea=clave.linea,
+                    seguro=cadena_segura,
                 )
             else:
                 break
@@ -435,10 +650,11 @@ class Parser:
             return NodoVariable(nombre=token.lexema, linea=token.linea)
         if token.tipo == TToken.FUN:
             # Función anónima como valor:  funcion(x) { devuelve x * 2 }
-            parametros = self._parametros("'funcion'")
+            parametros, defectos, tipos = self._parametros("'funcion'")
+            tipo_retorno = self._tipo_anotado() if self._coincide(TToken.DOSPUNTOS) else None
             self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' antes del cuerpo de la función")
             cuerpo = self._bloque()
-            return NodoFuncion(nombre="", parametros=parametros, cuerpo=cuerpo, linea=token.linea)
+            return NodoFuncion(nombre="", parametros=parametros, cuerpo=cuerpo, linea=token.linea, defectos=defectos, tipos=tipos, tipo_retorno=tipo_retorno)
         if token.tipo == TToken.CORCHETE_IZQ:
             elementos: list[Nodo] = []
             if self._actual().tipo != TToken.CORCHETE_DER:

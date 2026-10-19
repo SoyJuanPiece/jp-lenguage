@@ -343,6 +343,8 @@ class _Comp:
     # ---------- función ----------
 
     def compilar(self, nodo: NodoFuncion) -> None:
+        if any(d is not None for d in getattr(nodo, "defectos", []) or []):
+            raise FalloCompilacion("los valores por defecto aún no están en el JIT")
         if len(nodo.parametros) > _MAX_PARAMS:
             raise FalloCompilacion("máximo 3 parámetros")
         fun = _Fun(nodo.nombre, len(nodo.parametros))
@@ -497,6 +499,8 @@ class _Comp:
         asm.etiqueta(".fin")
 
     def _para(self, nodo: NodoPara) -> None:
+        if nodo.variable2 is not None:
+            raise FalloCompilacion("'para a, b en' aún no está en el JIT")
         if not isinstance(nodo.iterable, NodoRango):
             raise FalloCompilacion("para requiere rango a..b en nativo")
         if nodo.iterable.paso is not None:

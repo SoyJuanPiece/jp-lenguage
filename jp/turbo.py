@@ -20,6 +20,7 @@ import hashlib
 import io
 import json
 import os
+from pathlib import Path
 from contextlib import redirect_stdout
 
 from . import __version__
@@ -130,11 +131,17 @@ def ejecutar_turbo(ruta: str, fuente: str) -> bool:
     try:
         with redirect_stdout(salida):
             programa = parsear(tokenizar(fuente))
-            maquina.ejecutar(programa)
+            maquina.ejecutar(programa, directorio=Path(ruta).resolve().parent)
     except (ErrorJP, RecursionError) as exc:
         error = True
         error_texto = _formatear_error(exc, fuente)
         print(error_texto, file=sys.stderr)
+
+    # 'importar' lee otros archivos: si el módulo cambia, la salida puede
+    # cambiar aunque este archivo no; nunca se cachea.
+    if not detector.impura_usada and _usa_importar(programa):
+        detector.impura_usada = True
+        detector.cual = "importar"
 
     # ¿tocó algo impuro? -> esta corrida ya fue "normal"; sin cache, pero la
     # salida que sí se produjo ANTES de la llamada impura se respeta.
@@ -164,6 +171,23 @@ def ejecutar_turbo(ruta: str, fuente: str) -> bool:
 
     sys.stdout.write(salida.getvalue())
     return not error
+
+
+def _usa_importar(programa) -> bool:
+    """¿El AST contiene algún 'importar' (a cualquier profundidad)?"""
+    from .arbol import NodoImportar
+
+    pila = [programa]
+    while pila:
+        actual = pila.pop()
+        if isinstance(actual, NodoImportar):
+            return True
+        for valor in vars(actual).values():
+            if hasattr(valor, "__dict__"):
+                pila.append(valor)
+            elif isinstance(valor, (list, tuple)):
+                pila.extend(v for v in valor if hasattr(v, "__dict__"))
+    return False
 
 
 def _formatear_error(error: BaseException, fuente: str) -> str:

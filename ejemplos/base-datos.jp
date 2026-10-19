@@ -1,0 +1,17 @@
+# Una base de datos de verdad (SQLite) desde JP, y la Tabla encima.
+
+importar "../biblioteca/tabla.jp" como datos
+
+variable bd = abrir_bd(":memory:")
+bd_ejecutar(bd, "CREATE TABLE ventas (ciudad TEXT, total INTEGER)")
+bd_ejecutar(bd, "INSERT INTO ventas VALUES (?, ?)", ["Maturín", 120])
+bd_ejecutar(bd, "INSERT INTO ventas VALUES (?, ?)", ["Caracas", 320])
+bd_ejecutar(bd, "INSERT INTO ventas VALUES (?, ?)", ["Valencia", 175])
+bd_ejecutar(bd, "UPDATE ventas SET total = ? WHERE ciudad = ?", [200, "Valencia"])
+
+variable filas = bd_consultar(bd, "SELECT * FROM ventas ORDER BY total DESC")
+variable t = datos.Tabla(filas)
+imprime(t.a_texto())
+imprime("promedio:", t.promedio_columna("total"))
+imprime("las de mas de 150:", longitud(bd_consultar(bd, "SELECT * FROM ventas WHERE total > ?", [150])))
+bd_cerrar(bd)

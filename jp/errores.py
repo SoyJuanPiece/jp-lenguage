@@ -8,11 +8,14 @@ class ErrorJP(Exception):
 
     titulo = "Error"
 
-    def __init__(self, mensaje: str, linea: int = 0, columna: int = 0):
+    def __init__(self, mensaje: str, linea: int = 0, columna: int = 0, tipo: str = "ejecucion"):
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.linea = linea
         self.columna = columna
+        # Código corto del error ('division_por_cero', 'usuario'...): es lo
+        # que ve el programa en JP como e.tipo dentro de un 'atrapa'.
+        self.tipo = tipo
 
     def formatear(self, fuente: str) -> str:
         """Devuelve el error bonito, con la línea culpable y un puntero ^."""

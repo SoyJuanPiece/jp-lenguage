@@ -1,0 +1,14 @@
+# Concurrencia real: tres procesos que duermen 1 segundo, a la vez.
+# En serie tardarian 3 segundos; en paralelo, ~1.
+
+variable inicio = reloj()
+variable procesos = []
+para i en 1..3 {
+    procesos.agregar(iniciar_proceso(["python3", "-c", "import time; time.sleep(1); print('listo')"]))
+}
+variable total = 0
+para p en procesos {
+    variable r = esperar_proceso(p)
+    total = total + r.codigo
+}
+imprime("los 3 terminaron con codigo", total, "en", redondear((reloj() - inicio) * 10) / 10, "segundos")

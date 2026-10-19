@@ -1,0 +1,36 @@
+# Clases y objetos: clase, hereda y 'este' (v1.7).
+# El constructor se llama 'iniciar'; los metodos se llaman con p.metodo().
+
+clase Persona {
+    funcion iniciar(nombre, edad = 0) {
+        este.nombre = nombre
+        este.edad = edad
+    }
+    funcion saludar() {
+        devuelve "Hola, soy " + este.nombre + " y tengo " + texto(este.edad)
+    }
+    funcion cumplir() {
+        este.edad = este.edad + 1
+    }
+}
+
+clase Empleado hereda Persona {
+    funcion iniciar(nombre, edad, sueldo) {
+        este.nombre = nombre
+        este.edad = edad
+        este.sueldo = sueldo
+    }
+    funcion saludar() {
+        devuelve "Soy " + este.nombre + " y gano " + texto(este.sueldo)
+    }
+}
+
+variable ana = Persona("Ana", 30)
+imprime(ana.saludar())
+ana.cumplir()
+imprime("tras cumplir:", ana.edad)
+
+variable luis = Empleado("Luis", 25, 1200)
+imprime(luis.saludar())          # el metodo de Empleado manda
+imprime(luis)                    # Empleado{nombre: "Luis", edad: 25, sueldo: 1200}
+imprime(tipo(ana), tipo(Persona))

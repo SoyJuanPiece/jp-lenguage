@@ -1,0 +1,45 @@
+# biblioteca/colecciones.jp — estructuras de datos con las clases de JP.
+
+clase Pila {
+    funcion iniciar() { este.datos = [] }
+    funcion empujar(valor) { este.datos.agregar(valor) }
+    funcion sacar() {
+        si este.vacia() { lanzar "la pila está vacía" }
+        devuelve este.datos.quitar()
+    }
+    funcion cima() {
+        si este.vacia() { lanzar "la pila está vacía" }
+        devuelve este.datos[longitud(este.datos) - 1]
+    }
+    funcion vacia() { devuelve longitud(este.datos) == 0 }
+    funcion tamano() { devuelve longitud(este.datos) }
+}
+
+clase Cola {
+    funcion iniciar() { este.datos = [] }
+    funcion encolar(valor) { este.datos.agregar(valor) }
+    funcion desencolar() {
+        si este.vacia() { lanzar "la cola está vacía" }
+        devuelve este.datos.quitar(0)
+    }
+    funcion vacia() { devuelve longitud(este.datos) == 0 }
+    funcion tamano() { devuelve longitud(este.datos) }
+}
+
+# Un conjunto: valores sin repetir (por dentro es una lista).
+clase Conjunto {
+    funcion iniciar() { este.datos = [] }
+    funcion agregar(valor) {
+        si no este.contiene(valor) { este.datos.agregar(valor) }
+    }
+    funcion contiene(valor) { devuelve contiene(este.datos, valor) }
+    funcion quitar(valor) { devuelve eliminar(este.datos, valor) }
+    funcion elementos() { devuelve este.datos }
+    funcion tamano() { devuelve longitud(este.datos) }
+    funcion union(otro) {
+        variable nuevo = Conjunto()
+        para valor en este.datos { nuevo.agregar(valor) }
+        para valor en otro.elementos() { nuevo.agregar(valor) }
+        devuelve nuevo
+    }
+}

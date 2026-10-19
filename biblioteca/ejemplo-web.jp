@@ -1,0 +1,27 @@
+# Un sitio web completo con el mini-framework de biblioteca/web.jp.
+# Ejecutalo con:  python -m jp biblioteca/ejemplo-web.jp
+# y abre http://127.0.0.1:8080/ , /saludar/Juan o /api/visitas
+
+importar "web.jp" como web
+
+variable visitas = {total: 0}
+
+variable app = web.Aplicacion()
+app.usar(funcion(p) {
+    visitas.total = visitas.total + 1
+    devuelve nulo
+})
+app.estatico("/static", "biblioteca/publica")
+app.get("/", funcion(p) {
+    devuelve web.archivo("biblioteca/publica/indice.html")
+})
+app.get("/saludar/:nombre", funcion(p) {
+    devuelve web.pagina("<h1>Hola " + p.parametros.nombre + " 👋</h1>")
+})
+app.get("/api/visitas", funcion(p) {
+    devuelve web.json({visitas: visitas.total})
+})
+app.post("/api/saludar", funcion(p) {
+    devuelve web.json({saludo: "Hola " + p.json.nombre}, 201)
+})
+app.escuchar(8080)

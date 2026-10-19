@@ -1,0 +1,25 @@
+# Programas de varios archivos: importar trae el código de otro .jp.
+# Se ejecuta UNA sola vez aunque se importe dos veces, y sus funciones
+# siguen viendo sus propias variables.
+
+importar "utilidades.jp" como util
+
+imprime(util.saluda("Ana"))            # Hola, Ana (valor por defecto)
+imprime(util.saluda("Ana", "Ei"))      # Ei, Ana
+imprime("el doble de 21 es", util.doble(21))
+imprime("el mayor es", util.mayor([3, 9, 4]))
+
+# Desestructuración: repartir una lista en nombres (y cambiar sin temporal)
+variable [ancho, alto] = [3, 4]
+imprime("área:", ancho * alto)
+[ancho, alto] = [alto, ancho]
+imprime("cambiados:", ancho, alto)
+
+# Errores propios con lanzar, y limpieza garantizada con finalmente
+intenta {
+    lanzar "esto es un error mío"
+} atrapa error {
+    imprime("atrapado:", error)
+} finalmente {
+    imprime("esto se imprime siempre")
+}

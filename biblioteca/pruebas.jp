@@ -1,0 +1,51 @@
+# biblioteca/pruebas.jp — probar programas JP sin salir de JP.
+#
+# Uso (un archivo *_prueba.jp):
+#   importar "../biblioteca/pruebas.jp" como p
+#   p.afirmar_igual(720, factorial(6))
+#   p.afirmar(3 > 2, "tres es mas que dos")
+#   p.resumen()
+#
+# Y se corre con:  jp --probar            (descubre pruebas/ y *_prueba.jp)
+#             o:  jp --probar mi_prueba.jp
+# Si algo falla, resumen() lanza y el comando sale con error.
+
+variable estado = {hechas: 0, fallos: []}
+
+funcion _registrar(bien, mensaje) {
+    estado.hechas = estado.hechas + 1
+    si no bien {
+        estado.fallos.agregar(mensaje)
+        imprime("  ✗ " + mensaje)
+    }
+}
+
+funcion afirmar(condicion, mensaje = "la condicion debia ser verdadera") {
+    _registrar(condicion == verdadero, mensaje)
+}
+
+funcion afirmar_igual(esperado, obtenido) {
+    _registrar(esperado == obtenido, "se esperaba " + texto(esperado) + " pero se obtuvo " + texto(obtenido))
+}
+
+funcion afirmar_casi(esperado, obtenido, tolerancia = 0.0001) {
+    _registrar(absoluto(esperado - obtenido) <= tolerancia, "se esperaba ~" + texto(esperado) + " pero se obtuvo " + texto(obtenido))
+}
+
+funcion afirmar_error(f, mensaje = "eso debia dar error") {
+    variable dio_error = falso
+    intenta {
+        f()
+    } atrapa e {
+        dio_error = verdadero
+    }
+    _registrar(dio_error, mensaje)
+}
+
+funcion resumen() {
+    variable malas = longitud(estado.fallos)
+    imprime(texto(estado.hechas - malas) + "/" + texto(estado.hechas) + " afirmaciones bien")
+    si malas > 0 {
+        lanzar "fallaron " + texto(malas) + " afirmacion(es)"
+    }
+}

@@ -14,6 +14,9 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - 🎯 Decisiones claras: `elegir n { caso 1 { ... } sino { ... } }`
 - 🛡️ Errores que no tumban el programa: `intenta { ... } atrapa error { ... }`
 - ⚡ Azúcar cómodo: `x += 1`, `2 ** 10`, `promedio *= 2`
+- 📦 Módulos (v1.6): `importar "utilidades.jp" como util` y `util.doble(2)`
+- 🎁 Extras v1.6: valores por defecto, desestructuración `[a, b] = [b, a]`, `lanzar` y `finalmente`
+- 🧩 Clases (v1.7): `clase Persona { funcion iniciar(n) { este.nombre = n } }`, con herencia (`hereda`)
 
 ```
                                   ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
@@ -110,6 +113,49 @@ variable triple = funcion(x) { devuelve x * 3 }
 variable fs = [funcion(x) { devuelve x + 1 }, triple]
 imprime(fs[1](5))        # => 15
 ```
+
+### Módulos, valores por defecto y más (v1.6)
+
+```jp
+importar "utilidades.jp" como util     # otro archivo, ejecutado una sola vez
+imprime(util.doble(21))                # sus funciones ven SUS globales
+
+funcion saluda(nombre, saludo = "Hola") { devuelve saludo + ", " + nombre }
+imprime(saluda("Ana"))                 # Hola, Ana
+
+variable [a, b] = [1, 2]               # desestructuración
+[a, b] = [b, a]                        # intercambio sin variable temporal
+
+para i, valor en ["x", "y"] { imprime(i, valor) }        # posición y valor
+para clave, valor en {a: 1} { imprime(clave, valor) }    # en diccionarios
+
+intenta { lanzar "fallo mío" } atrapa e { imprime(e) } finalmente { imprime("siempre") }
+```
+
+`lanzar expr` crea un error propio atrapable; `finalmente` se ejecuta
+siempre (haya error o no, y antes de que un `devuelve` salga de la función).
+Dentro del `atrapa`, el error es el texto de siempre y además trae campos:
+`e.tipo` (`"division_por_cero"`, `"usuario"`...), `e.mensaje` y `e.linea`.
+
+### Clases y objetos (v1.7)
+
+```jp
+clase Persona {
+    funcion iniciar(nombre, edad = 0) { este.nombre = nombre; este.edad = edad }
+    funcion saludar() { devuelve "Hola, soy " + este.nombre }
+}
+clase Empleado hereda Persona {          # herencia con 'hereda'
+    funcion saludar() { devuelve "Soy " + este.nombre + ", empleado" }
+}
+variable p = Persona("Ana", 30)
+imprime(p.saludar(), p.edad)             # los campos se crean en 'iniciar'
+```
+
+El constructor se llama `iniciar`; dentro de los métodos, `este` es el
+objeto. Para IA trae además `sigmoide(x)` y `producto_punto(a, b)` rápidas
+(mira `ejemplos/ia-perceptron.jp`: un perceptrón que es una clase), `jp
+--check archivo.jp` comprueba la sintaxis sin ejecutar, y `para i en 1..N`
+ya no crea la lista entera en memoria.
 
 ### Elegir (switch) — sin caída entre casos
 
@@ -412,7 +458,7 @@ hay resultados silenciosamente distintos. (Los enteros de más de 64 bits
 también se rechazan, porque Python usa precisión arbitraria y el nativo no.)
 
 El motor se compila solo en GitHub Actions (`.github/workflows/motor-c.yml`)
-en cada push: corre la suite completa, compara la salida de los 23 ejemplos
+en cada push: corre la suite completa, compara la salida de los 26 ejemplos
 Python vs C y publica `jpvm` (más binarios de ejemplo autónomos) como
 **artefacto descargable** del workflow.
 
@@ -447,11 +493,159 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Módulos: `importar "utilidades.jp"` y biblioteca compartida
-- Clases y objetos, o algo más sencillo: `objeto` + métodos
+- Llevar lo nuevo de la v1.6/v1.7 (módulos, clases, defectos...) también al motor en C
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.24.0 — **revisor** (ver `CHANGELOG.md`). Nuevo:
+
+- 🔍 **`jp --revisar`**: análisis estático (sin declarar, sin usar,
+  asignar sin `variable`) con salida lista para CI.
+
+v1.23.0 — **tipos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏷️ **Tipos opcionales**: `funcion f(a: numero): numero` y
+  `variable x: numero = 3` se comprueban al ejecutar en ambos motores,
+  con errores que dicen qué se esperaba (`ejemplos/tipos.jp`).
+
+v1.22.0 — **en paralelo** (ver `CHANGELOG.md`). Nuevo:
+
+- ⚡ **Concurrencia real**: `iniciar_proceso` / `esperar_proceso` lanzan
+  procesos que corren a la vez (3×1 s de sueño = 1 s en total).
+
+v1.21.0 — **paquetes** (ver `CHANGELOG.md`). Nuevo:
+
+- 📦 **Ecosistema**: `jp --instalar github:usuario/repo` instala paquetes
+  JP (carpeta con `paquete.json`) y se usan con `importar "@paquete"`.
+  El primero ya existe: `jp --instalar github:SoyJuanPiece/jp-lenguage/paquetes/saludos`.
+  También `jp --paquetes` y `jp --quitar-paquete`.
+
+v1.20.0 — **proyecto** (ver `CHANGELOG.md`). Nuevo:
+
+- 📦 **`jp --proyecto nombre`**: un proyecto JP nuevo con programa,
+  pruebas que ya pasan y LEEME con ideas — de cero a corriendo en un
+  comando.
+
+v1.19.0 — **web completa** (ver `CHANGELOG.md`). Nuevo:
+
+- 🌐 **Web de verdad**: archivos estáticos con `app.estatico(...)` y
+  respuestas `{archivo: ruta}`, y cliente serio `pedir(...)` que
+  devuelve `{estado, cuerpo, json, cabeceras}` sin lanzar por un 404.
+
+v1.18.0 — **formateador** (ver `CHANGELOG.md`). Nuevo:
+
+- ✨ **`jp --formatear [--en-sitio]`**: todo el código con el mismo
+  estilo, sin discutir (idempotente sobre los 45 `.jp` del repo;
+  pierde los comentarios, el parser aún no los conserva).
+
+v1.17.0 — **depurador** (ver `CHANGELOG.md`). Nuevo:
+
+- 🐞 **`jp --depurar`**: paso a paso por tu programa — ver variables
+  (`v x`), evaluar expresiones en vivo (`e x + 1`), puntos de
+  interrupción (`p 12`) y continuar (`c`), todo en español.
+
+v1.16.0 — **nativo seguro** (ver `CHANGELOG.md`). Nuevo:
+
+- ⚙️ **`??` y `?.` también en el motor en C** (opcode
+  `SALTO_NO_NULO_MANTENER`): lo de la v1.14 ya no cae a Python, corre
+  nativo con salida idéntica.
+
+v1.15.0 — **pruébalo** (ver `CHANGELOG.md`). Nuevo:
+
+- ✅ **Pruebas en JP para JP**: `biblioteca/pruebas.jp` (`afirmar_igual`,
+  `afirmar_casi`, `afirmar_error`...) y el comando **`jp --probar`**, que
+  descubre `pruebas/` y `*_prueba.jp` y sale con 0/1. El repo ya trae las
+  suyas en `pruebas/mates_prueba.jp`.
+
+v1.14.0 — **sin nulos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🛟 **Operadores anti-nulo**: `dato ?? "defecto"` (solo el nulo dispara
+  el defecto, con cortocircuito) y `usuario?.direccion?.ciudad` (si algo
+  es nulo por el camino, todo da nulo sin explotar). En árbol y VM; el
+  motor en C avisa y cae a Python (`ejemplos/acceso-seguro.jp`).
+
+v1.13.0 — **persistencia** (ver `CHANGELOG.md`). Nuevo:
+
+- 🗄️ **SQLite de verdad**: `abrir_bd`, `bd_consultar` (lista de
+  diccionarios, directa a una `Tabla`), `bd_ejecutar` con parámetros
+  seguros y `bd_cerrar`. Web + gráficos + datos guardados: pila completa.
+
+v1.12.0 — **gráficos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🎨 **Gráficas SVG sin salir de JP**: primitivas `svg_*` en el motor y
+  `grafica_barras`, `grafica_lineas`, `grafica_pastel` en JP puro
+  (`biblioteca/graficas.jp`). `ejemplos/grafica.jp` crea dos SVG reales.
+
+v1.11.0 — **web pro** (ver `CHANGELOG.md`). Nuevo:
+
+- 🕸️ **Mini-framework web en JP puro** (`biblioteca/web.jp`): rutas con
+  `:parámetros`, intermediarios (claves, registro), `web.json`,
+  `web.pagina`, `web.redirigir` y 404 en JSON — un mini-Flask escrito en JP
+  (`biblioteca/ejemplo-web.jp`, y sin red en `ejemplos/web-rutas.jp`).
+- 📨 El servidor lee el JSON del cuerpo solo (`peticion.json`) y acepta
+  `cabeceras` propias en la respuesta.
+
+v1.10.0 — **web** (ver `CHANGELOG.md`). Nuevo:
+
+- 🌐 **Servidor web propio**: `servir(8080, atender)` sirve páginas y APIs
+  JSON (petición como diccionario, respuesta texto o `{cuerpo, estado}`).
+  JP ya crea servidores, no solo los consume: `biblioteca/ejemplo-servidor.jp`.
+- 🔐 **Seguridad**: `hash_texto` (SHA-256 y familia), `codificar64`, `id_unico()`.
+
+v1.9.0 — **datos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🗃️ **CSV + clase `Tabla`** estilo pandas: `leer_csv` convierte tipos solo
+  y `biblioteca/tabla.jp` filtra, ordena, agrupa y agrega columnas
+  (`ejemplos/datos.jp` con `ejemplos/ventas.csv`).
+- ⚙️ **La biblioteca entra al motor en C**: `sigmoide`, `producto_punto`,
+  `promedio`, `mediana`, `norma`, `distancia` y `softmax` ya corren en el
+  binario `jpvm` sin Python, con salida idéntica.
+
+v1.8.0 — **la biblioteca** (ver `CHANGELOG.md` y `biblioteca/LEEME.md`).
+JP trae ahora **120 funciones nativas** y módulos en JP puro, con la misma
+salida en el árbol y en la VM (310 tests, 11 nuevos):
+
+- 📚 **51 nativas nuevas** (la `statistics`, el mini-NumPy, las fechas, el
+  sistema y los regex de Python, en español): `promedio`, `mediana`,
+  `percentil`, `multiplicar_matrices`, `softmax`, `norma`, `fecha_actual`,
+  `formatear_fecha`, `plataforma`, `ejecutar`, `buscar_patron`,
+  `coincide_patron`... Multiplicar matrices 40×40 sale ~580x más rápido que
+  el triple bucle escrito en JP (medido: 0,14 s contra 78 s).
+- 🐍 **`biblioteca/` en JP puro**: `mates`, `texto`, `listas`,
+  `colecciones` (`Pila`, `Cola`, `Conjunto`) y una `RedNeuronal` multicapa
+  con backprop que aprende el XOR (`biblioteca/ia.jp`). Se usan con
+  `importar "../biblioteca/ia.jp" como ia`, como cualquier módulo tuyo.
+
+v1.7.0 — **objetos** (ver `CHANGELOG.md`). Nuevo, con la misma salida en el
+árbol y en la VM (299 tests, 19 nuevos):
+
+- 🧩 **Clases con herencia**: `clase`, `hereda`, `este`, constructor `iniciar`
+  (con valores por defecto) y métodos como valores. También importadas
+  desde módulos. Ejemplo: `ejemplos/clases.jp`.
+- 🏷️ **Errores con campos**: `e.tipo`, `e.mensaje`, `e.linea` en el `atrapa`.
+- 🤖 **Kit de IA**: `sigmoide()` y `producto_punto()` nativos (~1,7× más
+  rápidos que el bucle en JP) y rangos perezosos en `para` (sin crear la
+  lista: ~4 MB para 3M de vueltas). El perceptrón ahora es una clase.
+- 🔎 **`jp --check`**: sintaxis sin ejecutar.
+- El motor en C y el JIT aún no tienen las clases: se **niegan con un
+  mensaje claro** y el CLI sigue con el motor de Python.
+
+v1.6.0 — **programas que se componen** (ver `CHANGELOG.md`). Nuevo, con la
+misma salida en el árbol y en la VM (280 tests, 28 nuevos de paridad):
+
+- 📦 **Módulos**: `importar "utilidades.jp" como util` → `util.doble(2)`
+  (también sin `como`); cada módulo se ejecuta una vez, con sus propios
+  globales, y los ciclos se detectan. Ejemplo: `ejemplos/modulos.jp`.
+- 🎁 **Valores por defecto** (`funcion f(a, b = 2)`), **desestructuración**
+  (`variable [a, b] = [1, 2]`, `[a, b] = [b, a]`), **`para i, valor en lista`**
+  y **`para clave, valor en diccionario`**, **`lanzar "error"`** y
+  **`finalmente`** (corre siempre, también antes de un `devuelve`).
+- 🔁 **Recursión unificada**: 6000 llamadas en los dos motores (el árbol ya no
+  corta antes que la VM) y arreglo del lexer para `lista[0]=1` sin espacios.
+- 🤖 Ejemplo de IA sin librerías: `ejemplos/ia-perceptron.jp` aprende la tabla OR.
+- El motor en C y el JIT aún no tienen lo nuevo de esta versión: se **niegan
+  con un mensaje claro** y el CLI sigue con el motor de Python.
 
 v1.5.0 — **el motor en C entiende todo el lenguaje**. Nuevo:
 

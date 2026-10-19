@@ -10,25 +10,32 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 import time
+from pathlib import Path
 
 from .arbol import (
     Nodo,
     NodoAsignacion,
+    NodoAsignacionLista,
     NodoAsignarIndice,
     NodoBinario,
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoClase,
+    NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoImportar,
     NodoIntentar,
     NodoIndice,
     NodoInterpolacion,
     NodoLista,
+    NodoLanzar,
     NodoLlamada,
     NodoMientras,
     NodoNumero,
@@ -43,7 +50,7 @@ from .arbol import (
     NodoUnario,
     NodoVariable,
 )
-from .errores import ErrorEjecucion
+from .errores import ErrorEjecucion, ErrorJP
 
 
 # ----------------- Métodos de valor ("texto".mayusculas(), [1, 2].agregar(3), ...) -----------------
@@ -151,17 +158,161 @@ class Cierre:
     las funciones de los DOS motores con un solo isinstance.
     """
 
-    __slots__ = ("fun", "ambito")
+    __slots__ = ("fun", "ambito", "globales")
 
-    def __init__(self, fun, ambito) -> None:
+    def __init__(self, fun, ambito, globales=None) -> None:
         self.fun = fun
         self.ambito = ambito
+        # Diccionario de globales del motor/módulo donde se definió la función
+        # (la VM lo usa para que las funciones de un módulo importado sigan
+        # viendo SUS globales al ser llamadas desde otro archivo).
+        self.globales = globales
 
     def __repr__(self) -> str:
         return f"<fun {getattr(self.fun, 'nombre', '') or '<anónima>'}>"
 
 
+# ----------------- Clases y objetos (clase / hereda / este) -----------------
+
+class ClaseJP:
+    """Una clase definida en JP. Sus métodos son FuncionJP en el árbol y
+    Cierre en la VM: esta clase solo guarda el molde (nombre, métodos, madre)."""
+
+    __slots__ = ("nombre", "metodos", "padre")
+
+    def __init__(self, nombre: str, metodos: dict, padre: "ClaseJP | None" = None):
+        self.nombre = nombre
+        self.metodos = metodos
+        self.padre = padre
+
+    def __repr__(self) -> str:
+        return f"<clase {self.nombre}>"
+
+
+class Instancia:
+    """Un objeto: su clase + sus campos propios."""
+
+    __slots__ = ("clase", "campos")
+
+    def __init__(self, clase: ClaseJP):
+        self.clase = clase
+        self.campos: dict[str, object] = {}
+
+    def __repr__(self) -> str:
+        return f"<objeto {self.clase.nombre}>"
+
+
+class MetodoLigado:
+    """Un método ya unido a su objeto: p.saludar (sin llamarlo todavía)."""
+
+    __slots__ = ("instancia", "funcion")
+
+    def __init__(self, instancia: Instancia, funcion: object):
+        self.instancia = instancia
+        self.funcion = funcion
+
+    def __repr__(self) -> str:
+        nombre = getattr(self.funcion, "nombre", None) or getattr(
+            getattr(self.funcion, "fun", None), "nombre", ""
+        )
+        return f"<método {nombre}() de {self.instancia.clase.nombre}>"
+
+
+def buscar_metodo(clase: ClaseJP, nombre: str):
+    """Busca un método en la clase y en sus madres (herencia)."""
+    actual: ClaseJP | None = clase
+    while actual is not None:
+        if nombre in actual.metodos:
+            return actual.metodos[nombre]
+        actual = actual.padre
+    return None
+
+
+class ErrorValor(str):
+    """Lo que recibe el nombre de un 'atrapa': un texto (el mensaje, como
+    siempre) que además trae .tipo, .mensaje y .linea para poder decidir
+    sin comparar textos:  si e.tipo == "division_por_cero { ... }"""
+
+    def __new__(cls, mensaje: str, tipo: str = "ejecucion", linea: int = 0):
+        objeto = super().__new__(cls, mensaje)
+        objeto.mensaje = mensaje
+        objeto.tipo = tipo
+        objeto.linea = linea
+        return objeto
+
+
+_TIPOS_POR_MENSAJE = (
+    ("división por cero", "division_por_cero"),
+    ("módulo por cero", "division_por_cero"),
+    ("índice fuera de rango", "indice_fuera_de_rango"),
+    ("variable no definida", "variable_no_definida"),
+    ("desbordamiento de pila", "desbordamiento_de_pila"),
+    ("no se encontró el módulo", "modulo_no_encontrado"),
+    ("importación circular", "importacion_circular"),
+    ("no existe la clave", "clave_no_encontrada"),
+)
+
+
+def crear_error_valor(error: ErrorEjecucion) -> ErrorValor:
+    """Convierte un ErrorEjecucion en el ErrorValor que ve el 'atrapa'."""
+    tipo = getattr(error, "tipo", None)
+    if not tipo or tipo == "ejecucion":
+        for fragmento, codigo in _TIPOS_POR_MENSAJE:
+            if fragmento in error.mensaje:
+                tipo = codigo
+                break
+        else:
+            tipo = "ejecucion"
+    return ErrorValor(error.mensaje, tipo, getattr(error, "linea", 0))
+
+
 # ----------------- Utilidades de tipos -----------------
+
+def nombre_tipo(valor: object) -> str:
+    """El nombre JP del tipo de un valor: nulo, booleano, número, texto..."""
+    if valor is None:
+        return "nulo"
+    if isinstance(valor, bool):
+        return "booleano"
+    if isinstance(valor, (int, float)):
+        return "número"
+    if isinstance(valor, str):
+        return "texto"
+    if isinstance(valor, list):
+        return "lista"
+    if isinstance(valor, dict):
+        return "diccionario"
+    if isinstance(valor, Instancia):
+        return "objeto"
+    if isinstance(valor, ClaseJP):
+        return "clase"
+    if isinstance(valor, (FuncionJP, FuncionNativa, MetodoLigado)) or callable(valor):
+        return "función"
+    return "valor"
+
+
+def cumple_tipo(valor: object, tipo: str) -> bool:
+    """¿El valor cumple el tipo anotado? ('variable x: numero', v1.23.)"""
+    if tipo == "cualquiera":
+        return True
+    if tipo == "nulo":
+        return valor is None
+    if tipo == "numero":
+        return isinstance(valor, (int, float)) and not isinstance(valor, bool)
+    if tipo == "entero":
+        return isinstance(valor, int) and not isinstance(valor, bool)
+    if tipo == "texto":
+        return isinstance(valor, str)
+    if tipo == "booleano":
+        return isinstance(valor, bool)
+    if tipo == "lista":
+        return isinstance(valor, list)
+    if tipo == "diccionario":
+        return isinstance(valor, dict)
+    if tipo == "funcion":
+        return isinstance(valor, (FuncionJP, FuncionNativa, MetodoLigado, ClaseJP)) or callable(valor)
+    return True
+
 
 def jp_a_texto(valor: object) -> str:
     """Convierte un valor de JP a su representación textual (como print)."""
@@ -179,6 +330,11 @@ def jp_a_texto(valor: object) -> str:
         return "[" + ", ".join(_inspeccionar(v) for v in valor) + "]"
     if isinstance(valor, dict):
         return "{" + ", ".join(f"{_inspeccionar(k)}: {_inspeccionar(v)}" for k, v in valor.items()) + "}"
+    if isinstance(valor, Instancia):
+        if not valor.campos:
+            return f"{valor.clase.nombre}{{}}"
+        campos = ", ".join(f"{k}: {_inspeccionar(v)}" for k, v in valor.campos.items())
+        return f"{valor.clase.nombre}{{{campos}}}"
     return str(valor)
 
 
@@ -221,17 +377,60 @@ def evaluar_paso(valor: object, linea: int) -> int:
     return paso
 
 
+_MAX_LLAMADAS = 6000  # tope del lenguaje, igual que _MAX_FRAMES de la VM
+
+# Sentencias ante las que el depurador (jp --depurar) hace pausa: se avisa
+# al gancho antes de ejecutarlas, con el entorno vivo para inspeccionarlo.
+_NODOS_PASO = frozenset({
+    NodoDeclaracionVar, NodoExpresion, NodoSi, NodoMientras, NodoPara,
+    NodoFuncion, NodoRetorna, NodoRomper, NodoContinuar, NodoLanzar,
+    NodoDeclaracionLista, NodoAsignacionLista, NodoImportar, NodoClase,
+    NodoIntentar,
+})
+
+
 # ----------------- Intérprete -----------------
 
 class Interprete:
     def __init__(self):
+        self.gancho_paso = None  # jp --depurar: callable(nodo, entorno) o None
         self.global_env = Entorno()
         _instalar_nativas(self.global_env, self._llamar_valor)
         from .red import instalar as _instalar_red
         _instalar_red(self.global_env)
         from .archivos import instalar as _instalar_archivos
         _instalar_archivos(self.global_env)
+        # La libreria estandar (como la de Python, en espanol): estadistica,
+        # matrices/IA, fechas, sistema y patrones. La VM instala las mismas.
+        from .estadistica import instalar as _instalar_estadistica
+        _instalar_estadistica(self.global_env, self._llamar_valor)
+        from .matrices import instalar as _instalar_matrices
+        _instalar_matrices(self.global_env, self._llamar_valor)
+        from .fechas import instalar as _instalar_fechas
+        _instalar_fechas(self.global_env, self._llamar_valor)
+        from .sistema import instalar as _instalar_sistema
+        _instalar_sistema(self.global_env, self._llamar_valor)
+        from .patrones import instalar as _instalar_patrones
+        _instalar_patrones(self.global_env, self._llamar_valor)
+        from .tablas import instalar as _instalar_tablas
+        _instalar_tablas(self.global_env, self._llamar_valor)
+        from .servidor import instalar as _instalar_servidor
+        _instalar_servidor(self.global_env, self._llamar_valor)
+        from .seguridad import instalar as _instalar_seguridad
+        _instalar_seguridad(self.global_env, self._llamar_valor)
+        from .graficos import instalar as _instalar_graficos
+        _instalar_graficos(self.global_env, self._llamar_valor)
+        from .basedatos import instalar as _instalar_basedatos
+        _instalar_basedatos(self.global_env, self._llamar_valor)
+        from .procesos import instalar as _instalar_procesos
+        _instalar_procesos(self.global_env, self._llamar_valor)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
+        self._profundidad = 0  # llamadas JP activas (tope _MAX_LLAMADAS, como la VM)
+        # Módulos importados: ruta resuelta -> nombres exportados; y pila de
+        # rutas en curso para detectar importaciones circulares.
+        self._modulos_cache: dict[str, dict] = {}
+        self._importando: set[str] = set()
+        self.directorio_base: Path = Path.cwd()
         # Nombres globales instalados por el JIT (jp.nativo): la declaración
         # JP no los pisa para que la versión nativa siga viva.
         self.resguardadas: set[str] = set()
@@ -248,6 +447,10 @@ class Interprete:
             NodoMientras: self._ej_mientras,
             NodoPara: self._ejecutar_para,
             NodoFuncion: self._ej_funcion,
+            NodoClase: self._ej_clase,
+            NodoLanzar: self._ej_lanzar,
+            NodoImportar: self._ej_importar,
+            NodoDeclaracionLista: self._ej_declaracion_lista,
             NodoRetorna: self._ej_retorna,
             NodoRomper: self._ej_romper,
             NodoContinuar: self._ej_continuar,
@@ -268,12 +471,20 @@ class Interprete:
             NodoDiccionario: self._ev_diccionario,
             NodoInterpolacion: self._ev_interpolacion,
             NodoLlamada: self._ev_llamada,
+            NodoAsignacionLista: self._ev_asignacion_lista,
             NodoFuncion: self._ev_funcion,  # función anónima usada como valor
         }
 
     # ---------- API pública ----------
 
-    def ejecutar(self, programa: NodoPrograma) -> None:
+    def ejecutar(self, programa: NodoPrograma, directorio: object = None) -> None:
+        # El tope del LENGUAJE es _MAX_LLAMADAS llamadas JP (igual que la VM);
+        # el de Python debe quedar por encima para no cortar antes de tiempo
+        # (cada llamada JP gasta varios marcos de Python en el árbol).
+        if sys.getrecursionlimit() < 150000:
+            sys.setrecursionlimit(150000)
+        if directorio is not None:
+            self.directorio_base = Path(str(directorio))
         self.ultimo_valor = None
         try:
             self._ejecutar_bloque(programa.sentencias, self.global_env)
@@ -293,6 +504,8 @@ class Interprete:
             self._ejecutar(sentencia, entorno)
 
     def _ejecutar(self, nodo: Nodo, entorno: Entorno) -> None:
+        if self.gancho_paso is not None and type(nodo) in _NODOS_PASO:
+            self.gancho_paso(nodo, entorno)
         handler = self._ejecutores.get(type(nodo))
         if handler is None:
             raise ErrorEjecucion(f"nodo desconocido: {type(nodo).__name__}", getattr(nodo, "linea", 0))
@@ -305,7 +518,110 @@ class Interprete:
         valor = None
         if nodo.inicializador is not None:
             valor = self._evaluar(nodo.inicializador, entorno)
+            if nodo.tipo is not None and not cumple_tipo(valor, nodo.tipo):
+                raise ErrorEjecucion(
+                    f"la variable '{nodo.nombre}' es de tipo {nodo.tipo} "
+                    f"y recibió {nombre_tipo(valor)} ({jp_a_texto(valor)!r})",
+                    nodo.linea,
+                )
         entorno.definir(nodo.nombre, valor)
+
+    def _desestructurar(self, valor: object, nombres: list[str], linea: int) -> list:
+        if not isinstance(valor, list):
+            raise ErrorEjecucion(
+                f"la desestructuración '[a, b] = ...' espera una lista, no {jp_a_texto(valor)!r}", linea
+            )
+        if len(valor) != len(nombres):
+            raise ErrorEjecucion(
+                f"la desestructuración esperaba {len(nombres)} valor(es) y recibió {len(valor)}", linea
+            )
+        return list(valor)
+
+    def _ej_declaracion_lista(self, nodo: NodoDeclaracionLista, entorno: Entorno) -> None:
+        valores = self._desestructurar(
+            self._evaluar(nodo.inicializador, entorno), nodo.nombres, nodo.linea
+        )
+        for nombre, valor in zip(nodo.nombres, valores):
+            entorno.definir(nombre, valor)
+
+    def _ev_asignacion_lista(self, nodo: NodoAsignacionLista, entorno: Entorno):
+        valores = self._desestructurar(self._evaluar(nodo.valor, entorno), nodo.nombres, nodo.linea)
+        resultado = list(valores)
+        for nombre, valor in zip(nodo.nombres, valores):
+            entorno.asignar(nombre, valor, nodo.linea)
+        return resultado
+
+    def _ej_lanzar(self, nodo: NodoLanzar, entorno: Entorno) -> None:
+        valor = self._evaluar(nodo.expresion, entorno)
+        raise ErrorEjecucion(jp_a_texto(valor), nodo.linea, tipo="usuario")
+
+    def _ej_clase(self, nodo: NodoClase, entorno: Entorno) -> None:
+        padre = None
+        if nodo.padre is not None:
+            valor_padre = entorno.obtener(nodo.padre, nodo.linea)
+            if not isinstance(valor_padre, ClaseJP):
+                raise ErrorEjecucion(
+                    f"'{nodo.padre}' no es una clase: no se puede heredar de {jp_a_texto(valor_padre)!r}",
+                    nodo.linea,
+                )
+            padre = valor_padre
+        metodos = {
+            metodo.nombre: FuncionJP(metodo, entorno) for metodo in nodo.metodos
+        }
+        entorno.definir(nodo.nombre, ClaseJP(nodo.nombre, metodos, padre))
+
+    def _ej_importar(self, nodo: NodoImportar, entorno: Entorno) -> None:
+        """importar "x.jp" [como n]: ejecuta el módulo una sola vez y trae sus nombres."""
+        if nodo.ruta.startswith("@"):
+            from .paquetes import resolver_paquete
+            ruta = resolver_paquete(nodo.ruta, self.directorio_base, nodo.linea)
+        else:
+            ruta = (self.directorio_base / nodo.ruta).resolve()
+        if not ruta.is_file():
+            raise ErrorEjecucion(
+                f"no se encontró el módulo '{nodo.ruta}' (buscado en {ruta})", nodo.linea
+            )
+        clave = str(ruta)
+        if clave in self._modulos_cache:
+            exportaciones = self._modulos_cache[clave]
+        elif clave in self._importando:
+            raise ErrorEjecucion(
+                f"importación circular detectada: '{nodo.ruta}' ya se está importando", nodo.linea
+            )
+        else:
+            self._importando.add(clave)
+            try:
+                from .lexer import tokenizar
+                from .parser import parsear
+
+                fuente = ruta.read_text(encoding="utf-8")
+                sub = Interprete()
+                sub._modulos_cache = self._modulos_cache   # una sola ejecución en total
+                sub._importando = self._importando
+                antes = dict(sub.global_env.variables)
+                sub.ejecutar(parsear(tokenizar(fuente)), directorio=ruta.parent)
+                exportaciones = {
+                    nombre: valor
+                    for nombre, valor in sub.global_env.variables.items()
+                    if nombre not in antes or antes[nombre] is not valor
+                }
+                self._modulos_cache[clave] = exportaciones
+            except ErrorEjecucion:
+                raise
+            except (OSError, ErrorJP) as error:
+                detalle = getattr(error, "mensaje", str(error))
+                linea_mod = getattr(error, "linea", 0)
+                donde = f" (línea {linea_mod} del módulo)" if linea_mod else ""
+                raise ErrorEjecucion(
+                    f"error en el módulo '{nodo.ruta}'{donde}: {detalle}", nodo.linea
+                ) from None
+            finally:
+                self._importando.discard(clave)
+        if nodo.alias is not None:
+            entorno.definir(nodo.alias, exportaciones)
+        else:
+            for nombre, valor in exportaciones.items():
+                entorno.definir(nombre, valor)
 
     def _ej_expresion(self, nodo: NodoExpresion, entorno: Entorno) -> None:
         self.ultimo_valor = self._evaluar(nodo.expresion, entorno)
@@ -343,12 +659,20 @@ class Interprete:
         El nombre del error solo vive dentro del bloque 'atrapa'.
         """
         try:
-            self._ejecutar(nodo.cuerpo, entorno)
-        except ErrorEjecucion as error:
-            entorno_error = Entorno(padre=entorno)
-            if nodo.nombre_error is not None:
-                entorno_error.definir(nodo.nombre_error, error.mensaje)
-            self._ejecutar(nodo.captura, entorno_error)
+            try:
+                self._ejecutar(nodo.cuerpo, entorno)
+            except ErrorEjecucion as error:
+                if nodo.captura is None:
+                    raise
+                entorno_error = Entorno(padre=entorno)
+                if nodo.nombre_error is not None:
+                    entorno_error.definir(nodo.nombre_error, crear_error_valor(error))
+                self._ejecutar(nodo.captura, entorno_error)
+        finally:
+            # 'finalmente' corre siempre: sin error, tras el 'atrapa' y antes
+            # de que un devuelve/romper/continuar salga del bloque.
+            if nodo.finalmente is not None:
+                self._ejecutar(nodo.finalmente, entorno)
 
     def _ej_mientras(self, nodo: NodoMientras, entorno: Entorno) -> None:
         while es_verdad(self._evaluar(nodo.condicion, entorno)):
@@ -377,8 +701,13 @@ class Interprete:
         raise _Continuar(nodo.linea)
 
     def _ejecutar_para(self, nodo: NodoPara, entorno: Entorno) -> None:
-        iterable = self._evaluar(nodo.iterable, entorno)
-        if isinstance(iterable, list):
+        if type(nodo.iterable) is NodoRango:
+            # Perezoso: 'para i en 1..1000000' no crea la lista entera.
+            elementos = self._rango_perezoso(nodo.iterable, entorno)
+            iterable = elementos
+        else:
+            iterable = self._evaluar(nodo.iterable, entorno)
+        if isinstance(iterable, (list, range)):
             elementos = iterable
         elif isinstance(iterable, dict):
             elementos = list(iterable.keys())
@@ -391,6 +720,24 @@ class Interprete:
             raise ErrorEjecucion(
                 f"'para ... en' espera una lista, cadena, diccionario o número, no {jp_a_texto(iterable)!r}", nodo.linea
             )
+        if nodo.variable2 is not None:
+            # para i, valor en lista -> (posición desde 0, valor)
+            # para clave, valor en dict -> (clave, valor)
+            if isinstance(iterable, dict):
+                pares = iterable.items()
+            else:
+                pares = enumerate(elementos)
+            for primero, segundo in pares:
+                cuerpo_env = Entorno(padre=entorno)
+                cuerpo_env.definir(nodo.variable, primero)
+                cuerpo_env.definir(nodo.variable2, segundo)
+                try:
+                    self._ejecutar_bloque(nodo.cuerpo.sentencias, cuerpo_env)
+                except _Romper:
+                    break
+                except _Continuar:
+                    continue
+            return
         for elemento in elementos:
             cuerpo_env = Entorno(padre=entorno)
             cuerpo_env.definir(nodo.variable, elemento)
@@ -427,6 +774,11 @@ class Interprete:
         objeto = self._evaluar(nodo.objeto, entorno)
         indice = self._evaluar(nodo.indice, entorno)
         valor = self._evaluar(nodo.valor, entorno)
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", nodo.linea)
+            objeto.campos[indice] = valor
+            return valor
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", nodo.linea)
@@ -504,6 +856,24 @@ class Interprete:
                 paso = -paso
         return list(range(i, f + (1 if paso > 0 else -1), paso))
 
+    def _rango_perezoso(self, nodo: NodoRango, entorno: Entorno) -> range:
+        """El mismo rango que _rango, pero sin crear la lista (para 'para')."""
+        inicio = self._evaluar(nodo.izquierda, entorno)
+        fin = self._evaluar(nodo.derecha, entorno)
+        for valor in (inicio, fin):
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                raise ErrorEjecucion(
+                    f"el rango '..' espera números, recibió {jp_a_texto(valor)!r}", nodo.linea
+                )
+        i, f = int(inicio), int(fin)
+        if nodo.paso is None:
+            paso = 1 if i <= f else -1
+        else:
+            paso = evaluar_paso(self._evaluar(nodo.paso, entorno), nodo.linea)
+            if i > f:
+                paso = -paso
+        return range(i, f + (1 if paso > 0 else -1), paso)
+
     def _binario(self, nodo: NodoBinario, entorno: Entorno) -> object:
         operador = nodo.operador
         # 'y' / 'o' con cortocircuito
@@ -515,6 +885,11 @@ class Interprete:
         if operador == "o":
             izquierda = self._evaluar(nodo.izquierda, entorno)
             if es_verdad(izquierda):
+                return izquierda
+            return self._evaluar(nodo.derecha, entorno)
+        if operador == "??":
+            izquierda = self._evaluar(nodo.izquierda, entorno)
+            if izquierda is not None:
                 return izquierda
             return self._evaluar(nodo.derecha, entorno)
 
@@ -593,11 +968,32 @@ class Interprete:
 
     def _indice(self, nodo: NodoIndice, entorno: Entorno) -> object:
         objeto = self._evaluar(nodo.objeto, entorno)
+        if objeto is None and nodo.seguro:
+            return None  # a?.b con a nulo: nulo, sin evaluar el indice
         indice = self._evaluar(nodo.indice, entorno)
         return self._indexar(objeto, indice, nodo.linea)
 
     @staticmethod
     def _indexar(objeto: object, indice: object, linea: int) -> object:
+        if isinstance(objeto, ErrorValor) and isinstance(indice, str):
+            if indice == "mensaje":
+                return objeto.mensaje
+            if indice == "tipo":
+                return objeto.tipo
+            if indice == "linea":
+                return objeto.linea
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", linea)
+            if indice in objeto.campos:
+                return objeto.campos[indice]
+            metodo = buscar_metodo(objeto.clase, indice)
+            if metodo is not None:
+                return MetodoLigado(objeto, metodo)
+            campos = ", ".join(objeto.campos) or "ninguno"
+            raise ErrorEjecucion(
+                f"el objeto {objeto.clase.nombre} no tiene '{indice}' (campos: {campos})", linea
+            )
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)
@@ -642,12 +1038,21 @@ class Interprete:
 
     def _llamada(self, nodo: NodoLlamada, entorno: Entorno) -> object:
         callee = self._evaluar(nodo.callee, entorno)
+        if callee is None and nodo.seguro:
+            return None  # f?.() con f nulo: nulo, sin evaluar los argumentos
         argumentos = [self._evaluar(arg, entorno) for arg in nodo.argumentos]
         return self._llamar_valor(callee, argumentos, nodo.linea)
 
     def _llamar_valor(self, callee: object, argumentos: list[object], linea: int = 0) -> object:
         """Llama a un valor-función (JP o nativa). La usan también las nativas
         de orden superior (mapear, filtrar, reducir, ordenar con clave...)."""
+        if isinstance(callee, ClaseJP):
+            return self._instanciar(callee, argumentos, linea)
+        if isinstance(callee, MetodoLigado):
+            funcion = callee.funcion
+            if not isinstance(funcion, FuncionJP):  # en el arbol siempre lo es
+                raise ErrorEjecucion("metodo no valido", linea)
+            return self._llamar_funcion(funcion, argumentos, linea, este=callee.instancia)
         if isinstance(callee, FuncionNativa):
             if callee.aridad is not None and len(argumentos) != callee.aridad:
                 raise ErrorEjecucion(
@@ -665,27 +1070,78 @@ class Interprete:
 
         raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", linea)
 
-    def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int) -> object:
-        declaracion = funcion.declaracion
-        if len(argumentos) != len(declaracion.parametros):
+    def _instanciar(self, clase: ClaseJP, argumentos: list[object], linea: int):
+        """Clase(args): crea el objeto y llama a su 'iniciar' (si lo tiene)."""
+        instancia = Instancia(clase)
+        iniciar = buscar_metodo(clase, "iniciar")
+        if iniciar is not None:
+            self._llamar_funcion(iniciar, argumentos, linea, este=instancia)
+        elif argumentos:
             raise ErrorEjecucion(
-                f"la función '{declaracion.nombre or '<anónima>'}' espera "
-                f"{len(declaracion.parametros)} argumento(s), recibió {len(argumentos)}",
+                f"la clase '{clase.nombre}' no tiene un metodo 'iniciar' y no acepta argumentos",
                 linea,
             )
+        return instancia
+
+    def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int, este: object = None) -> object:
+        declaracion = funcion.declaracion
+        defectos = declaracion.defectos or [None] * len(declaracion.parametros)
+        obligatorios = sum(1 for d in defectos if d is None)
+        if not obligatorios <= len(argumentos) <= len(declaracion.parametros):
+            espera = (
+                f"{obligatorios} a {len(declaracion.parametros)}"
+                if obligatorios != len(declaracion.parametros)
+                else f"{len(declaracion.parametros)}"
+            )
+            raise ErrorEjecucion(
+                f"la función '{declaracion.nombre or '<anónima>'}' espera "
+                f"{espera} argumento(s), recibió {len(argumentos)}",
+                linea,
+            )
+        if self._profundidad >= _MAX_LLAMADAS:
+            raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
         entorno_local = Entorno(padre=funcion.cierre)
-        for nombre, valor in zip(declaracion.parametros, argumentos):
-            entorno_local.definir(nombre, valor)
+        if este is not None:
+            entorno_local.definir("este", este)
+        for indice, nombre in enumerate(declaracion.parametros):
+            if indice < len(argumentos):
+                entorno_local.definir(nombre, argumentos[indice])
+            else:
+                # El defecto se evalúa en el ámbito local: puede usar los
+                # parámetros anteriores (funcion f(a, b = a + 1) { ... }).
+                entorno_local.definir(nombre, self._evaluar(defectos[indice], entorno_local))
+        tipos = declaracion.tipos or []
+        for indice, nombre in enumerate(declaracion.parametros):
+            if indice < len(tipos) and tipos[indice] is not None:
+                valor = entorno_local.obtener(nombre)
+                if not cumple_tipo(valor, tipos[indice]):
+                    raise ErrorEjecucion(
+                        f"el parámetro '{nombre}' de '{declaracion.nombre or '<anónima>'}' "
+                        f"es de tipo {tipos[indice]} y recibió {nombre_tipo(valor)} "
+                        f"({jp_a_texto(valor)!r})",
+                        linea,
+                    )
+        self._profundidad += 1
+        resultado = None
         try:
             self._ejecutar_bloque(declaracion.cuerpo.sentencias, entorno_local)
         except Retornar as retorno:
-            return retorno.valor
+            resultado = retorno.valor
         except _Romper as senal:
             # Un 'romper' no puede cruzar el límite de la función.
             raise ErrorEjecucion("'romper' fuera de un bucle", senal.linea) from None
         except _Continuar as senal:
             raise ErrorEjecucion("'continuar' fuera de un bucle", senal.linea) from None
-        return None
+        finally:
+            self._profundidad -= 1
+        if declaracion.tipo_retorno is not None and not cumple_tipo(resultado, declaracion.tipo_retorno):
+            raise ErrorEjecucion(
+                f"la función '{declaracion.nombre or '<anónima>'}' debe devolver "
+                f"{declaracion.tipo_retorno} y devolvió {nombre_tipo(resultado)} "
+                f"({jp_a_texto(resultado)!r})",
+                linea,
+            )
+        return resultado
 
     # ---------- helpers ----------
 
@@ -983,6 +1439,27 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             )
         return t[i]
 
+    def sigmoide(x: object) -> float:
+        """1 / (1 + e^-x): la activacion clasica de las redes neuronales."""
+        valor = _num(x, "sigmoide")
+        if valor >= 0:
+            return 1.0 / (1.0 + math.exp(-valor))
+        e = math.exp(valor)
+        return e / (1.0 + e)
+
+    def producto_punto(a: object, b: object):
+        """Suma de a[i]*b[i] de dos listas del mismo largo (nucleo de toda IA)."""
+        if not isinstance(a, list) or not isinstance(b, list):
+            raise ErrorEjecucion("producto_punto() espera dos listas de numeros")
+        if len(a) != len(b):
+            raise ErrorEjecucion(
+                f"producto_punto() espera listas del mismo largo ({len(a)} y {len(b)})"
+            )
+        total: float | int = 0
+        for x, y in zip(a, b):
+            total += _num(x, "producto_punto") * _num(y, "producto_punto")
+        return total
+
     def exp(x: object) -> float:
         """e^x (para sigmoides y matemática de redes neuronales)."""
         if isinstance(x, bool) or not isinstance(x, (int, float)):
@@ -1119,7 +1596,11 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             return "lista"
         if isinstance(valor, dict):
             return "diccionario"
-        if isinstance(valor, (FuncionJP, FuncionNativa, Cierre)):
+        if isinstance(valor, Instancia):
+            return "objeto"
+        if isinstance(valor, ClaseJP):
+            return "clase"
+        if isinstance(valor, (FuncionJP, FuncionNativa, Cierre, MetodoLigado)):
             return "función"
         return "valor"
 
@@ -1189,6 +1670,8 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         "agregar": FuncionNativa("agregar", agregar, aridad=2),
         "reloj": FuncionNativa("reloj", reloj, aridad=0),
         "exp": FuncionNativa("exp", exp, aridad=1),
+        "sigmoide": FuncionNativa("sigmoide", sigmoide, aridad=1),
+        "producto_punto": FuncionNativa("producto_punto", producto_punto, aridad=2),
         "seno": FuncionNativa("seno", seno, aridad=1),
         "coseno": FuncionNativa("coseno", coseno, aridad=1),
         # matemáticas

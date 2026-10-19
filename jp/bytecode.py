@@ -59,6 +59,7 @@ class Codigo(Enum):
     SALTAR = auto()         # operando=destino absoluto
     SALTAR_SI_FALSO = auto()  # Popea la condición; salta si no es verdad
     SALTAR_SI_VERDAD = auto() # NO popea; salta si es verdad (para 'o')
+    SALTAR_SI_NO_NULO = auto() # NO popea; salta si no es nulo (para '??' y '?.')
     LLAMAR = auto()         # operando=nargs; callee y args en pila
     RETORNAR = auto()       # Popea el valor y sale de la función
 
@@ -74,6 +75,14 @@ class Codigo(Enum):
     TRY = auto()              # operando=destino del 'atrapa'; apila un manejador
     ENDTRY = auto()           # quita el manejador (camino feliz)
     ERROR_ACTUAL = auto()     # empuja el texto del último error capturado
+    LANZAR = auto()           # popea un valor y lo lanza como error atrapable
+    RELANZAR = auto()         # vuelve a lanzar el error actual (intenta/finalmente sin atrapa)
+    DESESTRUCTURAR = auto()   # operando=(nombres,); declara cada nombre desde la lista del tope
+    DESESTRUCTURAR_ASIG = auto()  # operando=(nombres,); asigna a variables existentes
+    IMPORTAR = auto()         # operando=(ruta, alias); ejecuta el módulo una vez y define sus nombres
+    CREAR_CLASE = auto()      # operando=(nombre, (metodos...)); pila: padre, metodos... -> clase
+    VERIFICAR_TIPO = auto()   # operando=(tipo, nombre); mira el tope y falla si no cumple
+    ITERAR_RANGO = auto()     # inicio, fin[, paso] en pila -> IteradorJP perezoso (sin crear la lista)
     # (romper/continuar no necesitan opcode: el compilador emite los
     #  AMBITO_POP necesarios y un SALTAR normal)
 
@@ -108,6 +117,14 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.TRY: "TRY",
     Codigo.ENDTRY: "ENDTRY",
     Codigo.ERROR_ACTUAL: "ERROR_ACTUAL",
+    Codigo.LANZAR: "LANZAR",
+    Codigo.RELANZAR: "RELANZAR",
+    Codigo.DESESTRUCTURAR: "DESESTRUCTURAR",
+    Codigo.DESESTRUCTURAR_ASIG: "DESESTRUCTURAR_ASIG",
+    Codigo.IMPORTAR: "IMPORTAR",
+    Codigo.CREAR_CLASE: "CREAR_CLASE",
+    Codigo.VERIFICAR_TIPO: "VERIFICAR_TIPO",
+    Codigo.ITERAR_RANGO: "ITERAR_RANGO",
     Codigo.SUMAR: "SUMAR",
     Codigo.RESTAR: "RESTAR",
     Codigo.MULTIPLICAR: "MULTIPLICAR",
@@ -125,6 +142,7 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.SALTAR: "SALTAR",
     Codigo.SALTAR_SI_FALSO: "SALTAR_SI_FALSO",
     Codigo.SALTAR_SI_VERDAD: "SALTAR_SI_VERDAD",
+    Codigo.SALTAR_SI_NO_NULO: "SALTAR_SI_NO_NULO",
     Codigo.LLAMAR: "LLAMAR",
     Codigo.RETORNAR: "RETORNAR",
     Codigo.POP: "POP",
@@ -143,7 +161,7 @@ class Chunk:
     de tuplas ni busque atributos por instrucción.
     """
 
-    __slots__ = ("codigo", "constantes", "_c", "_o", "_l", "ops")
+    __slots__ = ("codigo", "constantes", "_c", "_o", "_l", "ops", "tipo_retorno_esperado", "nombre_funcion")
 
     def __init__(self) -> None:
         self.codigo: list[tuple[Codigo, object, int]] = []
@@ -152,6 +170,9 @@ class Chunk:
         self._o: list[object] | None = None
         self._l: list[int] | None = None
         self.ops: list | None = None  # closures compiladas (las construye la VM)
+        # Tipos opcionales (v1.23): lo que la funcion debe devolver.
+        self.tipo_retorno_esperado: str | None = None
+        self.nombre_funcion: str = ""
 
     def preparar(self) -> None:
         """Aplana las columnas del bytecode (solo se llama antes de ejecutar)."""

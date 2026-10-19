@@ -85,7 +85,14 @@ def ejecutar_fuente(fuente: str, interprete: Interprete | MaquinaVM, ruta: str =
             from .nativo import instalar
 
             instalar(programa, interprete)
-        interprete.ejecutar(programa)
+        # 'importar' resuelve las rutas desde la carpeta del archivo actual
+        # (en el REPL y con -c, desde el directorio de trabajo).
+        directorio = None
+        if ruta not in ("<código>", "<repl>"):
+            candidato = Path(ruta).resolve().parent
+            if candidato.is_dir():
+                directorio = candidato
+        interprete.ejecutar(programa, directorio=directorio)
         return True
     except (ErrorLexico, ErrorSintaxis, ErrorEjecucion) as error:
         print(error.formatear(fuente), file=sys.stderr)
@@ -141,6 +148,300 @@ def _modo_archivo(ruta: str) -> int:
     return 0 if ok else 65
 
 
+def _modo_probar(archivos: list[str]) -> int:
+    """Corre archivos de prueba .jp (con biblioteca/pruebas.jp) y resume.
+
+    Sin archivos: descubre pruebas/**/*_prueba.jp y ./*_prueba.jp. Devuelve 0 si
+    todo pasa y 1 si algo falla, como cualquier corredor de pruebas.
+    """
+    rutas: list[Path] = []
+    if archivos:
+        rutas = [Path(a) for a in archivos]
+    else:
+        vistas: set[Path] = set()
+        for patron in ("pruebas/**/*_prueba.jp", "*_prueba.jp"):
+            for ruta in sorted(Path(".").glob(patron)):
+                if ruta not in vistas:
+                    vistas.add(ruta)
+                    rutas.append(ruta)
+    if not rutas:
+        print("jp --probar: no encontre pruebas (pasa archivos o crea pruebas/*.jp)", file=sys.stderr)
+        return 66
+    pasan = 0
+    for ruta in rutas:
+        print(f"▶ {ruta}")
+        try:
+            fuente = ruta.read_text(encoding="utf-8")
+        except OSError:
+            print(f"jp: no se encontro el archivo: {ruta}", file=sys.stderr)
+            continue
+        if ejecutar_fuente(fuente, MaquinaVM(), str(ruta)):
+            pasan += 1
+        else:
+            print(f"✗ fallo: {ruta}", file=sys.stderr)
+    print(f"\n{pasan}/{len(rutas)} archivos de prueba pasan")
+    return 0 if pasan == len(rutas) else 1
+
+
+class _FinDepuracion(Exception):
+    """El usuario pidio salir del depurador con 'q'."""
+
+
+def _modo_depurar(ruta: str) -> int:
+    """Depurador paso a paso sobre el interprete de arbol.
+
+    Pausa antes de cada sentencia: s=siguiente, c=continuar, v <var>=ver,
+    e <expr>=evaluar, l=listar variables, p <linea>=punto de interrupcion,
+    q=salir. Sin terminal (EOF), sigue hasta el final sin bloquearse.
+    """
+    from .arbol import NodoExpresion
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+
+    lineas = fuente.splitlines()
+    interprete = Interprete()
+    estado = {"paso": True, "puntos": set()}
+
+    def al_paso(nodo, entorno) -> None:
+        linea = getattr(nodo, "linea", 0)
+        if not estado["paso"] and linea not in estado["puntos"]:
+            return
+        estado["paso"] = True
+        texto = lineas[linea - 1].strip() if 1 <= linea <= len(lineas) else ""
+        print(f"\n🐞 línea {linea}: {texto}")
+        while True:
+            try:
+                comando = input("🐞 (s/c/v/e/l/p/q) > ").strip()
+            except EOFError:
+                estado["paso"] = False
+                return
+            except KeyboardInterrupt:
+                raise _FinDepuracion from None
+            if not comando or comando == "s":
+                return
+            orden, _, resto = comando.partition(" ")
+            resto = resto.strip()
+            if orden == "c":
+                estado["paso"] = False
+                return
+            if orden == "q":
+                raise _FinDepuracion
+            if orden == "v" and resto:
+                try:
+                    print(f"  {resto} = {jp_a_texto(entorno.obtener(resto))}")
+                except ErrorEjecucion:
+                    print(f"  ({resto} no existe todavia)")
+            elif orden == "e" and resto:
+                try:
+                    sentencia = parsear(tokenizar(resto)).sentencias[0]
+                    if not isinstance(sentencia, NodoExpresion):
+                        print("  (escribe una expresion, ej: e x + 1)")
+                    else:
+                        print(f"  = {jp_a_texto(interprete._evaluar(sentencia.expresion, entorno))}")
+                except Exception as error:  # evaluar no debe tumbar el depurador
+                    print(f"  (no se pudo: {error})")
+            elif orden == "l":
+                visibles: dict[str, object] = {}
+                cadena = entorno
+                while cadena is not None:
+                    for nombre, valor in cadena.variables.items():
+                        visibles.setdefault(nombre, valor)
+                    cadena = cadena.padre
+                for nombre in sorted(visibles):
+                    resumen = jp_a_texto(visibles[nombre])
+                    if len(resumen) > 60:
+                        resumen = resumen[:57] + "..."
+                    print(f"  {nombre} = {resumen}")
+            elif orden == "p" and resto.isdigit():
+                numero = int(resto)
+                if numero in estado["puntos"]:
+                    estado["puntos"].discard(numero)
+                    print(f"  punto de interrupcion quitado de la linea {numero}")
+                else:
+                    estado["puntos"].add(numero)
+                    print(f"  punto de interrupcion en la linea {numero} (con 'c' corres hasta el)")
+            else:
+                print("  s=siguiente · c=continuar · v <var> · e <expr> · l=listar · p <linea> · q=salir")
+
+    interprete.gancho_paso = al_paso
+    print(f"🐞 Depurando {ruta} (intérprete de árbol). 's' avanza, 'c' continúa, 'q' sale.")
+    try:
+        ok = ejecutar_fuente(fuente, interprete, ruta)
+    except _FinDepuracion:
+        print("\n🐞 depuración terminada")
+        return 0
+    return 0 if ok else 65
+
+
+def _modo_formatear(ruta: str, en_sitio: bool) -> int:
+    """Reimprime el archivo con el estilo de la casa (jp/formateador.py)."""
+    from .formateador import formatear
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+    try:
+        texto = formatear(parsear(tokenizar(fuente)))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else f"{error.titulo}: {error.mensaje}", file=sys.stderr)
+        return 65
+    if en_sitio:
+        Path(ruta).write_text(texto, encoding="utf-8")
+        print(f"✔ formateado: {ruta}")
+    else:
+        sys.stdout.write(texto)
+    return 0
+
+
+_PLANTILLA_PRINCIPAL = '''# {nombre} — un proyecto JP
+#
+# Correlo con:  python -m jp principal.jp
+# Y sus pruebas:  python -m jp --probar   (desde esta carpeta)
+
+funcion fibonacci(n) {{
+    si n < 2 {{ devuelve n }}
+    devuelve fibonacci(n - 1) + fibonacci(n - 2)
+}}
+
+imprime("¡Hola desde {nombre}!")
+para i en 1..8 {{
+    imprime("fibonacci(", i, ") =", fibonacci(i))
+}}
+'''
+
+_PLANTILLA_PRUEBA = '''importar "pruebas.jp" como p
+
+p.afirmar_igual(2, 1 + 1)
+p.afirmar(3 > 2, "tres es mas que dos")
+p.resumen()
+'''
+
+_PLANTILLA_LEEME = '''# {nombre}
+
+Un proyecto [JP](https://github.com/SoyJuanPiece/jp-lenguage).
+
+- `principal.jp` — el programa. Correlo con `python -m jp principal.jp`.
+- `pruebas/` — las pruebas. Correlas con `python -m jp --probar`.
+
+## Ideas para seguir
+
+- Datos que se quedan: `abrir_bd("datos.db")` (SQLite).
+- Una web: la clase `Aplicacion` de la biblioteca (`web.jp`).
+- Graficas SVG: `grafica_barras(...)` de `graficas.jp`.
+'''
+
+
+def _modo_proyecto(nombre: str) -> int:
+    """Crea la carpeta de un proyecto JP nuevo con programa y pruebas."""
+    destino = Path(nombre)
+    if destino.exists():
+        print(f"jp: ya existe '{nombre}', no toco nada", file=sys.stderr)
+        return 66
+    try:
+        (destino / "pruebas").mkdir(parents=True)
+        (destino / "principal.jp").write_text(
+            _PLANTILLA_PRINCIPAL.format(nombre=nombre), encoding="utf-8")
+        (destino / "LEEME.md").write_text(
+            _PLANTILLA_LEEME.format(nombre=nombre), encoding="utf-8")
+        (destino / "pruebas" / "principal_prueba.jp").write_text(
+            _PLANTILLA_PRUEBA, encoding="utf-8")
+        # La mini-biblioteca de pruebas viaja con el proyecto.
+        (destino / "pruebas" / "pruebas.jp").write_text(
+            (RAIZ / "biblioteca" / "pruebas.jp").read_text(encoding="utf-8"),
+            encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no pude crear el proyecto: {error}", file=sys.stderr)
+        return 66
+    print(f"✔ proyecto '{nombre}' creado:")
+    print(f"    {nombre}/principal.jp")
+    print(f"    {nombre}/pruebas/ (corre: cd {nombre} && python -m jp --probar)")
+    print(f"    {nombre}/LEEME.md")
+    return 0
+
+
+def _modo_instalar(origen: str | None, aqui: bool) -> int:
+    """jp --instalar [origen]: instala paquetes JP (ver jp/paquetes.py)."""
+    from .paquetes import carpeta_global, instalar, instalar_dependencias
+
+    destino = Path("paquetes") if aqui else carpeta_global()
+    try:
+        if origen is None:
+            nombres = instalar_dependencias(Path.cwd(), destino)
+        else:
+            nombres = [instalar(origen, destino)]
+    except ErrorEjecucion as error:
+        print(f"jp: {error.mensaje}", file=sys.stderr)
+        return 65
+    except OSError as error:
+        print(f"jp: no se pudo instalar: {error}", file=sys.stderr)
+        return 66
+    for nombre in nombres:
+        print(f"✔ paquete '{nombre}' instalado en {destino}")
+    print('úsalo con: importar "@' + nombres[0] + '" como ' + nombres[0])
+    return 0
+
+
+def _modo_paquetes() -> int:
+    from .paquetes import listar
+
+    paquetes = listar()
+    if not paquetes:
+        print("no hay paquetes instalados (instala con: jp --instalar github:usuario/repo)")
+        return 0
+    for nombre, version, carpeta in paquetes:
+        print(f"{nombre} {version}  ({carpeta})")
+    return 0
+
+
+def _modo_quitar_paquete(nombre: str) -> int:
+    from .paquetes import quitar
+
+    quitado = quitar(nombre)
+    if quitado is None:
+        print(f"jp: el paquete '{nombre}' no está instalado", file=sys.stderr)
+        return 66
+    print(f"✔ paquete '{nombre}' quitado ({quitado})")
+    return 0
+
+
+def _modo_revisar(ruta: str) -> int:
+    """Analisis estatico: variables sin declarar o sin usar (jp/revisor.py)."""
+    from .revisor import revisar
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+    try:
+        programa = parsear(tokenizar(fuente))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else f"{error.titulo}: {error.mensaje}", file=sys.stderr)
+        return 65
+    avisos = revisar(programa)
+    for aviso in avisos:
+        print(f"{ruta}: {aviso}")
+    if avisos:
+        return 1
+    print(f"✔ {ruta}: sin avisos")
+    return 0
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -176,7 +477,7 @@ def _repl() -> int:
                     "Red y datos: http_get(), http_post(), json_leer(), json_texto(), tiene(), claves(), esperar()\n"
                     "Bots: telegram_leer(token), telegram_responder(token, de, texto)\n"
                     "Palabras clave: var/variable, fun/funcion, retorna/devuelve, si/sino, "
-                    "mientras, para...en, y, o, no\n"
+                    "mientras, para...en, clase/hereda (con 'este'), lanzar, importar, y, o, no\n"
                     "Trucos fáciles: 'si cond: una_sentencia' sin llaves · rangos '1..10' "
                     "inclusivos · comillas simples 'hola' · diccionarios {clave: valor}"
                 )
@@ -228,6 +529,22 @@ def _llaves_desbalanceadas(fuente: str) -> bool:
                 balance -= 1
         i += 1
     return balance > 0
+
+
+def _modo_check(ruta: str) -> int:
+    """--check: tokeniza y parsea sin ejecutar (para editores y CI)."""
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no puedo leer {ruta}: {error}", file=sys.stderr)
+        return 66
+    try:
+        parsear(tokenizar(fuente))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else str(error), file=sys.stderr)
+        return 65
+    print(f"jp: {ruta}: sintaxis correcta")
+    return 0
 
 
 def _modo_bytecode(ruta: str, escribir: str | None, desensamblar: bool = False) -> int:
@@ -320,9 +637,68 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("-c", "--codigo", help="ejecuta una línea de código JP")
     parser.add_argument(
+        "--probar",
+        nargs="*",
+        metavar="PRUEBA",
+        help="corre archivos de prueba .jp (sin archivos: descubre los *_prueba.jp)",
+    )
+    parser.add_argument(
         "--c",
         action="store_true",
         help="ejecuta con el motor nativo en C (compila a bytecode .jpb y lo corre)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="solo comprueba la sintaxis del archivo, sin ejecutarlo",
+    )
+    parser.add_argument(
+        "--depurar",
+        action="store_true",
+        help="depurador paso a paso: pausa en cada sentencia (s/c/v/e/l/p/q)",
+    )
+    parser.add_argument(
+        "--formatear",
+        action="store_true",
+        help="imprime el archivo con el estilo de la casa (ojo: pierde los comentarios)",
+    )
+    parser.add_argument(
+        "--en-sitio",
+        action="store_true",
+        help="con --formatear: reescribe el archivo en vez de imprimirlo",
+    )
+    parser.add_argument(
+        "--revisar",
+        action="store_true",
+        help="analisis estatico: avisa de variables sin declarar o sin usar, sin ejecutar",
+    )
+    parser.add_argument(
+        "--proyecto",
+        metavar="NOMBRE",
+        help="crea un proyecto JP nuevo: NOMBRE/principal.jp + pruebas + LEEME",
+    )
+    parser.add_argument(
+        "--instalar",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ORIGEN",
+        help="instala un paquete JP (github:usuario/repo, carpeta local...); sin origen, las dependencias de paquete.json",
+    )
+    parser.add_argument(
+        "--aqui",
+        action="store_true",
+        help="con --instalar: instala en ./paquetes en vez de en ~/.jp/paquetes",
+    )
+    parser.add_argument(
+        "--paquetes",
+        action="store_true",
+        help="lista los paquetes JP instalados",
+    )
+    parser.add_argument(
+        "--quitar-paquete",
+        metavar="NOMBRE",
+        help="desinstala un paquete JP",
     )
     parser.add_argument(
         "--compilar",
@@ -343,6 +719,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.revisar:
+        if args.archivo is None:
+            parser.error("--revisar necesita un archivo .jp")
+        return _modo_revisar(args.archivo)
+    if args.instalar is not None:
+        return _modo_instalar(args.instalar or None, args.aqui)
+    if args.paquetes:
+        return _modo_paquetes()
+    if args.quitar_paquete:
+        return _modo_quitar_paquete(args.quitar_paquete)
+    if args.proyecto:
+        return _modo_proyecto(args.proyecto)
+    if args.formatear:
+        if args.archivo is None:
+            parser.error("--formatear necesita un archivo .jp")
+        return _modo_formatear(args.archivo, args.en_sitio)
+    if args.depurar:
+        if args.archivo is None:
+            parser.error("--depurar necesita un archivo .jp")
+        return _modo_depurar(args.archivo)
+    if args.check:
+        if args.archivo is None:
+            parser.error("--check necesita un archivo .jp")
+        return _modo_check(args.archivo)
     if args.compilar or args.bytecode or args.binario:
         if args.archivo is None:
             parser.error("--compilar/--bytecode/--binario necesitan un archivo .jp")
@@ -352,6 +752,8 @@ def main(argv: list[str] | None = None) -> int:
             salida = args.salida or (args.archivo + ".jpb")
             return _modo_bytecode(args.archivo, escribir=salida)
         return _modo_binario(args.archivo, args.salida or "programa")
+    if args.probar is not None:
+        return _modo_probar(args.probar)
     if args.codigo is not None:
         return _modo_codigo(args.codigo)
     if args.archivo is not None:

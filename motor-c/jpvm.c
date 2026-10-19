@@ -1037,6 +1037,110 @@ static Valor nativa_exp(VM *v, int argc, Valor *args) {
     return de_decimal(exp(exigir_numero(args[0], "exp")));
 }
 
+static Lista *exigir_lista_numeros(Valor x, const char *nombre) {
+    if (x.etiqueta != T_OBJ || x.v.obj->tipo != O_LISTA) {
+        char texto[256];
+        texto_de(x, texto, sizeof(texto));
+        error_en(0, "%s espera una lista de números, no '%s'", nombre, texto);
+    }
+    return (Lista *)x.v.obj;
+}
+
+static Valor nativa_sigmoide(VM *v, int argc, Valor *args) {
+    (void)v;
+    double x = exigir_numero(args[0], "sigmoide");
+    double r = x >= 0 ? 1.0 / (1.0 + exp(-x)) : exp(x) / (1.0 + exp(x));
+    return de_decimal(r);
+}
+
+static Valor nativa_producto_punto(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *a = exigir_lista_numeros(args[0], "producto_punto()");
+    Lista *b = exigir_lista_numeros(args[1], "producto_punto()");
+    if (a->largo != b->largo)
+        error_en(0, "producto_punto() espera listas del mismo largo (%u y %u)", a->largo, b->largo);
+    double total_d = 0.0;
+    int64_t total_i = 0;
+    int hay_decimal = 0;
+    for (uint32_t i = 0; i < a->largo; i++) {
+        double x = exigir_numero(a->elementos[i], "producto_punto"), y = exigir_numero(b->elementos[i], "producto_punto");
+        if (a->elementos[i].etiqueta == T_DBL || b->elementos[i].etiqueta == T_DBL) hay_decimal = 1;
+        total_d += x * y;
+        if (!hay_decimal) total_i += (int64_t)x * (int64_t)y;
+    }
+    return hay_decimal ? de_decimal(total_d) : de_entero(total_i);
+}
+
+static double suma_lista(Lista *l, const char *nombre) {
+    double total = 0.0;
+    for (uint32_t i = 0; i < l->largo; i++) total += exigir_numero(l->elementos[i], nombre);
+    return total;
+}
+
+static Valor nativa_promedio(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *l = exigir_lista_numeros(args[0], "promedio()");
+    if (!l->largo) error_en(0, "promedio() espera una lista de números con al menos un valor");
+    return de_decimal(suma_lista(l, "promedio()") / (double)l->largo);
+}
+
+static int comparar_doubles(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+static Valor nativa_mediana(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *l = exigir_lista_numeros(args[0], "mediana()");
+    if (!l->largo) error_en(0, "mediana() espera una lista de números con al menos un valor");
+    double *valores = memoria(sizeof(double) * l->largo);
+    for (uint32_t i = 0; i < l->largo; i++) valores[i] = exigir_numero(l->elementos[i], "mediana()");
+    qsort(valores, l->largo, sizeof(double), comparar_doubles);
+    uint32_t m = l->largo / 2;
+    double r = l->largo % 2 ? valores[m] : (valores[m - 1] + valores[m]) / 2.0;
+    free(valores);
+    return de_decimal(r);
+}
+
+static Valor nativa_norma(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *l = exigir_lista_numeros(args[0], "norma()");
+    double total = 0.0;
+    for (uint32_t i = 0; i < l->largo; i++) { double x = exigir_numero(l->elementos[i], "norma()"); total += x * x; }
+    return de_decimal(sqrt(total));
+}
+
+static Valor nativa_distancia(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *a = exigir_lista_numeros(args[0], "distancia()");
+    Lista *b = exigir_lista_numeros(args[1], "distancia()");
+    if (a->largo != b->largo)
+        error_en(0, "distancia(): los vectores deben tener el mismo largo (%u y %u)", a->largo, b->largo);
+    double total = 0.0;
+    for (uint32_t i = 0; i < a->largo; i++) {
+        double d = exigir_numero(a->elementos[i], "distancia()") - exigir_numero(b->elementos[i], "distancia()");
+        total += d * d;
+    }
+    return de_decimal(sqrt(total));
+}
+
+static Valor nativa_softmax(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *l = exigir_lista_numeros(args[0], "softmax()");
+    if (!l->largo) error_en(0, "softmax() espera una lista de números no vacía");
+    double mayor = exigir_numero(l->elementos[0], "softmax()");
+    for (uint32_t i = 1; i < l->largo; i++) { double x = exigir_numero(l->elementos[i], "softmax()"); if (x > mayor) mayor = x; }
+    Lista *salida = nueva_lista(l->largo);
+    double total = 0.0;
+    for (uint32_t i = 0; i < l->largo; i++) {
+        double e = exp(exigir_numero(l->elementos[i], "softmax()") - mayor);
+        lista_agregar(salida, de_decimal(e));
+        total += e;
+    }
+    for (uint32_t i = 0; i < salida->largo; i++) salida->elementos[i] = de_decimal(a_double(salida->elementos[i]) / total);
+    return de_lista(salida);
+}
+
 static Valor nativa_seno(VM *v, int argc, Valor *args) {
     (void)v;
     return de_decimal(sin(exigir_numero(args[0], "seno")));
@@ -2446,6 +2550,7 @@ static void bucle(uint32_t pc_inicio) {
         &&L_RETORNAR_NULO, &&L_LISTA, &&L_RANGO, &&L_INDICE, &&L_INDICE_ASIG,
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
+        &&L_SALTO_NO_NULO_MANTENER,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -2670,6 +2775,11 @@ L_SALTO_FALSO_MANTENER: {
 L_SALTO_VERDAD_MANTENER: {
     int32_t relativo = LEER_I32();
     if (es_verdad(vm->sp[-1])) ip = ip + relativo;
+    SIGUIENTE();
+}
+L_SALTO_NO_NULO_MANTENER: {
+    int32_t relativo = LEER_I32();
+    if (vm->sp[-1].etiqueta != T_NULO) ip = ip + relativo;
     SIGUIENTE();
 }
 L_IMPRIMIR: {
@@ -3164,6 +3274,13 @@ int main(int argc, char **argv) {
     instalar_nativa("log", -1, nativa_log);
     instalar_nativa("exp", 1, nativa_exp);
     instalar_nativa("seno", 1, nativa_seno);
+    instalar_nativa("sigmoide", 1, nativa_sigmoide);
+    instalar_nativa("producto_punto", 2, nativa_producto_punto);
+    instalar_nativa("promedio", 1, nativa_promedio);
+    instalar_nativa("mediana", 1, nativa_mediana);
+    instalar_nativa("norma", 1, nativa_norma);
+    instalar_nativa("distancia", 2, nativa_distancia);
+    instalar_nativa("softmax", 1, nativa_softmax);
     instalar_nativa("coseno", 1, nativa_coseno);
     instalar_nativa("potencia", 2, nativa_potencia);
     instalar_nativa("minimo", -1, nativa_minimo);

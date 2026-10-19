@@ -1,0 +1,27 @@
+# '?.' (acceso seguro) y '??' (valor si es nulo): datos que a veces faltan,
+# sin muros de «si» alrededor. Con API y JSON esto se usa cada día.
+
+variable usuario = {
+    nombre: "Ana",
+    direccion: nulo,
+    contacto: {correo: "Ana@correo.com", telefono: nulo}
+}
+
+# Sin '?.', usuario.direccion.ciudad explotaría: direccion es nulo.
+imprime("ciudad:", usuario?.direccion?.ciudad ?? "sin ciudad")
+imprime("correo:", usuario?.contacto?.correo ?? "sin correo")
+imprime("telefono:", usuario?.contacto?.telefono ?? "sin telefono")
+
+# '??' solo mira nulo: falso y 0 se quedan como están.
+imprime(falso ?? "no entra", 0 ?? "no entra")
+
+# Llamadas seguras: si no hay función, no pasa nada.
+variable saludar = nulo
+imprime("saludo:", saludar?.("Ana") ?? "(nadie saluda)")
+saludar = funcion(nombre) { devuelve "hola " + nombre }
+imprime("saludo:", saludar?.("Ana") ?? "(nadie saluda)")
+
+# Y cortocircuito de verdad: la derecha ni se calcula si no hace falta.
+variable intentos = 0
+funcion buscar_en_red() { intentos = intentos + 1; devuelve "de la red" }
+imprime(usuario?.nombre ?? buscar_en_red(), "| intentos de red:", intentos)

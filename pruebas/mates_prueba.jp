@@ -1,0 +1,14 @@
+# Pruebas de la biblioteca mates.jp — se corren con: jp --probar
+
+importar "../biblioteca/pruebas.jp" como p
+importar "../biblioteca/mates.jp" como mates
+importar "../biblioteca/texto.jp" como txt
+
+p.afirmar_igual(720, mates.factorial(6))
+p.afirmar_igual(8, mates.fibonacci(6))
+p.afirmar(mates.es_primo(13), "13 es primo")
+p.afirmar(no mates.es_primo(15), "15 no es primo")
+p.afirmar_igual([2, 3, 5, 7, 11], mates.primos_hasta(11))
+p.afirmar(txt.es_palindromo("reconocer"), "reconocer es palindromo")
+p.afirmar_igual(5, txt.contar_vocales("murcielago"))
+p.resumen()

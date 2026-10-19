@@ -34,6 +34,8 @@ class TToken(Enum):
     MAYOR_IGUAL = auto()      # >=
     PUNTO_PUNTO = auto()      # ..
     POTENCIA = auto()         # **
+    DOBLE_INTERROGACION = auto()  # ?? (si es nulo)
+    INTERROGACION_PUNTO = auto()  # ?. (acceso seguro)
     MAS_IGUAL = auto()        # +=
     MENOS_IGUAL = auto()      # -=
     POR_IGUAL = auto()        # *=
@@ -69,6 +71,11 @@ class TToken(Enum):
     CASO = auto()         # caso
     INTENTA = auto()      # intenta
     ATRAPA = auto()       # atrapa
+    FINALMENTE = auto()   # finalmente
+    LANZAR = auto()       # lanzar
+    IMPORTAR = auto()     # importar
+    CLASE = auto()        # clase
+    HEREDA = auto()       # hereda
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -108,6 +115,11 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "caso": TToken.CASO,
     "intenta": TToken.INTENTA,
     "atrapa": TToken.ATRAPA,
+    "finalmente": TToken.FINALMENTE,
+    "lanzar": TToken.LANZAR,
+    "importar": TToken.IMPORTAR,
+    "clase": TToken.CLASE,
+    "hereda": TToken.HEREDA,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -166,5 +178,10 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.CASO: "'caso'",
     TToken.INTENTA: "'intenta'",
     TToken.ATRAPA: "'atrapa'",
+    TToken.FINALMENTE: "'finalmente'",
+    TToken.LANZAR: "'lanzar'",
+    TToken.IMPORTAR: "'importar'",
+    TToken.CLASE: "'clase'",
+    TToken.HEREDA: "'hereda'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

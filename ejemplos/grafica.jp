@@ -1,0 +1,16 @@
+# Gráficas SVG desde JP: barras y pastel de las ventas por ciudad.
+# Al ejecutarlo crea grafica-barras.svg y grafica-pastel.svg (ábrenos en
+# el navegador). También valdría servirlas: {cuerpo: svg, tipo: "image/svg+xml"}.
+
+importar "../biblioteca/graficas.jp" como g
+
+variable ventas = [120, 320, 175, 260]
+variable ciudades = ["Maturín", "Caracas", "Valencia", "Maracaibo"]
+
+variable barras = g.grafica_barras(ventas, ciudades, "Ventas por ciudad")
+guardar_svg("grafica-barras.svg", barras)
+imprime("✔ grafica-barras.svg:", longitud(barras), "caracteres")
+
+variable pastel = g.grafica_pastel(ventas, ciudades)
+guardar_svg("grafica-pastel.svg", pastel)
+imprime("✔ grafica-pastel.svg:", longitud(pastel), "caracteres")

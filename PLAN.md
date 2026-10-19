@@ -29,6 +29,33 @@
 | Tests de paridad integrados en la suite (252 en total) | `tests/test_motor_c.py` | ✅ |
 | CI: compila el motor en gcc y clang, corre la suite y la paridad, y publica `jpvm` + binarios de ejemplo como artefactos | `.github/workflows/motor-c.yml` | ✅ |
 
+### ✅ v1.6.0 (2026-10-19): lo que faltaba del lenguaje, hecho
+
+Implementado en el árbol y en la VM con paridad total (28 tests nuevos,
+`tests/test_v16.py`; suite: 280 tests): módulos `importar "x.jp" [como n]`
+(T-13, una ejecución, aislamiento de globales, ciclos detectados), parámetros
+por defecto (T-15), desestructuración `variable [a, b] = ...` y `[a, b] = [b, a]`
+(T-16), `para i, v en ...` / `para clave, v en dict` (T-14), `lanzar` (T-06),
+`finalmente` (T-07, también antes de `devuelve`/`romper` y tras un error en el
+propio `atrapa`) y el tope de recursión unificado en 6000 llamadas (T-08).
+Además: `LICENSE` (T-01), `CHANGELOG.md` (T-02) y el arreglo del lexer para
+`lista[0]=1` sin espacios. El motor en C y el JIT rechazan limpiamente lo
+nuevo (módulos/defectos/`finalmente`/`para a, b`) y el CLI sigue con Python.
+
+### ✅ v1.7.0 (2026-10-19): clases, errores con campos y kit de IA
+
+`clase`/`hereda`/`este` con constructor `iniciar` (T-33, diseño minimalista:
+sin `super` todavía), errores atrapables con `.tipo/.mensaje/.linea` (T-05),
+`sigmoide`/`producto_punto` nativos, rangos perezosos en `para` y
+`jp --check` (T-10). Paridad árbol↔VM en todo (19 tests, `tests/test_v17.py`).
+
+### ✅ v1.8.0 (2026-10-19): la biblioteca estándar
+
+51 nativas nuevas en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`,
+`jp/sistema.py` y `jp/patrones.py` (120 en total) + `biblioteca/` en JP puro
+(`mates`, `texto`, `listas`, `colecciones` con `Pila`/`Cola`/`Conjunto` e
+`ia` con una `RedNeuronal` que aprende XOR). 11 tests, `tests/test_v18.py`.
+
 **Números (esta máquina, Xeon 2.6 GHz, gcc 12 -O2):**
 
 | Medida | Motor Python | JIT | **Motor C** | CPython | Mejora |

@@ -1,5 +1,114 @@
 # Cambios de JP
 
+## 1.29.0 — Módulos en el motor en C (2026-10-19)
+
+El último hueco grande del motor nativo: `importar` funciona en C,
+con todo su séquito.
+
+- **Formato .jpb v2**: el blob juntan ahora N archivos — cada uno
+  con su función principal y su espacio de globales dentro de la
+  tabla concatenada (las funciones saben su módulo y la base de sus
+  globales). El `OP_IMPORTAR` (65) ejecuta el módulo la primera vez
+  y congela el diccionario con lo exportado, como los motores de
+  Python: `importar "figuras.jp" como fig`, y sin `como` trae los
+  nombres. Paquetes `@x` se resuelven también al compilar, y la
+  importación circular se detecta al compilar (en Python, al
+  ejecutar).
+- **De paso**: `lanzar` (OP_LANZAR 66), `finalmente` completo con la
+  técnica de la VM (duplicado en cada salida; OP_RELANZAR 67 y un
+  segundo centinela protegiendo al `atrapa`), `sublista`, `resumen`,
+  y todo el paquete de matrices en C (forma, crear_matriz,
+  identidad, transponer, sumar/restar/multiplicar matrices, escalar,
+  matriz_vector, los tres `*_vectores` y matriz_aplicar). Los errores
+  de un módulo enseñan su propia fuente y línea.
+- Los blobs v2 antiguos (de v1.28 y antes) deben recompilarse: el
+  motor avisa («versión de bytecode no soportada... recompila»).
+  `ejemplos/biblioteca.jp` y `modulos.jp` son idénticos en C.
+  Paridad: 26 idénticos, 8 no soportados, 0 fallos. Tests
+  `test_v38.py` y `test_v39.py`.
+
+## 1.28.0 — Cobertura de líneas (2026-10-19)
+
+La pieza que faltaba de la caja de herramientas de calidad:
+
+- **`jp --cobertura programa.jp`**: ejecuta con el intérprete de árbol
+  (gancho por sentencia, como el depurador) y reporta porcentaje de
+  líneas ejecutadas y las que nunca corrieron, agrupadas en rangos:
+  «Sin ejecutar: líneas 3-5, 9». Un error a mitad de camino también
+  imprime la cobertura parcial y sale con código 65.
+- Módulo `jp/cobertura.py` con la lógica (`lineas_ejecutables`,
+  `medir`, `InformeCobertura`). La medida es del archivo principal;
+  las líneas de módulos importados no se atribuyen. Tests:
+  `tests/test_v37.py`.
+
+## 1.27.0 — Tipos opcionales en el motor en C (2026-10-19)
+
+La v1.23, ahora también nativa (`ejemplos/tipos.jp` idéntico):
+
+- **Opcodes 62–64** en `jpvm.c`: `VERIFICAR_TIPO` al declarar una
+  variable anotada, `VERIFICAR_ARG` en el prólogo de la función
+  (después de aplicar los defectos, antes de encerrar en celdas) y
+  `VERIFICAR_RET` en cada `devuelve` y en el retorno implícito.
+- Mismas reglas (`cumple_tipo`) y mismos mensajes que Python:
+  «el parámetro 'a' de 'sumar' es de tipo numero y recibió texto
+  ('veinte')», con el valor entre comillas simples como en la VM.
+  `numero` y `número` equivalen; un tipo desconocido no estorba,
+  igual que en Python.
+- Tests: `tests/test_v36.py`; actualizado el test de la v1.23 que
+  exigía el rechazo. Paridad de ejemplos: 25 idénticos, 0 fallos.
+
+## 1.26.0 — Desestructurar en el motor en C (2026-10-19)
+
+Sigue creciendo la cobertura nativa (24 ejemplos idénticos a Python):
+
+- **`para a, b en ...`**: opcodes `ITER_NEXT_PAR` (59) y
+  `ITER_NEXT_PAR_CELDA` (60). Sobre listas y textos da (índice desde
+  0, valor); sobre diccionarios, (clave, valor): el iterador de C
+  recuerda el diccionario de origen. Las dos variables pueden ser
+  capturadas por closures (máscara de celdas), verificadas en ASan.
+- **`variable [a, b] = ...` y `[a, b] = ...`**: opcode
+  `DESESTRUCTURAR` (61) exige una lista del largo exacto (mismos
+  mensajes de error que Python) y deja los elementos en la pila.
+- El análisis de ámbito del compilador conoce ahora la segunda
+  variable del `para` y los nombres desestructurados, para que las
+  closures puedan capturarlos. `ejemplos/utilidades.jp` ya corre
+  también nativo, y `tests/test_v35.py` cubre la paridad.
+
+## 1.25.0 — Clases en el motor en C (2026-10-19)
+
+El proyecto grande: las clases ya viven en los tres motores.
+
+- **Motor en C**: tipos de objeto nuevos `O_CLASE`, `O_INSTANCIA` y
+  `O_METODO` (método ligado), con su marcado en el GC y su
+  representación (`Punto{a: 4, b: 5}`, `<clase Punto>`). El opcode
+  `CREAR_CLASE` (56) junta clase madre y métodos; `Punto(3, 4)` llama a
+  `iniciar` si existe y devuelve el objeto nuevo; los métodos se ligan
+  al leerlos (`variable m = p.mover`) y la herencia resuelve subiendo
+  por la cadena de madres. `este` es el primer parámetro de cada
+  método, como en Python. Ejemplo: `ejemplos/clases.jp`, `funcional.jp`
+  e `ia-perceptron.jp` coinciden byte a byte con la VM de Python.
+- **Valores por defecto también en nativo**: prólogo `DEFECTOS` (57) +
+  `SALTAR_SI_HAY_VALOR` (58). La llamada rellena los parámetros que
+  faltan con un centinela interno y el prólogo lo sustituye por el
+  defecto, que puede usar parámetros anteriores (`b = a * 10`) y
+  variables capturadas del ámbito. El análisis de capturas ahora mira
+  también dentro de las expresiones por defecto. Sin tocar el formato
+  `.jpb`: una función con defectos se reconoce porque su código
+  empieza por `DEFECTOS`.
+- Tests: `tests/test_v34.py` (paridad de clases y defectos en C,
+  errores de construcción); actualizado el test de la v1.17 que exigía
+  el rechazo. Paridad de ejemplos: 22 idénticos, 0 fallos.
+
+## 1.24.1 — Arreglo del motor en C (2026-10-19)
+
+- **Segfault en `ejemplos/red-profunda.jp` corregido**: el GC del motor
+  en C barría los objetos `Nativa` del registro (`nativas_por_nombre`)
+  porque al cargar el programa el contador de globales se reinicia y
+  dejaban de estar marcados como raíces; cualquier método de valor
+  posterior leía memoria liberada. Ahora el registro de nativas y los
+  nombres de las globales se marcan en cada recolección. Detectado con
+  AddressSanitizer; la paridad Python↔C vuelve a 0 fallos.
+
 ## 1.24.0 — «Revisor» (2026-10-19)
 
 - **`jp --revisar archivo.jp`**: análisis estático sin ejecutar —

@@ -493,10 +493,17 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Llevar lo nuevo de la v1.6/v1.7 (módulos, clases, defectos...) también al motor en C
+- Llevar módulos (`importar`) y tipos opcionales también al motor en C (las clases y los defectos llegaron en la v1.25)
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.25.0 — **clases en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏛️ **Clases en el motor en C**: herencia, `este`, métodos ligados y
+  valores por defecto de parámetros corren también en nativo;
+  `ejemplos/clases.jp` coincide byte a byte con Python. De paso, la
+  v1.24.1 cazó con AddressSanitizer un segfault del GC en C.
 
 v1.24.0 — **revisor** (ver `CHANGELOG.md`). Nuevo:
 

@@ -76,7 +76,8 @@ typedef struct {
 } Valor;
 
 typedef enum {
-    O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA
+    O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA,
+    O_CLASE, O_INSTANCIA, O_METODO
 } TipoObj;
 
 struct Obj {
@@ -174,6 +175,30 @@ typedef struct {
     Valor receptor;
 } Ligada;
 
+/* Una clase de JP (v1.25): molde con métodos y madre, como ClaseJP. */
+typedef struct {
+    Obj cabecera;
+    Texto *nombre;
+    Valor padre;              /* la clase madre (O_CLASE) o nulo */
+    uint32_t n_metodos;
+    Texto **nombres_met;
+    Cierre **metodos;
+} Clase;
+
+/* Un objeto de una clase: sus campos viven en un diccionario. */
+typedef struct {
+    Obj cabecera;
+    Clase *clase;
+    Dicto *campos;
+} Instancia;
+
+/* Un método ya ligado a su objeto: punto.mover (sin llamar todavía). */
+typedef struct {
+    Obj cabecera;
+    Cierre *cierre;
+    Valor receptor;
+} Metodo;
+
 typedef struct {
     Funcion *funcion;
     Valor *base;      /* primer local */
@@ -181,6 +206,7 @@ typedef struct {
     Obj **upvalues;
     uint32_t n_upvalues;
     uint32_t n_manejadores;  /* 'intenta' activos al entrar al marco */
+    uint32_t n_args;         /* argumentos pasados (sin rellenar defectos) */
 } Marco;
 
 /* Un 'intenta' activo: a dónde volver si algo falla dentro. */
@@ -465,6 +491,15 @@ static Valor de_bool(int b) { Valor v; v.etiqueta = T_BOOL; v.v.entero = b ? 1 :
 static Valor de_entero(int64_t i) { Valor v; v.etiqueta = T_INT; v.v.entero = i; return v; }
 static Valor de_decimal(double d) { Valor v; v.etiqueta = T_DBL; v.v.decimal = d; return v; }
 static Valor de_objeto(Obj *o) { Valor v; v.etiqueta = T_OBJ; v.v.obj = o; return v; }
+
+/* Centinela de "este argumento no vino": la llamada rellena con él los
+ * parámetros que faltan y el prólogo DEFECTOS de la función lo sustituye
+ * por el valor por defecto. Nunca se ve desde JP. */
+static Obj centinela_defecto = { 250, 1, NULL };
+static Valor de_centinela(void) { return de_objeto(&centinela_defecto); }
+static int es_sin_valor(Valor v) {
+    return v.etiqueta == T_OBJ && v.v.obj == &centinela_defecto;
+}
 static Valor de_texto(Texto *t) { return de_objeto((Obj *)t); }
 static Valor de_lista(Lista *l) { return de_objeto((Obj *)l); }
 
@@ -571,6 +606,31 @@ static void texto_de(Valor v, char *salida, size_t tamano) {
         case O_NATIVA:
             snprintf(salida, tamano, "<nativa %s>", ((Nativa *)obj)->nombre);
             return;
+        case O_CLASE:
+            snprintf(salida, tamano, "<clase %.*s>",
+                     (int)((Clase *)obj)->nombre->largo, ((Clase *)obj)->nombre->datos);
+            return;
+        case O_METODO:
+            snprintf(salida, tamano, "<método %.*s>",
+                     (int)((Metodo *)obj)->cierre->funcion->nombre->largo,
+                     ((Metodo *)obj)->cierre->funcion->nombre->datos);
+            return;
+        case O_INSTANCIA: {
+            Instancia *ins = (Instancia *)obj;
+            Dicto *d = ins->campos;
+            size_t usado = 0;
+            usado += (size_t)snprintf(salida + usado, tamano - usado, "%.*s{",
+                                      (int)ins->clase->nombre->largo, ins->clase->nombre->datos);
+            for (uint32_t i = 0; i < d->largo && usado < tamano; i++) {
+                char valor[1024];
+                texto_inspeccion(d->entradas[i].valor, valor, sizeof(valor));
+                usado += (size_t)snprintf(salida + usado, tamano - usado, "%s%.*s: %s",
+                                          i ? ", " : "", (int)d->entradas[i].clave->largo,
+                                          d->entradas[i].clave->datos, valor);
+            }
+            snprintf(salida + usado, tamano - usado, "}");
+            return;
+        }
         default:
             snprintf(salida, tamano, "<objeto>");
             return;
@@ -614,6 +674,28 @@ static void marcar_objeto(Obj *obj) {
             marcar_objeto((Obj *)((Ligada *)obj)->nombre);
             marcar(((Ligada *)obj)->receptor);
             break;
+        case O_CLASE: {
+            Clase *c = (Clase *)obj;
+            marcar_objeto((Obj *)c->nombre);
+            marcar(c->padre);
+            for (uint32_t i = 0; i < c->n_metodos; i++) {
+                marcar_objeto((Obj *)c->nombres_met[i]);
+                marcar_objeto((Obj *)c->metodos[i]);
+            }
+            break;
+        }
+        case O_INSTANCIA: {
+            Instancia *ins = (Instancia *)obj;
+            marcar_objeto((Obj *)ins->clase);
+            marcar_objeto((Obj *)ins->campos);
+            break;
+        }
+        case O_METODO: {
+            Metodo *m = (Metodo *)obj;
+            marcar_objeto((Obj *)m->cierre);
+            marcar(m->receptor);
+            break;
+        }
         default:
             break;
     }
@@ -661,6 +743,10 @@ static void recolectar(void) {
                 free(((Dicto *)obj)->indice);
             }
             if (obj->tipo == O_FUNCION) free(((Cierre *)obj)->upvalues);
+            if (obj->tipo == O_CLASE) {
+                free(((Clase *)obj)->nombres_met);
+                free(((Clase *)obj)->metodos);
+            }
             free(obj);
         }
         total += 1;
@@ -681,6 +767,29 @@ static int textos_iguales(Texto *a, Texto *b) {
     if (a == b) return 1;
     if (a->largo != b->largo) return 0;
     return memcmp(a->datos, b->datos, a->largo) == 0;
+}
+
+/* El método 'nombre' de una clase, subiendo por la cadena de madres
+ * (como buscar_metodo() en jp/interprete.py). NULL si no está. */
+static Cierre *buscar_metodo_clase(Clase *clase, Texto *nombre) {
+    for (Clase *c = clase; c;) {
+        for (uint32_t i = 0; i < c->n_metodos; i++)
+            if (textos_iguales(c->nombres_met[i], nombre)) return c->metodos[i];
+        c = c->padre.etiqueta == T_OBJ ? (Clase *)c->padre.v.obj : NULL;
+    }
+    return NULL;
+}
+
+static Cierre *buscar_metodo_cstr(Clase *clase, const char *nombre) {
+    size_t largo = strlen(nombre);
+    for (Clase *c = clase; c;) {
+        for (uint32_t i = 0; i < c->n_metodos; i++)
+            if (c->nombres_met[i]->largo == largo &&
+                memcmp(c->nombres_met[i]->datos, nombre, largo) == 0)
+                return c->metodos[i];
+        c = c->padre.etiqueta == T_OBJ ? (Clase *)c->padre.v.obj : NULL;
+    }
+    return NULL;
 }
 
 static int iguales(Valor a, Valor b) {
@@ -980,7 +1089,11 @@ static Valor nativa_tipo(VM *v, int argc, Valor *args) {
         case O_LISTA: return de_texto(nuevo_texto("lista"));
         case O_DICTO: return de_texto(nuevo_texto("diccionario"));
         case O_FUNCION:
-        case O_NATIVA: return de_texto(nuevo_texto("función"));
+        case O_NATIVA:
+        case O_METODO:
+        case O_LIGADA: return de_texto(nuevo_texto("función"));
+        case O_CLASE: return de_texto(nuevo_texto("clase"));
+        case O_INSTANCIA: return de_texto(nuevo_texto("objeto"));
         default: return de_texto(nuevo_texto("valor"));
     }
 }
@@ -2368,7 +2481,8 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     }
     Cierre *cierre = (Cierre *)callee.v.obj;
     Funcion *f = cierre->funcion;
-    if (f->aridad != (uint32_t)argc)
+    int con_defectos = f->codigo[0] == 57 /* DEFECTOS */;
+    if ((uint32_t)argc > f->aridad || (!con_defectos && f->aridad != (uint32_t)argc))
         error_en(0, "la función '%s' espera %u argumento(s), recibió %d",
                  f->nombre->datos, f->aridad, argc);
     if (vm->marco - vm->marcos >= MARCOS_MAX - 1)
@@ -2377,7 +2491,8 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     *vm->sp++ = callee;
     for (int i = 0; i < argc; i++) *vm->sp++ = args[i];
     Valor *nueva_base = vm->sp - argc - 1;
-    for (uint32_t i = (uint32_t)argc; i < f->n_slots; i++) *vm->sp++ = de_nulo();
+    for (uint32_t i = (uint32_t)argc; i < f->n_slots; i++)
+        *vm->sp++ = i < f->aridad ? de_centinela() : de_nulo();
     Marco *piso_anterior = vm->piso_marco;
     vm->piso_marco = vm->marco;
     vm->marco += 1;
@@ -2387,6 +2502,7 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     vm->marco->upvalues = cierre->upvalues;
     vm->marco->n_upvalues = cierre->n_upvalues;
     vm->marco->n_manejadores = vm->n_manejadores;
+    vm->marco->n_args = (uint32_t)argc;
 
     uint32_t nivel = vm->n_niveles;
     if (nivel >= 256) error_en(0, "demasiadas llamadas anidadas desde nativas");
@@ -2558,7 +2674,8 @@ static void bucle(uint32_t pc_inicio) {
         &&L_RETORNAR_NULO, &&L_LISTA, &&L_RANGO, &&L_INDICE, &&L_INDICE_ASIG,
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
-        &&L_SALTO_NO_NULO_MANTENER,
+        &&L_SALTO_NO_NULO_MANTENER, &&L_CREAR_CLASE, &&L_DEFECTOS,
+        &&L_SALTAR_SI_HAY_VALOR,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -2842,6 +2959,51 @@ L_LLAMAR: {
         PUSH(resultado);
         SIGUIENTE();
     }
+    if (obj->tipo == O_CLASE) {
+        /* instanciar: objeto nuevo + su 'iniciar' si lo hay */
+        Clase *cl = (Clase *)obj;
+        int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+        Cierre *ini = buscar_metodo_cstr(cl, "iniciar");
+        Instancia *ins = nuevo_objeto(sizeof(Instancia), O_INSTANCIA);
+        ins->clase = cl;
+        ins->campos = nuevo_dicto();
+        Valor valor_ins = de_objeto((Obj *)ins);
+        if (!ini) {
+            if (argc > 0)
+                error_en(linea, "la clase '%.*s' no tiene un método 'iniciar' y no acepta argumentos",
+                         (int)cl->nombre->largo, cl->nombre->datos);
+            vm->sp -= argc + 1;
+            PUSH(valor_ins);
+            SIGUIENTE();
+        }
+        if (argc > ini->funcion->aridad - 1 ||
+            (ini->funcion->codigo[0] != 57 /* DEFECTOS */ && argc != ini->funcion->aridad - 1))
+            error_en(linea, "la clase '%.*s' espera %u argumento(s) en su 'iniciar', recibió %u",
+                     (int)cl->nombre->largo, cl->nombre->datos,
+                     ini->funcion->aridad - 1, argc);
+        Valor *args_ini = memoria(sizeof(Valor) * (argc + 1));
+        args_ini[0] = valor_ins;
+        for (uint32_t i = 0; i < argc; i++)
+            args_ini[i + 1] = vm->sp[(int32_t)i - (int32_t)argc];
+        ACTUALIZAR_IP();
+        llamar_valor(de_objeto((Obj *)ini), (int)argc + 1, args_ini);
+        vm->bytes_reservados -= sizeof(Valor) * (argc + 1);
+        free(args_ini);
+        vm->sp -= argc + 1;
+        PUSH(valor_ins);
+        SIGUIENTE();
+    }
+    if (obj->tipo == O_METODO) {
+        /* el receptor entra como primer argumento ('este') y el callee
+         * pasa a ser el cierre del método: seguir por el camino normal */
+        Metodo *mt = (Metodo *)obj;
+        memmove(vm->sp - argc + 1, vm->sp - argc, sizeof(Valor) * argc);
+        vm->sp += 1;
+        vm->sp[-2 - (int32_t)argc] = de_objeto((Obj *)mt->cierre);
+        vm->sp[-1 - (int32_t)argc] = mt->receptor;
+        argc += 1;
+        obj = (Obj *)mt->cierre;
+    }
     if (obj->tipo != O_FUNCION) {
         char texto[256];
         texto_de(callee, texto, sizeof(texto));
@@ -2850,7 +3012,8 @@ L_LLAMAR: {
     }
     Cierre *cierre = (Cierre *)obj;
     Funcion *f = cierre->funcion;
-    if (f->aridad != argc) {
+    int con_defectos = f->codigo[0] == 57 /* DEFECTOS */;
+    if (argc > f->aridad || (!con_defectos && argc != f->aridad)) {
         ACTUALIZAR_IP();
         error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
                  "la función '%s' espera %u argumento(s), recibió %u",
@@ -2858,9 +3021,11 @@ L_LLAMAR: {
     }
     if (vm->marco - vm->marcos >= MARCOS_MAX - 1)
         error_en(0, "desbordamiento de pila (¿recursión infinita?)");
-    /* reutilizar los argumentos como primeros locales */
+    /* reutilizar los argumentos como primeros locales; los parámetros
+     * que faltan llevan el centinela (su defecto los sustituye) */
     Valor *nueva_base = vm->sp - argc - 1;
-    for (uint32_t i = argc; i < f->n_slots; i++) *vm->sp++ = de_nulo();
+    for (uint32_t i = argc; i < f->n_slots; i++)
+        *vm->sp++ = i < f->aridad ? de_centinela() : de_nulo();
     ACTUALIZAR_IP();
     vm->marco += 1;
     vm->marco->funcion = f;
@@ -2869,6 +3034,7 @@ L_LLAMAR: {
     vm->marco->upvalues = cierre->upvalues;
     vm->marco->n_upvalues = cierre->n_upvalues;
     vm->marco->n_manejadores = vm->n_manejadores;
+    vm->marco->n_args = argc;
     RECARGAR();
     SIGUIENTE();
 }
@@ -3010,6 +3176,29 @@ L_INDICE: {
         PUSH(de_texto(nuevo_texto_largo(t->datos + i, 1)));
         SIGUIENTE();
     }
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_INSTANCIA) {
+        Instancia *ins = (Instancia *)objeto.v.obj;
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "los objetos de '%.*s' solo tienen atributos con nombre",
+                     (int)ins->clase->nombre->largo, ins->clase->nombre->datos);
+        Texto *clave = (Texto *)indice.v.obj;
+        Valor *campo = dicto_buscar(ins->campos, clave);
+        if (campo) {
+            PUSH(*campo);
+            SIGUIENTE();
+        }
+        Cierre *metodo = buscar_metodo_clase(ins->clase, clave);
+        if (metodo) {
+            Metodo *ligado = nuevo_objeto(sizeof(Metodo), O_METODO);
+            ligado->cierre = metodo;
+            ligado->receptor = objeto;
+            PUSH(de_objeto((Obj *)ligado));
+            SIGUIENTE();
+        }
+        error_en(linea, "el objeto %.*s no tiene '%.*s'",
+                 (int)ins->clase->nombre->largo, ins->clase->nombre->datos,
+                 (int)clave->largo, clave->datos);
+    }
     {
         char texto[256];
         texto_de(objeto, texto, sizeof(texto));
@@ -3040,6 +3229,14 @@ L_INDICE_ASIG: {
         PUSH(valor);
         SIGUIENTE();
     }
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_INSTANCIA) {
+        int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "los objetos solo tienen atributos con nombre");
+        dicto_poner(((Instancia *)objeto.v.obj)->campos, (Texto *)indice.v.obj, valor);
+        PUSH(valor);
+        SIGUIENTE();
+    }
     error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
              "solo se puede asignar por índice en listas y diccionarios");
     SIGUIENTE();
@@ -3057,6 +3254,47 @@ L_CIERRE: {
         c->upvalues[i] = d->es_local ? base[d->indice].v.obj : marco->upvalues[d->indice];
     }
     PUSH(de_objeto((Obj *)c));
+    SIGUIENTE();
+}
+L_CREAR_CLASE: {
+    uint32_t ci_nombre = LEER_U32();
+    uint32_t n = LEER_U32();
+    uint32_t *ci_nombres = memoria(sizeof(uint32_t) * (n ? n : 1));
+    for (uint32_t i = 0; i < n; i++) ci_nombres[i] = LEER_U32();
+    int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+    Valor padre = vm->sp[-1 - (int32_t)n];
+    if (padre.etiqueta != T_NULO &&
+        !(padre.etiqueta == T_OBJ && padre.v.obj->tipo == O_CLASE))
+        error_en(linea, "solo se puede heredar de una clase");
+    Clase *cl = nuevo_objeto(sizeof(Clase), O_CLASE);
+    cl->nombre = marco->funcion->const_s[ci_nombre];
+    cl->padre = padre;
+    cl->n_metodos = n;
+    cl->nombres_met = memoria(sizeof(Texto *) * (n ? n : 1));
+    cl->metodos = memoria(sizeof(Cierre *) * (n ? n : 1));
+    for (uint32_t i = 0; i < n; i++) {
+        cl->nombres_met[i] = marco->funcion->const_s[ci_nombres[i]];
+        cl->metodos[i] = (Cierre *)vm->sp[-((int32_t)n - (int32_t)i)].v.obj;
+    }
+    vm->bytes_reservados -= sizeof(uint32_t) * (n ? n : 1);
+    free(ci_nombres);
+    vm->sp -= n + 1;
+    PUSH(de_objeto((Obj *)cl));
+    SIGUIENTE();
+}
+L_DEFECTOS: {
+    uint32_t minimos = LEER_U32();
+    if (vm->marco->n_args < minimos)
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la función '%.*s' espera %u argumento(s), recibió %u",
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 minimos, vm->marco->n_args);
+    SIGUIENTE();
+}
+L_SALTAR_SI_HAY_VALOR: {
+    uint32_t slot = LEER_U32();
+    int32_t relativo = LEER_I32();
+    if (!es_sin_valor(base[slot])) ip += relativo;
     SIGUIENTE();
 }
 L_CELDA: {

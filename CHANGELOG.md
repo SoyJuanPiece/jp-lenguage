@@ -1,5 +1,30 @@
 # Cambios de JP
 
+## 1.25.0 — Clases en el motor en C (2026-10-19)
+
+El proyecto grande: las clases ya viven en los tres motores.
+
+- **Motor en C**: tipos de objeto nuevos `O_CLASE`, `O_INSTANCIA` y
+  `O_METODO` (método ligado), con su marcado en el GC y su
+  representación (`Punto{a: 4, b: 5}`, `<clase Punto>`). El opcode
+  `CREAR_CLASE` (56) junta clase madre y métodos; `Punto(3, 4)` llama a
+  `iniciar` si existe y devuelve el objeto nuevo; los métodos se ligan
+  al leerlos (`variable m = p.mover`) y la herencia resuelve subiendo
+  por la cadena de madres. `este` es el primer parámetro de cada
+  método, como en Python. Ejemplo: `ejemplos/clases.jp`, `funcional.jp`
+  e `ia-perceptron.jp` coinciden byte a byte con la VM de Python.
+- **Valores por defecto también en nativo**: prólogo `DEFECTOS` (57) +
+  `SALTAR_SI_HAY_VALOR` (58). La llamada rellena los parámetros que
+  faltan con un centinela interno y el prólogo lo sustituye por el
+  defecto, que puede usar parámetros anteriores (`b = a * 10`) y
+  variables capturadas del ámbito. El análisis de capturas ahora mira
+  también dentro de las expresiones por defecto. Sin tocar el formato
+  `.jpb`: una función con defectos se reconoce porque su código
+  empieza por `DEFECTOS`.
+- Tests: `tests/test_v34.py` (paridad de clases y defectos en C,
+  errores de construcción); actualizado el test de la v1.17 que exigía
+  el rechazo. Paridad de ejemplos: 22 idénticos, 0 fallos.
+
 ## 1.24.1 — Arreglo del motor en C (2026-10-19)
 
 - **Segfault en `ejemplos/red-profunda.jp` corregido**: el GC del motor

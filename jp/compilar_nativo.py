@@ -119,6 +119,9 @@ OP_MANEJAR = 52                  # u32 pc del bloque 'atrapa'
 OP_FIN_MANEJAR = 53
 OP_ERROR_EN = 54                 # u32 slot: guarda el mensaje del error capturado
 OP_SALTO_NO_NULO_MANTENER = 55   # i32 rel  (para '??' y '?.': mira el tope, no popea)
+OP_CREAR_CLASE = 56              # cadena nombre, u32 n, n×cadena método: pila [padre, m1..mn] -> clase
+OP_DEFECTOS = 57                 # u32 mínimos: prólogo que exige los argumentos sin defecto
+OP_SALTAR_SI_HAY_VALOR = 58      # u32 slot, i32 rel: si el slot no guarda el centinela, salta
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -141,6 +144,8 @@ NOMBRES_OP = {
     OP_ITER_NEXT_CELDA: "ITER_NEXT_CELDA", OP_EXPR_SENT: "EXPR_SENT", OP_FIN: "FIN",
     OP_DICT: "DICT", OP_MANEJAR: "MANEJAR", OP_FIN_MANEJAR: "FIN_MANEJAR",
     OP_ERROR_EN: "ERROR_EN", OP_SALTO_NO_NULO_MANTENER: "SALTO_NO_NULO_MANTENER",
+    OP_CREAR_CLASE: "CREAR_CLASE", OP_DEFECTOS: "DEFECTOS",
+    OP_SALTAR_SI_HAY_VALOR: "SALTAR_SI_HAY_VALOR",
 }
 
 MAGIA = b"JPB1"
@@ -322,6 +327,25 @@ def _nombres_declarados(nodo: Nodo) -> set[str]:
     return resultado
 
 
+def _usados_de_funcion(funcion: NodoFuncion) -> set[str]:
+    """Nombres que una función referencia: su cuerpo y, además, las
+    expresiones de sus valores por defecto — un defecto puede usar
+    parámetros anteriores y variables del ámbito que envuelve a la
+    función, así que para encerrar en celdas cuentan igual que el
+    cuerpo (v1.25)."""
+    usados: set[str] = set()
+    _nombres_usados(funcion.cuerpo, usados)
+    for defecto in funcion.defectos or []:
+        if defecto is None:
+            continue
+        for interno in _caminar(defecto):
+            if isinstance(interno, NodoVariable):
+                usados.add(interno.nombre)
+            elif isinstance(interno, NodoFuncion):
+                _nombres_usados(interno.cuerpo, usados)
+    return usados
+
+
 def _capturadas_por_anidadas(cuerpo: NodoBloque | None) -> set[str]:
     """Nombres de esta función que alguna función anidada podría capturar.
 
@@ -335,7 +359,7 @@ def _capturadas_por_anidadas(cuerpo: NodoBloque | None) -> set[str]:
     usados: set[str] = set()
     for nodo in _caminar(cuerpo):
         if isinstance(nodo, NodoFuncion):
-            _nombres_usados(nodo.cuerpo, usados)
+            usados |= _usados_de_funcion(nodo)
     return usados & aqui
 
 
@@ -548,7 +572,7 @@ class CompiladorNativo:
             raise NoSoportadoNativo("los módulos ('importar') aún no están en el motor nativo", linea)
 
         elif tipo is NodoClase:
-            raise NoSoportadoNativo("las clases ('clase') aún no están en el motor nativo", linea)
+            self._declarar_clase(nodo)
 
         elif tipo is NodoLanzar:
             raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)
@@ -704,20 +728,61 @@ class CompiladorNativo:
             actual.emitir(OP_CELDA, slot, linea=linea)
         actual.emitir(OP_POP, linea=linea)
 
+    def _declarar_clase(self, nodo: NodoClase) -> None:
+        """clase Nombre [hereda Padre] { ... } (v1.25): cada método se
+        compila como una función con 'este' como primer parámetro (el
+        motor liga el receptor al llamar, igual que MetodoLigado en
+        Python) y CREAR_CLASE junta padre + métodos en un valor clase."""
+        actual = self.actual
+        linea = nodo.linea
+        indices = []
+        for metodo in nodo.metodos:
+            adaptado = NodoFuncion(
+                nombre=metodo.nombre,
+                parametros=["este", *metodo.parametros],
+                cuerpo=metodo.cuerpo,
+                linea=metodo.linea,
+                defectos=[None, *(metodo.defectos or [])],
+                tipos=[None, *(metodo.tipos or [])],
+                tipo_retorno=metodo.tipo_retorno,
+            )
+            indices.append(self._compilar_funcion(adaptado))
+        if nodo.padre is not None:
+            self._expresion(NodoVariable(nodo.padre, linea))
+        else:
+            actual.emitir(OP_NULO, linea=linea)
+        for indice in indices:
+            actual.emitir(OP_CIERRE, indice, linea=linea)
+        actual.emitir(OP_CREAR_CLASE, nodo.nombre, len(indices),
+                      *[m.nombre for m in nodo.metodos], linea=linea)
+        if len(self.pila) == 1 and len(actual.scopes) == 1:
+            self.declarados.add(nodo.nombre)
+            actual.emitir(OP_DECL_GLOBAL, self._global(nodo.nombre), linea=linea)
+            actual.emitir(OP_POP, linea=linea)
+            return
+        slot = actual.declarar(nodo.nombre)
+        actual.emitir(OP_SET_LOCAL, slot, linea=linea)
+        if actual.es_celda[slot]:
+            actual.emitir(OP_CELDA, slot, linea=linea)
+        actual.emitir(OP_POP, linea=linea)
+
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
         if nodo.tipo_retorno is not None or any(t is not None for t in (nodo.tipos or [])):
             raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", nodo.linea)
-        if any(d is not None for d in getattr(nodo, "defectos", []) or []):
-            raise NoSoportadoNativo(
-                "los valores por defecto aún no están en el motor nativo", nodo.linea
-            )
         # los parámetros también pueden acabar en una closure: si una función
         # anidada los usa, el parámetro tiene que vivir en una celda desde el
         # primer instante (si no, la closure capturaría el valor crudo).
+        defectos = list(getattr(nodo, "defectos", []) or [])
+        defectos += [None] * (len(nodo.parametros) - len(defectos))
         usados: set[str] = set()
         for interno in _caminar(nodo.cuerpo):
             if isinstance(interno, NodoFuncion):
-                _nombres_usados(interno.cuerpo, usados)
+                usados |= _usados_de_funcion(interno)
+        for defecto in defectos:
+            if defecto is not None:
+                for interno in _caminar(defecto):
+                    if isinstance(interno, NodoFuncion):
+                        usados |= _usados_de_funcion(interno)
         capturadas = _capturadas_por_anidadas(nodo.cuerpo) | (usados & set(nodo.parametros))
         funcion = _Funcion(nodo.nombre or "<anónima>", len(nodo.parametros), capturadas)
         for parametro in nodo.parametros:
@@ -725,6 +790,22 @@ class CompiladorNativo:
         self.funciones.append(funcion)
         indice = len(self.funciones) - 1
         self.pila.append(funcion)
+        if any(d is not None for d in defectos):
+            # Valores por defecto (v1.25): la llamada rellena los huecos
+            # con un centinela; el prólogo exige los obligatorios y
+            # sustituye cada centinela por su defecto (que puede usar
+            # los parámetros anteriores, ya con valor).
+            requeridos = sum(1 for d in defectos if d is None)
+            funcion.emitir(OP_DEFECTOS, requeridos, linea=nodo.linea)
+            for i, defecto in enumerate(defectos):
+                if defecto is None:
+                    continue
+                funcion.emitir(OP_SALTAR_SI_HAY_VALOR, i, 0, linea=nodo.linea)
+                hueco = len(funcion.palabras) - 1
+                self._expresion(defecto)
+                funcion.emitir(OP_SET_LOCAL, i, linea=nodo.linea)
+                funcion.emitir(OP_POP, linea=nodo.linea)
+                funcion.parchar_aqui(hueco)
         # las parámetros capturados necesitan celda desde el arranque
         for slot, es_celda in enumerate(funcion.es_celda[:len(nodo.parametros)]):
             if es_celda:

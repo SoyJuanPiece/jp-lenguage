@@ -76,7 +76,8 @@ typedef struct {
 } Valor;
 
 typedef enum {
-    O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA
+    O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA,
+    O_CLASE, O_INSTANCIA, O_METODO
 } TipoObj;
 
 struct Obj {
@@ -108,6 +109,8 @@ typedef struct Funcion {
     uint32_t indice;
     Texto *nombre;
     uint32_t aridad;
+    uint32_t modulo;         /* módulo (archivo) que define la función */
+    uint32_t gbase;          /* base de sus globales en la tabla única */
     uint32_t n_slots;
     uint8_t *flags_celda;
     uint32_t n_upvalues;
@@ -145,12 +148,6 @@ typedef struct {
     Valor valor;
 } Celda;
 
-typedef struct {
-    Obj cabecera;
-    Lista *lista;
-    uint32_t indice;
-} Iter;
-
 /* Diccionario: claves de texto, en orden de inserción (como Python) y con
  * una tabla hash de índices para que buscar sea O(1). */
 typedef struct {
@@ -167,12 +164,43 @@ typedef struct {
     uint32_t *indice;           /* ranura -> (índice de entrada + 1); 0 = libre */
 } Dicto;
 
+typedef struct {
+    Obj cabecera;
+    Lista *lista;
+    uint32_t indice;
+    Dicto *dicto;      /* si el iterable era un dict, para (clave, valor) */
+} Iter;
+
 /* Nativa ligada a un receptor: "hola".mayusculas  (sin llamar todavía). */
 typedef struct {
     Obj cabecera;
     Texto *nombre;
     Valor receptor;
 } Ligada;
+
+/* Una clase de JP (v1.25): molde con métodos y madre, como ClaseJP. */
+typedef struct {
+    Obj cabecera;
+    Texto *nombre;
+    Valor padre;              /* la clase madre (O_CLASE) o nulo */
+    uint32_t n_metodos;
+    Texto **nombres_met;
+    Cierre **metodos;
+} Clase;
+
+/* Un objeto de una clase: sus campos viven en un diccionario. */
+typedef struct {
+    Obj cabecera;
+    Clase *clase;
+    Dicto *campos;
+} Instancia;
+
+/* Un método ya ligado a su objeto: punto.mover (sin llamar todavía). */
+typedef struct {
+    Obj cabecera;
+    Cierre *cierre;
+    Valor receptor;
+} Metodo;
 
 typedef struct {
     Funcion *funcion;
@@ -181,6 +209,7 @@ typedef struct {
     Obj **upvalues;
     uint32_t n_upvalues;
     uint32_t n_manejadores;  /* 'intenta' activos al entrar al marco */
+    uint32_t n_args;         /* argumentos pasados (sin rellenar defectos) */
 } Marco;
 
 /* Un 'intenta' activo: a dónde volver si algo falla dentro. */
@@ -231,7 +260,25 @@ static Nativa *nativa_por_nombre(Texto *nombre) {
     return NULL;
 }
 
+/* Un archivo dentro del mismo programa: su función principal, dónde
+ * empiezan sus globales en la tabla concatenada, qué nombres exporta y su
+ * fuente (para mostrar sus errores). El diccionario exportado se crea la
+ * primera vez que alguien lo importa y se reutiliza después. */
+typedef struct {
+    uint32_t funcion;        /* función principal del módulo */
+    uint32_t gbase;          /* base de sus globales */
+    uint32_t n_exp;          /* nombres que exporta */
+    Texto **exp_nombres;
+    uint32_t *exp_gidx;      /* índice global local a su módulo */
+    Valor cache;             /* diccionario exportado (al ejecutarlo) */
+    int ejecutado;
+    char *fuente;
+    uint32_t largo_fuente;
+} ModuloC;
+
 struct VM {
+    ModuloC *modulos;
+    uint32_t n_modulos;
     Valor pila[PILA_MAX];
     Valor *sp;
     Marco marcos[MARCOS_MAX];
@@ -465,6 +512,15 @@ static Valor de_bool(int b) { Valor v; v.etiqueta = T_BOOL; v.v.entero = b ? 1 :
 static Valor de_entero(int64_t i) { Valor v; v.etiqueta = T_INT; v.v.entero = i; return v; }
 static Valor de_decimal(double d) { Valor v; v.etiqueta = T_DBL; v.v.decimal = d; return v; }
 static Valor de_objeto(Obj *o) { Valor v; v.etiqueta = T_OBJ; v.v.obj = o; return v; }
+
+/* Centinela de "este argumento no vino": la llamada rellena con él los
+ * parámetros que faltan y el prólogo DEFECTOS de la función lo sustituye
+ * por el valor por defecto. Nunca se ve desde JP. */
+static Obj centinela_defecto = { 250, 1, NULL };
+static Valor de_centinela(void) { return de_objeto(&centinela_defecto); }
+static int es_sin_valor(Valor v) {
+    return v.etiqueta == T_OBJ && v.v.obj == &centinela_defecto;
+}
 static Valor de_texto(Texto *t) { return de_objeto((Obj *)t); }
 static Valor de_lista(Lista *l) { return de_objeto((Obj *)l); }
 
@@ -493,6 +549,7 @@ static void decimal_a_texto(double d, char *salida, size_t tamano) {
 }
 
 static void texto_de(Valor v, char *salida, size_t tamano);
+static Valor llamar_valor(Valor callee, int argc, Valor *args);  /* reentra al bucle */
 
 static void texto_inspeccion(Valor v, char *salida, size_t tamano) {
     if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_TEXTO) {
@@ -571,6 +628,31 @@ static void texto_de(Valor v, char *salida, size_t tamano) {
         case O_NATIVA:
             snprintf(salida, tamano, "<nativa %s>", ((Nativa *)obj)->nombre);
             return;
+        case O_CLASE:
+            snprintf(salida, tamano, "<clase %.*s>",
+                     (int)((Clase *)obj)->nombre->largo, ((Clase *)obj)->nombre->datos);
+            return;
+        case O_METODO:
+            snprintf(salida, tamano, "<método %.*s>",
+                     (int)((Metodo *)obj)->cierre->funcion->nombre->largo,
+                     ((Metodo *)obj)->cierre->funcion->nombre->datos);
+            return;
+        case O_INSTANCIA: {
+            Instancia *ins = (Instancia *)obj;
+            Dicto *d = ins->campos;
+            size_t usado = 0;
+            usado += (size_t)snprintf(salida + usado, tamano - usado, "%.*s{",
+                                      (int)ins->clase->nombre->largo, ins->clase->nombre->datos);
+            for (uint32_t i = 0; i < d->largo && usado < tamano; i++) {
+                char valor[1024];
+                texto_inspeccion(d->entradas[i].valor, valor, sizeof(valor));
+                usado += (size_t)snprintf(salida + usado, tamano - usado, "%s%.*s: %s",
+                                          i ? ", " : "", (int)d->entradas[i].clave->largo,
+                                          d->entradas[i].clave->datos, valor);
+            }
+            snprintf(salida + usado, tamano - usado, "}");
+            return;
+        }
         default:
             snprintf(salida, tamano, "<objeto>");
             return;
@@ -601,6 +683,7 @@ static void marcar_objeto(Obj *obj) {
             break;
         case O_ITER:
             marcar_objeto((Obj *)((Iter *)obj)->lista);
+            if (((Iter *)obj)->dicto) marcar_objeto((Obj *)((Iter *)obj)->dicto);
             break;
         case O_DICTO: {
             Dicto *d = (Dicto *)obj;
@@ -614,6 +697,28 @@ static void marcar_objeto(Obj *obj) {
             marcar_objeto((Obj *)((Ligada *)obj)->nombre);
             marcar(((Ligada *)obj)->receptor);
             break;
+        case O_CLASE: {
+            Clase *c = (Clase *)obj;
+            marcar_objeto((Obj *)c->nombre);
+            marcar(c->padre);
+            for (uint32_t i = 0; i < c->n_metodos; i++) {
+                marcar_objeto((Obj *)c->nombres_met[i]);
+                marcar_objeto((Obj *)c->metodos[i]);
+            }
+            break;
+        }
+        case O_INSTANCIA: {
+            Instancia *ins = (Instancia *)obj;
+            marcar_objeto((Obj *)ins->clase);
+            marcar_objeto((Obj *)ins->campos);
+            break;
+        }
+        case O_METODO: {
+            Metodo *m = (Metodo *)obj;
+            marcar_objeto((Obj *)m->cierre);
+            marcar(m->receptor);
+            break;
+        }
         default:
             break;
     }
@@ -634,6 +739,15 @@ static void recolectar(void) {
         for (uint32_t i = 0; i < m->n_upvalues; i++) marcar_objeto(m->upvalues[i]);
     }
     for (uint32_t i = 0; i < vm->n_globales; i++) marcar(vm->globales[i].valor);
+    /* el registro de nativas es una raíz de por vida: al cargar el programa
+     * el contador de globales se reinicia y las Nativa quedarían solo en
+     * este array; sin marcarlas, el barrido las liberaba y cualquier
+     * método de valor posterior leía memoria muerta (red-profunda) */
+    for (uint32_t i = 0; i < n_nativas_registradas; i++)
+        if (nativas_por_nombre[i]) marcar_objeto((Obj *)nativas_por_nombre[i]);
+    for (uint32_t i = 0; i < vm->n_globales; i++)
+        if (vm->globales[i].nombre) marcar_objeto((Obj *)vm->globales[i].nombre);
+    for (uint32_t i = 0; i < vm->n_modulos; i++) marcar(vm->modulos[i].cache);
     marcar(vm->ultimo_valor);
     /* las funciones y sus constantes nunca se liberan: son el programa */
     size_t vivos = 0, total = 0;
@@ -653,6 +767,10 @@ static void recolectar(void) {
                 free(((Dicto *)obj)->indice);
             }
             if (obj->tipo == O_FUNCION) free(((Cierre *)obj)->upvalues);
+            if (obj->tipo == O_CLASE) {
+                free(((Clase *)obj)->nombres_met);
+                free(((Clase *)obj)->metodos);
+            }
             free(obj);
         }
         total += 1;
@@ -673,6 +791,72 @@ static int textos_iguales(Texto *a, Texto *b) {
     if (a == b) return 1;
     if (a->largo != b->largo) return 0;
     return memcmp(a->datos, b->datos, a->largo) == 0;
+}
+
+/* El método 'nombre' de una clase, subiendo por la cadena de madres
+ * (como buscar_metodo() en jp/interprete.py). NULL si no está. */
+static Cierre *buscar_metodo_clase(Clase *clase, Texto *nombre) {
+    for (Clase *c = clase; c;) {
+        for (uint32_t i = 0; i < c->n_metodos; i++)
+            if (textos_iguales(c->nombres_met[i], nombre)) return c->metodos[i];
+        c = c->padre.etiqueta == T_OBJ ? (Clase *)c->padre.v.obj : NULL;
+    }
+    return NULL;
+}
+
+/* Tipos graduales (v1.27): mismas reglas y nombres que cumple_tipo() y
+ * nombre_tipo() de jp/interprete.py. Un tipo desconocido no estorba. */
+static int cumple_tipo(Valor v, Texto *tipo) {
+    const char *t = tipo->datos;
+    if (!strcmp(t, "cualquiera")) return 1;
+    if (!strcmp(t, "nulo")) return v.etiqueta == T_NULO;
+    if (!strcmp(t, "numero") || !strcmp(t, "número"))
+        return v.etiqueta == T_INT || v.etiqueta == T_DBL;
+    if (!strcmp(t, "entero")) return v.etiqueta == T_INT;
+    if (!strcmp(t, "texto")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_TEXTO;
+    if (!strcmp(t, "booleano")) return v.etiqueta == T_BOOL;
+    if (!strcmp(t, "lista")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_LISTA;
+    if (!strcmp(t, "diccionario")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_DICTO;
+    if (!strcmp(t, "funcion") || !strcmp(t, "función")) {
+        if (v.etiqueta != T_OBJ) return 0;
+        uint8_t k = v.v.obj->tipo;
+        return k == O_FUNCION || k == O_NATIVA || k == O_METODO || k == O_LIGADA || k == O_CLASE;
+    }
+    return 1;
+}
+
+static const char *nombre_tipo_jp(Valor v) {
+    switch (v.etiqueta) {
+        case T_NULO: return "nulo";
+        case T_BOOL: return "booleano";
+        case T_INT:
+        case T_DBL: return "número";
+        default: break;
+    }
+    switch (v.v.obj->tipo) {
+        case O_TEXTO: return "texto";
+        case O_LISTA: return "lista";
+        case O_DICTO: return "diccionario";
+        case O_INSTANCIA: return "objeto";
+        case O_CLASE: return "clase";
+        case O_FUNCION:
+        case O_NATIVA:
+        case O_METODO:
+        case O_LIGADA: return "función";
+        default: return "valor";
+    }
+}
+
+static Cierre *buscar_metodo_cstr(Clase *clase, const char *nombre) {
+    size_t largo = strlen(nombre);
+    for (Clase *c = clase; c;) {
+        for (uint32_t i = 0; i < c->n_metodos; i++)
+            if (c->nombres_met[i]->largo == largo &&
+                memcmp(c->nombres_met[i]->datos, nombre, largo) == 0)
+                return c->metodos[i];
+        c = c->padre.etiqueta == T_OBJ ? (Clase *)c->padre.v.obj : NULL;
+    }
+    return NULL;
 }
 
 static int iguales(Valor a, Valor b) {
@@ -972,7 +1156,11 @@ static Valor nativa_tipo(VM *v, int argc, Valor *args) {
         case O_LISTA: return de_texto(nuevo_texto("lista"));
         case O_DICTO: return de_texto(nuevo_texto("diccionario"));
         case O_FUNCION:
-        case O_NATIVA: return de_texto(nuevo_texto("función"));
+        case O_NATIVA:
+        case O_METODO:
+        case O_LIGADA: return de_texto(nuevo_texto("función"));
+        case O_CLASE: return de_texto(nuevo_texto("clase"));
+        case O_INSTANCIA: return de_texto(nuevo_texto("objeto"));
         default: return de_texto(nuevo_texto("valor"));
     }
 }
@@ -1100,6 +1288,301 @@ static Valor nativa_mediana(VM *v, int argc, Valor *args) {
     double r = l->largo % 2 ? valores[m] : (valores[m - 1] + valores[m]) / 2.0;
     free(valores);
     return de_decimal(r);
+}
+
+/* dict con n, promedio, mediana, minimo, maximo, desviacion (población),
+ * la misma forma que jp/estadistica.py */
+static Valor nativa_resumen(VM *v, int argc, Valor *args) {
+    (void)v;
+    Lista *l = exigir_lista_numeros(args[0], "resumen()");
+    if (!l->largo) error_en(0, "resumen() espera una lista de números con al menos un valor");
+    double *valores = memoria(sizeof(double) * l->largo);
+    double suma = 0, minimo = 0, maximo = 0;
+    for (uint32_t i = 0; i < l->largo; i++) {
+        valores[i] = exigir_numero(l->elementos[i], "resumen()");
+        suma += valores[i];
+        if (i == 0 || valores[i] < minimo) minimo = valores[i];
+        if (i == 0 || valores[i] > maximo) maximo = valores[i];
+    }
+    double media = suma / (double)l->largo;
+    double cuadrados = 0;
+    for (uint32_t i = 0; i < l->largo; i++) cuadrados += (valores[i] - media) * (valores[i] - media);
+    qsort(valores, l->largo, sizeof(double), comparar_doubles);
+    uint32_t m = l->largo / 2;
+    double mediana = l->largo % 2 ? valores[m] : (valores[m - 1] + valores[m]) / 2.0;
+    free(valores);
+    Dicto *d = nuevo_dicto();
+    dicto_poner(d, nuevo_texto("n"), de_entero((int64_t)l->largo));
+    dicto_poner(d, nuevo_texto("promedio"), de_decimal(media));
+    dicto_poner(d, nuevo_texto("mediana"), de_decimal(mediana));
+    dicto_poner(d, nuevo_texto("minimo"), de_decimal(minimo));
+    dicto_poner(d, nuevo_texto("maximo"), de_decimal(maximo));
+    dicto_poner(d, nuevo_texto("desviacion"), de_decimal(sqrt(cuadrados / (double)l->largo)));
+    return de_objeto((Obj *)d);
+}
+
+
+/* ---------------- matrices y vectores (jp/matrices.py) ----------------
+ * Una matriz es una lista de listas de números. Se calcula en double;
+ * al imprimir, los integrales salen sin decimales, como en Python. */
+
+static int exigir_matriz(Valor x, const char *nombre, Lista ***filas_out,
+                         uint32_t *f_out, uint32_t *c_out) {
+    if (x.etiqueta != T_OBJ || x.v.obj->tipo != O_LISTA)
+        error_en(0, "%s espera una matriz (lista de listas de números)", nombre);
+    Lista *m = (Lista *)x.v.obj;
+    if (m->largo == 0)
+        error_en(0, "%s espera una matriz (lista de listas de números)", nombre);
+    Lista **filas = memoria(sizeof(Lista *) * m->largo);
+    uint32_t columnas = 0;
+    for (uint32_t i = 0; i < m->largo; i++) {
+        Valor fila = m->elementos[i];
+        if (fila.etiqueta != T_OBJ || fila.v.obj->tipo != O_LISTA) {
+            free(filas);
+            error_en(0, "%s espera una matriz (lista de listas de números)", nombre);
+        }
+        filas[i] = (Lista *)fila.v.obj;
+        if (i == 0) {
+            columnas = filas[0]->largo;
+            if (columnas == 0)
+                error_en(0, "%s espera una matriz con al menos una columna", nombre);
+        } else if (filas[i]->largo != columnas) {
+            free(filas);
+            error_en(0, "%s: todas las filas deben tener el mismo largo", nombre);
+        }
+        for (uint32_t j = 0; j < columnas; j++) {
+            if (!es_numero(filas[i]->elementos[j])) {
+                char texto[256];
+                texto_de(filas[i]->elementos[j], texto, sizeof(texto));
+                free(filas);
+                error_en(0, "%s espera números, recibió '%s'", nombre, texto);
+            }
+        }
+    }
+    *filas_out = filas;
+    *f_out = m->largo;
+    *c_out = columnas;
+    return 1;
+}
+
+static double elem(Lista **filas, uint32_t i, uint32_t j) {
+    return a_double(filas[i]->elementos[j]);
+}
+
+static Lista *matriz_de(Lista **filas, uint32_t f, uint32_t c, double k, int sumar_otra, Lista **otra) {
+    Lista *r = nueva_lista(f);
+    for (uint32_t i = 0; i < f; i++) {
+        Lista *fila = nueva_lista(c);
+        for (uint32_t j = 0; j < c; j++) {
+            double v = elem(filas, i, j);
+            if (sumar_otra == 1) v += elem(otra, i, j);
+            else if (sumar_otra == -1) v -= elem(otra, i, j);
+            else if (sumar_otra == 2) v *= k;
+            lista_agregar(fila, de_decimal(v));
+        }
+        lista_agregar(r, de_lista(fila));
+    }
+    return r;
+}
+
+static Valor nativa_forma(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Lista **filas; uint32_t f, c;
+    exigir_matriz(args[0], "forma()", &filas, &f, &c);
+    free(filas);
+    Lista *r = nueva_lista(2);
+    lista_agregar(r, de_entero((int64_t)f));
+    lista_agregar(r, de_entero((int64_t)c));
+    return de_lista(r);
+}
+
+static Valor nativa_crear_matriz(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 2 || argc > 3)
+        error_en(0, "crear_matriz() espera (filas, columnas) o (filas, columnas, relleno)");
+    if (!es_numero(args[0]) || !es_numero(args[1]) || (argc == 3 && !es_numero(args[2])))
+        error_en(0, "crear_matriz() espera números");
+    int64_t f = a_entero(args[0]), c = a_entero(args[1]);
+    if (f <= 0 || c <= 0) error_en(0, "crear_matriz() espera filas y columnas mayores que 0");
+    Valor relleno = argc == 3 ? args[2] : de_entero(0);
+    Lista *r = nueva_lista((uint32_t)f);
+    for (int64_t i = 0; i < f; i++) {
+        Lista *fila = nueva_lista((uint32_t)c);
+        for (int64_t j = 0; j < c; j++) lista_agregar(fila, relleno);
+        lista_agregar(r, de_lista(fila));
+    }
+    return de_lista(r);
+}
+
+static Valor nativa_identidad(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    if (!es_numero(args[0])) error_en(0, "identidad() espera números");
+    int64_t n = a_entero(args[0]);
+    if (n <= 0) error_en(0, "identidad() espera un número mayor que 0");
+    Lista *r = nueva_lista((uint32_t)n);
+    for (int64_t i = 0; i < n; i++) {
+        Lista *fila = nueva_lista((uint32_t)n);
+        for (int64_t j = 0; j < n; j++) lista_agregar(fila, de_entero(i == j ? 1 : 0));
+        lista_agregar(r, de_lista(fila));
+    }
+    return de_lista(r);
+}
+
+static Valor nativa_transponer(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Lista **filas; uint32_t f, c;
+    exigir_matriz(args[0], "transponer()", &filas, &f, &c);
+    Lista *r = nueva_lista(c);
+    for (uint32_t j = 0; j < c; j++) {
+        Lista *fila = nueva_lista(f);
+        for (uint32_t i = 0; i < f; i++) lista_agregar(fila, de_decimal(elem(filas, i, j)));
+        lista_agregar(r, de_lista(fila));
+    }
+    free(filas);
+    return de_lista(r);
+}
+
+static Valor matrices_suma_resta(Valor a, Valor b, const char *nombre, int signo) {
+    Lista **fa, **fb; uint32_t f1, c1, f2, c2;
+    exigir_matriz(a, nombre, &fa, &f1, &c1);
+    exigir_matriz(b, nombre, &fb, &f2, &c2);
+    if (f1 != f2 || c1 != c2) {
+        free(fa); free(fb);
+        error_en(0, "%s: las formas no coinciden (%ux%u y %ux%u)", nombre, f1, c1, f2, c2);
+    }
+    Lista *r = matriz_de(fa, f1, c1, 0.0, signo, fb);
+    free(fa); free(fb);
+    return de_lista(r);
+}
+
+static Valor nativa_sumar_matrices(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return matrices_suma_resta(args[0], args[1], "sumar_matrices()", 1);
+}
+
+static Valor nativa_restar_matrices(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return matrices_suma_resta(args[0], args[1], "restar_matrices()", -1);
+}
+
+static Valor nativa_multiplicar_matrices(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Lista **fa, **fb; uint32_t f1, c1, f2, c2;
+    exigir_matriz(args[0], "multiplicar_matrices()", &fa, &f1, &c1);
+    exigir_matriz(args[1], "multiplicar_matrices()", &fb, &f2, &c2);
+    if (c1 != f2) {
+        free(fa); free(fb);
+        error_en(0, "multiplicar_matrices(): no se puede %ux%u por %ux%u (las columnas de la primera deben ser las filas de la segunda)", f1, c1, f2, c2);
+    }
+    Lista *r = nueva_lista(f1);
+    for (uint32_t i = 0; i < f1; i++) {
+        Lista *fila = nueva_lista(c2);
+        for (uint32_t j = 0; j < c2; j++) {
+            double total = 0;
+            for (uint32_t k = 0; k < c1; k++) total += elem(fa, i, k) * elem(fb, k, j);
+            lista_agregar(fila, de_decimal(total));
+        }
+        lista_agregar(r, de_lista(fila));
+    }
+    free(fa); free(fb);
+    return de_lista(r);
+}
+
+static Valor nativa_escalar_matriz(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    if (!es_numero(args[1])) error_en(0, "escalar_matriz() espera números");
+    Lista **filas; uint32_t f, c;
+    exigir_matriz(args[0], "escalar_matriz()", &filas, &f, &c);
+    Lista *r = matriz_de(filas, f, c, a_double(args[1]), 2, NULL);
+    free(filas);
+    return de_lista(r);
+}
+
+static uint32_t exigir_vector(Valor x, const char *nombre) {
+    if (x.etiqueta != T_OBJ || x.v.obj->tipo != O_LISTA)
+        error_en(0, "%s espera una lista de números no vacía", nombre);
+    Lista *l = (Lista *)x.v.obj;
+    if (l->largo == 0) error_en(0, "%s espera una lista de números no vacía", nombre);
+    for (uint32_t i = 0; i < l->largo; i++)
+        if (!es_numero(l->elementos[i])) {
+            char texto[256];
+            texto_de(l->elementos[i], texto, sizeof(texto));
+            error_en(0, "%s espera números, recibió '%s'", nombre, texto);
+        }
+    return l->largo;
+}
+
+static Valor nativa_matriz_vector(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Lista **filas; uint32_t f, c;
+    exigir_matriz(args[0], "matriz_vector()", &filas, &f, &c);
+    uint32_t n = exigir_vector(args[1], "matriz_vector()");
+    if (c != n) {
+        free(filas);
+        error_en(0, "matriz_vector(): la matriz es de %u columnas y el vector de %u", c, n);
+    }
+    Lista *vec = (Lista *)args[1].v.obj;
+    Lista *r = nueva_lista(f);
+    for (uint32_t i = 0; i < f; i++) {
+        double total = 0;
+        for (uint32_t j = 0; j < c; j++) total += elem(filas, i, j) * a_double(vec->elementos[j]);
+        lista_agregar(r, de_decimal(total));
+    }
+    free(filas);
+    return de_lista(r);
+}
+
+static Valor vectores_op(Valor a, Valor b, const char *nombre, int op) {
+    uint32_t na = exigir_vector(a, nombre), nb = exigir_vector(b, nombre);
+    if (na != nb)
+        error_en(0, "%s: los vectores deben tener el mismo largo (%u y %u)", nombre, na, nb);
+    Lista *la = (Lista *)a.v.obj, *lb = (Lista *)b.v.obj;
+    Lista *r = nueva_lista(na);
+    for (uint32_t i = 0; i < na; i++) {
+        double x = a_double(la->elementos[i]), y = a_double(lb->elementos[i]);
+        lista_agregar(r, de_decimal(op == 1 ? x + y : op == -1 ? x - y : x * y));
+    }
+    return de_lista(r);
+}
+
+static Valor nativa_sumar_vectores(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return vectores_op(args[0], args[1], "sumar_vectores()", 1);
+}
+
+static Valor nativa_restar_vectores(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return vectores_op(args[0], args[1], "restar_vectores()", -1);
+}
+
+static Valor nativa_multiplicar_vectores(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return vectores_op(args[0], args[1], "multiplicar_vectores()", 0);
+}
+
+static Valor nativa_matriz_aplicar(VM *v, int argc, Valor *args) {
+    (void)argc;
+    Lista **filas; uint32_t f, c;
+    exigir_matriz(args[0], "matriz_aplicar()", &filas, &f, &c);
+    /* el resultado se construye apoyado en la pila (raíz del GC), porque
+     * cada llamada puede disparar el recolector */
+    Lista *r = nueva_lista(f);
+    *vm->sp++ = de_lista(r);          /* apoyado en la pila: raíz del GC */
+    for (uint32_t i = 0; i < f; i++) {
+        Lista *fila_r = nueva_lista(c);
+        *vm->sp++ = de_lista(fila_r);
+        for (uint32_t j = 0; j < c; j++) {
+            Valor argumento = filas[i]->elementos[j];
+            Valor aplicado = llamar_valor(args[1], 1, &argumento);
+            Lista *actual = (Lista *)vm->sp[-1].v.obj;
+            lista_agregar(actual, aplicado);
+        }
+        vm->sp--;
+        lista_agregar(r, de_lista(fila_r));
+    }
+    vm->sp--;
+    free(filas);
+    return de_lista(r);
 }
 
 static Valor nativa_norma(VM *v, int argc, Valor *args) {
@@ -1361,6 +1844,56 @@ static Dicto *exigir_dicto(Valor x, const char *nombre) {
         error_en(0, "%s() espera un diccionario, no '%s'", nombre, texto);
     }
     return (Dicto *)x.v.obj;
+}
+
+/* posición de corte como en Python: negativos cuentan desde el final
+ * y todo se encaja dentro de [0, largo] */
+static long ajustar_corte(long corte, long largo) {
+    if (corte < 0) corte += largo;
+    if (corte < 0) corte = 0;
+    if (corte > largo) corte = largo;
+    return corte;
+}
+
+static Valor nativa_sublista(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 2 || argc > 3)
+        error_en(0, "sublista() espera (lista, inicio) o (lista, inicio, fin)");
+    if (!es_numero(args[1]) || (argc == 3 && !es_numero(args[2])))
+        error_en(0, "sublista() espera posiciones numéricas");
+    Valor origen = args[0];
+    if (origen.etiqueta == T_OBJ && origen.v.obj->tipo == O_LISTA) {
+        Lista *l = (Lista *)origen.v.obj;
+        long inicio = ajustar_corte((long)a_entero(args[1]), (long)l->largo);
+        long fin = argc == 3 ? ajustar_corte((long)a_entero(args[2]), (long)l->largo)
+                             : (long)l->largo;
+        Lista *r = nueva_lista(fin > inicio ? (uint32_t)(fin - inicio) : 1);
+        for (long i = inicio; i < fin; i++) lista_agregar(r, l->elementos[i]);
+        return de_lista(r);
+    }
+    if (origen.etiqueta == T_OBJ && origen.v.obj->tipo == O_TEXTO) {
+        Texto *t = (Texto *)origen.v.obj;
+        /* los cortes son por carácter (puntos de código), como en Python */
+        uint32_t *inicios = memoria(sizeof(uint32_t) * (t->largo + 1));
+        uint32_t n_chars = 0;
+        for (uint32_t i = 0; i < t->largo;) {
+            inicios[n_chars++] = i;
+            i += 1;
+            while (i < t->largo && ((unsigned char)t->datos[i] & 0xC0) == 0x80) i += 1;
+        }
+        inicios[n_chars] = t->largo;
+        long inicio = ajustar_corte((long)a_entero(args[1]), (long)n_chars);
+        long fin = argc == 3 ? ajustar_corte((long)a_entero(args[2]), (long)n_chars)
+                             : (long)n_chars;
+        if (fin < inicio) fin = inicio;
+        Valor r = de_texto(nuevo_texto_largo(t->datos + inicios[inicio],
+                                             inicios[fin] - inicios[inicio]));
+        vm->bytes_reservados -= sizeof(uint32_t) * (t->largo + 1);
+        free(inicios);
+        return r;
+    }
+    error_en(0, "sublista() espera una lista o un texto");
+    return de_nulo();
 }
 
 static Valor nativa_claves(VM *v, int argc, Valor *args) {
@@ -2044,14 +2577,18 @@ static Valor nativa_leer(VM *v, int argc, Valor *args) {
 /* --------------------------------------------------------- la máquina */
 
 static void definir_global(const char *nombre, Valor valor) {
+    /* con módulos concatenados, varios espacios pueden nombrar la misma
+     * nativa ('muestra' en el programa y en un módulo): se liga en todos */
+    int hallada = 0;
     for (uint32_t i = 0; i < vm->n_globales; i++) {
         Texto *t = vm->globales[i].nombre;
-        if (strcmp(t->datos, nombre) == 0) {
+        if (t && strcmp(t->datos, nombre) == 0) {
             vm->globales[i].valor = valor;
             vm->globales[i].definido = 1;
-            return;
+            hallada = 1;
         }
     }
+    if (hallada) return;
     if (vm->n_globales < GLOBALES_MAX) {
         Global *g = &vm->globales[vm->n_globales++];
         g->nombre = nuevo_texto(nombre);
@@ -2107,8 +2644,8 @@ static void preparar_programa(uint8_t *blob, size_t largo) {
     uint32_t n_cadenas = leer_u32(blob + pos); pos += 4;
     uint32_t n_globales = leer_u32(blob + pos); pos += 4;
     pos += 4;
-    if (version != 1) {
-        fprintf(stderr, "jpvm: versión de bytecode no soportada: %u\n", version);
+    if (version != 1 && version != 2) {
+        fprintf(stderr, "jpvm: versión de bytecode no soportada: %u (recompila el programa)\n", version);
         exit(66);
     }
 
@@ -2139,6 +2676,9 @@ static void preparar_programa(uint8_t *blob, size_t largo) {
         f->indice = i;
         f->nombre = vm->cadenas[nombre_idx];
         f->aridad = leer_u32(blob + pos); pos += 4;
+        f->modulo = version >= 2 ? leer_u32(blob + pos) : 0;
+        if (version >= 2) pos += 4;
+        f->gbase = 0;
         f->n_slots = leer_u32(blob + pos); pos += 4;
         f->flags_celda = memoria(f->n_slots ? f->n_slots : 1);
         memcpy(f->flags_celda, blob + pos, f->n_slots); pos += f->n_slots;
@@ -2176,6 +2716,36 @@ static void preparar_programa(uint8_t *blob, size_t largo) {
         }
     }
 
+    if (version >= 2) {
+        /* tabla de módulos (lo que trae cada 'importar') */
+        uint32_t n_mod = leer_u32(blob + pos); pos += 4;
+        vm->modulos = memoria(sizeof(ModuloC) * (n_mod ? n_mod : 1));
+        vm->n_modulos = n_mod;
+        for (uint32_t i = 0; i < n_mod; i++) {
+            ModuloC *m = &vm->modulos[i];
+            pos += 4; /* el nombre, solo informativo */
+            m->funcion = leer_u32(blob + pos); pos += 4;
+            m->gbase = leer_u32(blob + pos); pos += 4;
+            m->n_exp = leer_u32(blob + pos); pos += 4;
+            m->exp_nombres = memoria(sizeof(Texto *) * (m->n_exp ? m->n_exp : 1));
+            m->exp_gidx = memoria(sizeof(uint32_t) * (m->n_exp ? m->n_exp : 1));
+            for (uint32_t e = 0; e < m->n_exp; e++) {
+                m->exp_nombres[e] = vm->cadenas[leer_u32(blob + pos)]; pos += 4;
+                m->exp_gidx[e] = leer_u32(blob + pos); pos += 4;
+            }
+            uint32_t largo_f = leer_u32(blob + pos); pos += 4;
+            m->fuente = memoria(largo_f + 1);
+            memcpy(m->fuente, blob + pos, largo_f);
+            m->fuente[largo_f] = '\0';
+            m->largo_fuente = largo_f;
+            pos += largo_f;
+            m->cache = de_nulo();
+            m->ejecutado = 0;
+        }
+        for (uint32_t i = 0; i < total_funciones; i++)
+            funciones_deblob[i].gbase = vm->modulos[funciones_deblob[i].modulo].gbase;
+    }
+
     if (pos + 4 <= largo) {
         uint32_t largo_fuente = leer_u32(blob + pos); pos += 4;
         if (pos + largo_fuente <= largo) {
@@ -2185,6 +2755,21 @@ static void preparar_programa(uint8_t *blob, size_t largo) {
             vm->largo_fuente = largo_fuente;
         }
     }
+}
+
+/* fuente del módulo al que pertenece la función del marco actual:
+ * los errores de un módulo importado deben enseñar SU línea, no la
+ * del programa que lo trajo */
+static const char *fuente_actual(uint32_t *largo) {
+    if (vm->marco && vm->marco->funcion && vm->n_modulos > 0) {
+        uint32_t m = vm->marco->funcion->modulo;
+        if (m < vm->n_modulos && vm->modulos[m].fuente) {
+            *largo = vm->modulos[m].largo_fuente;
+            return vm->modulos[m].fuente;
+        }
+    }
+    *largo = vm->largo_fuente;
+    return vm->fuente;
 }
 
 /* línea de la instrucción en la función actual */
@@ -2199,20 +2784,22 @@ static uint32_t linea_de(uint32_t pc) {
 }
 
 static void imprimir_linea_fuente(uint32_t numero) {
-    if (!vm->fuente || numero == 0) return;
+    uint32_t largo = 0;
+    const char *fuente = fuente_actual(&largo);
+    if (!fuente || numero == 0) return;
     uint32_t inicio = 0, actual = 1;
-    while (inicio < vm->largo_fuente && actual < numero) {
-        if (vm->fuente[inicio] == '\n') actual++;
+    while (inicio < largo && actual < numero) {
+        if (fuente[inicio] == '\n') actual++;
         inicio++;
     }
     if (actual != numero) return;
     uint32_t fin = inicio;
-    while (fin < vm->largo_fuente && vm->fuente[fin] != '\n') fin++;
+    while (fin < largo && fuente[fin] != '\n') fin++;
     /* el oráculo (jp/vm.py) lanza sus errores de ejecución sin columna:
        siempre imprime "columna 0" y el puntero en la primera columna. */
-    if (fin > inicio && vm->fuente[fin - 1] == '\r') fin--;
+    if (fin > inicio && fuente[fin - 1] == '\r') fin--;
     printf("    --> línea %u, columna 0\n", numero);
-    printf(" %4u | %.*s\n", numero, (int)(fin - inicio), vm->fuente + inicio);
+    printf(" %4u | %.*s\n", numero, (int)(fin - inicio), fuente + inicio);
     printf("      | ^\n");
 }
 
@@ -2360,7 +2947,8 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     }
     Cierre *cierre = (Cierre *)callee.v.obj;
     Funcion *f = cierre->funcion;
-    if (f->aridad != (uint32_t)argc)
+    int con_defectos = f->codigo[0] == 57 /* DEFECTOS */;
+    if ((uint32_t)argc > f->aridad || (!con_defectos && f->aridad != (uint32_t)argc))
         error_en(0, "la función '%s' espera %u argumento(s), recibió %d",
                  f->nombre->datos, f->aridad, argc);
     if (vm->marco - vm->marcos >= MARCOS_MAX - 1)
@@ -2369,7 +2957,8 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     *vm->sp++ = callee;
     for (int i = 0; i < argc; i++) *vm->sp++ = args[i];
     Valor *nueva_base = vm->sp - argc - 1;
-    for (uint32_t i = (uint32_t)argc; i < f->n_slots; i++) *vm->sp++ = de_nulo();
+    for (uint32_t i = (uint32_t)argc; i < f->n_slots; i++)
+        *vm->sp++ = i < f->aridad ? de_centinela() : de_nulo();
     Marco *piso_anterior = vm->piso_marco;
     vm->piso_marco = vm->marco;
     vm->marco += 1;
@@ -2379,6 +2968,7 @@ static Valor llamar_valor(Valor callee, int argc, Valor *args) {
     vm->marco->upvalues = cierre->upvalues;
     vm->marco->n_upvalues = cierre->n_upvalues;
     vm->marco->n_manejadores = vm->n_manejadores;
+    vm->marco->n_args = (uint32_t)argc;
 
     uint32_t nivel = vm->n_niveles;
     if (nivel >= 256) error_en(0, "demasiadas llamadas anidadas desde nativas");
@@ -2550,7 +3140,10 @@ static void bucle(uint32_t pc_inicio) {
         &&L_RETORNAR_NULO, &&L_LISTA, &&L_RANGO, &&L_INDICE, &&L_INDICE_ASIG,
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
-        &&L_SALTO_NO_NULO_MANTENER,
+        &&L_SALTO_NO_NULO_MANTENER, &&L_CREAR_CLASE, &&L_DEFECTOS,
+        &&L_SALTAR_SI_HAY_VALOR, &&L_ITER_NEXT_PAR, &&L_ITER_NEXT_PAR_CELDA,
+        &&L_DESESTRUCTURAR, &&L_VERIFICAR_TIPO, &&L_VERIFICAR_ARG, &&L_VERIFICAR_RET,
+        &&L_IMPORTAR, &&L_LANZAR, &&L_RELANZAR,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -2615,7 +3208,7 @@ L_SET_CELDA: {
     SIGUIENTE();
 }
 L_GET_GLOBAL: {
-    uint32_t indice = LEER_U32();
+    uint32_t indice = marco->funcion->gbase + LEER_U32();
     Global *g = &vm->globales[indice];
     if (!g->definido) {
         ACTUALIZAR_IP();
@@ -2626,7 +3219,7 @@ L_GET_GLOBAL: {
     SIGUIENTE();
 }
 L_SET_GLOBAL: {
-    uint32_t indice = LEER_U32();
+    uint32_t indice = marco->funcion->gbase + LEER_U32();
     Global *g = &vm->globales[indice];
     if (!g->definido) {
         ACTUALIZAR_IP();
@@ -2637,7 +3230,7 @@ L_SET_GLOBAL: {
     SIGUIENTE();
 }
 L_DECL_GLOBAL: {
-    uint32_t indice = LEER_U32();
+    uint32_t indice = marco->funcion->gbase + LEER_U32();
     Global *g = &vm->globales[indice];
     g->valor = vm->sp[-1];
     g->definido = 1;
@@ -2834,6 +3427,51 @@ L_LLAMAR: {
         PUSH(resultado);
         SIGUIENTE();
     }
+    if (obj->tipo == O_CLASE) {
+        /* instanciar: objeto nuevo + su 'iniciar' si lo hay */
+        Clase *cl = (Clase *)obj;
+        int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+        Cierre *ini = buscar_metodo_cstr(cl, "iniciar");
+        Instancia *ins = nuevo_objeto(sizeof(Instancia), O_INSTANCIA);
+        ins->clase = cl;
+        ins->campos = nuevo_dicto();
+        Valor valor_ins = de_objeto((Obj *)ins);
+        if (!ini) {
+            if (argc > 0)
+                error_en(linea, "la clase '%.*s' no tiene un método 'iniciar' y no acepta argumentos",
+                         (int)cl->nombre->largo, cl->nombre->datos);
+            vm->sp -= argc + 1;
+            PUSH(valor_ins);
+            SIGUIENTE();
+        }
+        if (argc > ini->funcion->aridad - 1 ||
+            (ini->funcion->codigo[0] != 57 /* DEFECTOS */ && argc != ini->funcion->aridad - 1))
+            error_en(linea, "la clase '%.*s' espera %u argumento(s) en su 'iniciar', recibió %u",
+                     (int)cl->nombre->largo, cl->nombre->datos,
+                     ini->funcion->aridad - 1, argc);
+        Valor *args_ini = memoria(sizeof(Valor) * (argc + 1));
+        args_ini[0] = valor_ins;
+        for (uint32_t i = 0; i < argc; i++)
+            args_ini[i + 1] = vm->sp[(int32_t)i - (int32_t)argc];
+        ACTUALIZAR_IP();
+        llamar_valor(de_objeto((Obj *)ini), (int)argc + 1, args_ini);
+        vm->bytes_reservados -= sizeof(Valor) * (argc + 1);
+        free(args_ini);
+        vm->sp -= argc + 1;
+        PUSH(valor_ins);
+        SIGUIENTE();
+    }
+    if (obj->tipo == O_METODO) {
+        /* el receptor entra como primer argumento ('este') y el callee
+         * pasa a ser el cierre del método: seguir por el camino normal */
+        Metodo *mt = (Metodo *)obj;
+        memmove(vm->sp - argc + 1, vm->sp - argc, sizeof(Valor) * argc);
+        vm->sp += 1;
+        vm->sp[-2 - (int32_t)argc] = de_objeto((Obj *)mt->cierre);
+        vm->sp[-1 - (int32_t)argc] = mt->receptor;
+        argc += 1;
+        obj = (Obj *)mt->cierre;
+    }
     if (obj->tipo != O_FUNCION) {
         char texto[256];
         texto_de(callee, texto, sizeof(texto));
@@ -2842,7 +3480,8 @@ L_LLAMAR: {
     }
     Cierre *cierre = (Cierre *)obj;
     Funcion *f = cierre->funcion;
-    if (f->aridad != argc) {
+    int con_defectos = f->codigo[0] == 57 /* DEFECTOS */;
+    if (argc > f->aridad || (!con_defectos && argc != f->aridad)) {
         ACTUALIZAR_IP();
         error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
                  "la función '%s' espera %u argumento(s), recibió %u",
@@ -2850,9 +3489,11 @@ L_LLAMAR: {
     }
     if (vm->marco - vm->marcos >= MARCOS_MAX - 1)
         error_en(0, "desbordamiento de pila (¿recursión infinita?)");
-    /* reutilizar los argumentos como primeros locales */
+    /* reutilizar los argumentos como primeros locales; los parámetros
+     * que faltan llevan el centinela (su defecto los sustituye) */
     Valor *nueva_base = vm->sp - argc - 1;
-    for (uint32_t i = argc; i < f->n_slots; i++) *vm->sp++ = de_nulo();
+    for (uint32_t i = argc; i < f->n_slots; i++)
+        *vm->sp++ = i < f->aridad ? de_centinela() : de_nulo();
     ACTUALIZAR_IP();
     vm->marco += 1;
     vm->marco->funcion = f;
@@ -2861,6 +3502,7 @@ L_LLAMAR: {
     vm->marco->upvalues = cierre->upvalues;
     vm->marco->n_upvalues = cierre->n_upvalues;
     vm->marco->n_manejadores = vm->n_manejadores;
+    vm->marco->n_args = argc;
     RECARGAR();
     SIGUIENTE();
 }
@@ -3002,6 +3644,29 @@ L_INDICE: {
         PUSH(de_texto(nuevo_texto_largo(t->datos + i, 1)));
         SIGUIENTE();
     }
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_INSTANCIA) {
+        Instancia *ins = (Instancia *)objeto.v.obj;
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "los objetos de '%.*s' solo tienen atributos con nombre",
+                     (int)ins->clase->nombre->largo, ins->clase->nombre->datos);
+        Texto *clave = (Texto *)indice.v.obj;
+        Valor *campo = dicto_buscar(ins->campos, clave);
+        if (campo) {
+            PUSH(*campo);
+            SIGUIENTE();
+        }
+        Cierre *metodo = buscar_metodo_clase(ins->clase, clave);
+        if (metodo) {
+            Metodo *ligado = nuevo_objeto(sizeof(Metodo), O_METODO);
+            ligado->cierre = metodo;
+            ligado->receptor = objeto;
+            PUSH(de_objeto((Obj *)ligado));
+            SIGUIENTE();
+        }
+        error_en(linea, "el objeto %.*s no tiene '%.*s'",
+                 (int)ins->clase->nombre->largo, ins->clase->nombre->datos,
+                 (int)clave->largo, clave->datos);
+    }
     {
         char texto[256];
         texto_de(objeto, texto, sizeof(texto));
@@ -3032,6 +3697,14 @@ L_INDICE_ASIG: {
         PUSH(valor);
         SIGUIENTE();
     }
+    if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_INSTANCIA) {
+        int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+        if (indice.etiqueta != T_OBJ || indice.v.obj->tipo != O_TEXTO)
+            error_en(linea, "los objetos solo tienen atributos con nombre");
+        dicto_poner(((Instancia *)objeto.v.obj)->campos, (Texto *)indice.v.obj, valor);
+        PUSH(valor);
+        SIGUIENTE();
+    }
     error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
              "solo se puede asignar por índice en listas y diccionarios");
     SIGUIENTE();
@@ -3049,6 +3722,47 @@ L_CIERRE: {
         c->upvalues[i] = d->es_local ? base[d->indice].v.obj : marco->upvalues[d->indice];
     }
     PUSH(de_objeto((Obj *)c));
+    SIGUIENTE();
+}
+L_CREAR_CLASE: {
+    uint32_t ci_nombre = LEER_U32();
+    uint32_t n = LEER_U32();
+    uint32_t *ci_nombres = memoria(sizeof(uint32_t) * (n ? n : 1));
+    for (uint32_t i = 0; i < n; i++) ci_nombres[i] = LEER_U32();
+    int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+    Valor padre = vm->sp[-1 - (int32_t)n];
+    if (padre.etiqueta != T_NULO &&
+        !(padre.etiqueta == T_OBJ && padre.v.obj->tipo == O_CLASE))
+        error_en(linea, "solo se puede heredar de una clase");
+    Clase *cl = nuevo_objeto(sizeof(Clase), O_CLASE);
+    cl->nombre = marco->funcion->const_s[ci_nombre];
+    cl->padre = padre;
+    cl->n_metodos = n;
+    cl->nombres_met = memoria(sizeof(Texto *) * (n ? n : 1));
+    cl->metodos = memoria(sizeof(Cierre *) * (n ? n : 1));
+    for (uint32_t i = 0; i < n; i++) {
+        cl->nombres_met[i] = marco->funcion->const_s[ci_nombres[i]];
+        cl->metodos[i] = (Cierre *)vm->sp[-((int32_t)n - (int32_t)i)].v.obj;
+    }
+    vm->bytes_reservados -= sizeof(uint32_t) * (n ? n : 1);
+    free(ci_nombres);
+    vm->sp -= n + 1;
+    PUSH(de_objeto((Obj *)cl));
+    SIGUIENTE();
+}
+L_DEFECTOS: {
+    uint32_t minimos = LEER_U32();
+    if (vm->marco->n_args < minimos)
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la función '%.*s' espera %u argumento(s), recibió %u",
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 minimos, vm->marco->n_args);
+    SIGUIENTE();
+}
+L_SALTAR_SI_HAY_VALOR: {
+    uint32_t slot = LEER_U32();
+    int32_t relativo = LEER_I32();
+    if (!es_sin_valor(base[slot])) ip += relativo;
     SIGUIENTE();
 }
 L_CELDA: {
@@ -3099,6 +3813,7 @@ L_ITER_INIT: {
     uint32_t slot = LEER_U32();
     Valor iterable = POP();
     Lista *l = NULL;
+    Dicto *dicto_origen = NULL;
     if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_LISTA) {
         l = (Lista *)iterable.v.obj;
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_TEXTO) {
@@ -3107,6 +3822,7 @@ L_ITER_INIT: {
         for (uint32_t i = 0; i < t->largo; i++) lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, 1)));
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_DICTO) {
         Dicto *d = (Dicto *)iterable.v.obj;
+        dicto_origen = d;
         l = nueva_lista(d->largo ? d->largo : 1);
         for (uint32_t i = 0; i < d->largo; i++) lista_agregar(l, de_texto(d->entradas[i].clave));
     } else if (iterable.etiqueta == T_INT) {
@@ -3126,6 +3842,7 @@ L_ITER_INIT: {
     Iter *it = nuevo_objeto(sizeof(Iter), O_ITER);
     it->lista = l;
     it->indice = 0;
+    it->dicto = dicto_origen;
     base[slot] = de_objeto((Obj *)it);
     SIGUIENTE();
 }
@@ -3151,6 +3868,156 @@ L_ITER_NEXT_CELDA: {
         SIGUIENTE();
     }
     base[slot_var] = de_objeto((Obj *)nueva_celda(it->lista->elementos[it->indice++]));
+    SIGUIENTE();
+}
+
+L_ITER_NEXT_PAR: {
+    uint32_t slot_iter = LEER_U32();
+    uint32_t slot_a = LEER_U32();
+    uint32_t slot_b = LEER_U32();
+    int32_t relativo = LEER_I32();
+    Iter *it = (Iter *)base[slot_iter].v.obj;
+    if (it->indice >= it->lista->largo) {
+        ip = ip + relativo;
+        SIGUIENTE();
+    }
+    uint32_t idx = it->indice++;
+    Valor elemento = it->lista->elementos[idx];
+    if (it->dicto) {
+        base[slot_a] = elemento;  /* la clave (las claves son la secuencia) */
+        Valor *v = dicto_buscar(it->dicto, (Texto *)elemento.v.obj);
+        base[slot_b] = v ? *v : de_nulo();
+    } else {
+        base[slot_a] = de_entero((int64_t)idx);
+        base[slot_b] = elemento;
+    }
+    SIGUIENTE();
+}
+L_ITER_NEXT_PAR_CELDA: {
+    uint32_t slot_iter = LEER_U32();
+    uint32_t slot_a = LEER_U32();
+    uint32_t slot_b = LEER_U32();
+    uint32_t mascara = LEER_U32();
+    int32_t relativo = LEER_I32();
+    Iter *it = (Iter *)base[slot_iter].v.obj;
+    if (it->indice >= it->lista->largo) {
+        ip = ip + relativo;
+        SIGUIENTE();
+    }
+    uint32_t idx = it->indice++;
+    Valor elemento = it->lista->elementos[idx];
+    if (it->dicto) {
+        base[slot_a] = elemento;
+        Valor *v = dicto_buscar(it->dicto, (Texto *)elemento.v.obj);
+        base[slot_b] = v ? *v : de_nulo();
+    } else {
+        base[slot_a] = de_entero((int64_t)idx);
+        base[slot_b] = elemento;
+    }
+    if (mascara & 1) base[slot_a] = de_objeto((Obj *)nueva_celda(base[slot_a]));
+    if (mascara & 2) base[slot_b] = de_objeto((Obj *)nueva_celda(base[slot_b]));
+    SIGUIENTE();
+}
+L_DESESTRUCTURAR: {
+    uint32_t n = LEER_U32();
+    Valor v = POP();
+    int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_LISTA) {
+        char texto[512];
+        texto_de(v, texto, sizeof(texto));
+        error_en(linea, "la desestructuración '[a, b] = ...' espera una lista, no '%s'", texto);
+    }
+    Lista *l = (Lista *)v.v.obj;
+    if (l->largo != n)
+        error_en(linea, "la desestructuración esperaba %u valor(es) y recibió %u", n, l->largo);
+    for (uint32_t i = 0; i < n; i++) PUSH(l->elementos[i]);
+    SIGUIENTE();
+}
+
+L_VERIFICAR_TIPO: {
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Texto *nombre = marco->funcion->const_s[LEER_U32()];
+    Valor v = vm->sp[-1];
+    if (!cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la variable '%.*s' es de tipo %.*s y recibió %s ('%s')",
+                 (int)nombre->largo, nombre->datos, (int)tipo->largo, tipo->datos,
+                 nombre_tipo_jp(v), valor_txt);
+    }
+    SIGUIENTE();
+}
+L_VERIFICAR_ARG: {
+    uint32_t slot = LEER_U32();
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Texto *nombre = marco->funcion->const_s[LEER_U32()];
+    Valor v = base[slot];
+    if (!es_sin_valor(v) && !cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "el parámetro '%.*s' de '%.*s' es de tipo %.*s y recibió %s ('%s')",
+                 (int)nombre->largo, nombre->datos,
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 (int)tipo->largo, tipo->datos, nombre_tipo_jp(v), valor_txt);
+    }
+    SIGUIENTE();
+}
+L_VERIFICAR_RET: {
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Valor v = vm->sp[-1];
+    if (!cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la función '%.*s' debe devolver %.*s y devolvió %s ('%s')",
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 (int)tipo->largo, tipo->datos, nombre_tipo_jp(v), valor_txt);
+    }
+    SIGUIENTE();
+}
+
+L_IMPORTAR: {
+    uint32_t midx = LEER_U32();
+    ModuloC *mod = &vm->modulos[midx];
+    if (mod->ejecutado) {
+        PUSH(mod->cache);
+        SIGUIENTE();
+    }
+    /* primera vez: ejecuta su función principal y congela un
+     * diccionario con lo que exporta (como en los motores de Python) */
+    Cierre *cierre = nuevo_objeto(sizeof(Cierre), O_FUNCION);
+    cierre->funcion = &vm->funciones[mod->funcion];
+    cierre->n_upvalues = 0;
+    cierre->upvalues = memoria(sizeof(Obj *));
+    ACTUALIZAR_IP();
+    llamar_valor(de_objeto((Obj *)cierre), 0, NULL);
+    Dicto *dict = nuevo_dicto();
+    for (uint32_t e = 0; e < mod->n_exp; e++) {
+        Global *g = &vm->globales[mod->gbase + mod->exp_gidx[e]];
+        if (g->definido) dicto_poner(dict, mod->exp_nombres[e], g->valor);
+    }
+    mod->cache = de_objeto((Obj *)dict);
+    mod->ejecutado = 1;
+    PUSH(mod->cache);
+    SIGUIENTE();
+}
+
+L_LANZAR: {
+    Valor v = POP();
+    char texto[512];
+    texto_de(v, texto, sizeof(texto));
+    error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1), "%s", texto);
+    SIGUIENTE();
+}
+
+L_RELANZAR: {
+    /* el error original sigue guardado: se vuelve a lanzar tal cual,
+     * con su mensaje y su línea */
+    char texto[sizeof(vm->error)];
+    memcpy(texto, vm->error, sizeof(vm->error));
+    error_en(vm->linea_error, "%s", texto);
     SIGUIENTE();
 }
 
@@ -3279,6 +4146,20 @@ int main(int argc, char **argv) {
     instalar_nativa("promedio", 1, nativa_promedio);
     instalar_nativa("mediana", 1, nativa_mediana);
     instalar_nativa("norma", 1, nativa_norma);
+    instalar_nativa("forma", 1, nativa_forma);
+    instalar_nativa("crear_matriz", -1, nativa_crear_matriz);
+    instalar_nativa("identidad", 1, nativa_identidad);
+    instalar_nativa("transponer", 1, nativa_transponer);
+    instalar_nativa("sumar_matrices", 2, nativa_sumar_matrices);
+    instalar_nativa("restar_matrices", 2, nativa_restar_matrices);
+    instalar_nativa("multiplicar_matrices", 2, nativa_multiplicar_matrices);
+    instalar_nativa("escalar_matriz", 2, nativa_escalar_matriz);
+    instalar_nativa("matriz_vector", 2, nativa_matriz_vector);
+    instalar_nativa("sumar_vectores", 2, nativa_sumar_vectores);
+    instalar_nativa("restar_vectores", 2, nativa_restar_vectores);
+    instalar_nativa("multiplicar_vectores", 2, nativa_multiplicar_vectores);
+    instalar_nativa("matriz_aplicar", 2, nativa_matriz_aplicar);
+    instalar_nativa("resumen", 1, nativa_resumen);
     instalar_nativa("distancia", 2, nativa_distancia);
     instalar_nativa("softmax", 1, nativa_softmax);
     instalar_nativa("coseno", 1, nativa_coseno);
@@ -3306,6 +4187,7 @@ int main(int argc, char **argv) {
     instalar_nativa("separar", -1, nativa_separar);
     instalar_nativa("reemplazar", 3, nativa_reemplazar);
     instalar_nativa("subtexto", -1, nativa_subtexto);
+    instalar_nativa("sublista", -1, nativa_sublista);
     instalar_nativa("letra", 2, nativa_letra);
     instalar_nativa("empezar_con", 2, nativa_empezar_con);
     instalar_nativa("terminar_con", 2, nativa_terminar_con);

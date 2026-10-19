@@ -493,10 +493,40 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Llevar lo nuevo de la v1.6/v1.7 (módulos, clases, defectos...) también al motor en C
+- El motor en C ya cubre clases, tipos, módulos y finalmente; lo que queda fuera por diseño es el host (servidores, SQLite, procesos, patrones)
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.29.0 — **módulos en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 📚 **`importar` también en el motor en C**: varios archivos viven
+  en un mismo .jpb con sus propios globales; hay también `lanzar`,
+  `finalmente` y todo el paquete de matrices. La paridad sube a 26
+  ejemplos idénticos, 0 fallos.
+
+v1.28.0 — **cobertura** (ver `CHANGELOG.md`). Nuevo:
+
+- 📊 **`jp --cobertura programa.jp`**: qué líneas llegaron a correr y
+  cuáles no, con rangos («Sin ejecutar: líneas 3-5, 9»).
+
+v1.27.0 — **tipos en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏷️ **Tipos opcionales también en el motor en C**: `ejemplos/tipos.jp`
+  produce la misma salida (y los mismos errores) en los tres motores;
+  la paridad sube a 25 ejemplos idénticos.
+
+v1.26.0 — **desestructurar en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🧩 **`para a, b en` y `[a, b] = ...` también en nativo**: la
+  paridad de ejemplos sube a 24 idénticos, 0 fallos.
+
+v1.25.0 — **clases en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏛️ **Clases en el motor en C**: herencia, `este`, métodos ligados y
+  valores por defecto de parámetros corren también en nativo;
+  `ejemplos/clases.jp` coincide byte a byte con Python. De paso, la
+  v1.24.1 cazó con AddressSanitizer un segfault del GC en C.
 
 v1.24.0 — **revisor** (ver `CHANGELOG.md`). Nuevo:
 

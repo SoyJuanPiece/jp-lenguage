@@ -121,10 +121,16 @@ muestra(Contador().dos())
                     maquina.ejecutar(parsear(tokenizar(codigo)), directorio=ruta)
                 self.assertEqual(buffer.getvalue(), "12cm\n")
 
-    def test_el_motor_c_lo_rechaza_limpio(self):
+    def test_el_motor_c_ya_compila_clases(self):
+        # desde la v1.25 las clases viven también en el motor en C
         programa = parsear(tokenizar('clase P { funcion f() { devuelve 1 } }'))
+        blob = compilar_a_bytes(programa, "prueba", 'clase P { funcion f() { devuelve 1 } }')
+        self.assertGreater(len(blob), 50)
+
+    def test_el_motor_c_rechaza_modulos_todavia(self):
+        programa = parsear(tokenizar('importar "otro.jp"'))
         with self.assertRaises(NoSoportadoNativo):
-            compilar_a_bytes(programa, "prueba", 'clase P { funcion f() { devuelve 1 } }')
+            compilar_a_bytes(programa, "prueba", 'importar "otro.jp"')
 
 
 class TestErroresConCampos(unittest.TestCase):

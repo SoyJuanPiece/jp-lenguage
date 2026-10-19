@@ -67,9 +67,14 @@ class TestTipos(unittest.TestCase):
         self.assertIn("a: numero): numero", salida)
         self.assertIn("variable x: numero = 3", salida)
 
-    def test_motor_c_lo_rechaza_limpio(self):
+    def test_motor_c_ya_compila_tipos(self):
+        # desde la v1.27 los tipos opcionales también están en el motor C
+        blob = compilar_a_bytes(parsear(tokenizar("funcion f(a: numero) { devuelve a }")), "p")
+        self.assertGreater(len(blob), 50)
+
+    def test_motor_c_rechaza_modulos_todavia(self):
         with self.assertRaises(NoSoportadoNativo):
-            compilar_a_bytes(parsear(tokenizar("funcion f(a: numero) { devuelve a }")), "p")
+            compilar_a_bytes(parsear(tokenizar('importar "@x"')), "p")
 
 
 if __name__ == "__main__":

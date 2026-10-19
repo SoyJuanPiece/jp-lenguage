@@ -2550,6 +2550,7 @@ static void bucle(uint32_t pc_inicio) {
         &&L_RETORNAR_NULO, &&L_LISTA, &&L_RANGO, &&L_INDICE, &&L_INDICE_ASIG,
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
+        &&L_SALTO_NO_NULO_MANTENER,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -2774,6 +2775,11 @@ L_SALTO_FALSO_MANTENER: {
 L_SALTO_VERDAD_MANTENER: {
     int32_t relativo = LEER_I32();
     if (es_verdad(vm->sp[-1])) ip = ip + relativo;
+    SIGUIENTE();
+}
+L_SALTO_NO_NULO_MANTENER: {
+    int32_t relativo = LEER_I32();
+    if (vm->sp[-1].etiqueta != T_NULO) ip = ip + relativo;
     SIGUIENTE();
 }
 L_IMPRIMIR: {

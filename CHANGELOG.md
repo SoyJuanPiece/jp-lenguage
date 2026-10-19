@@ -1,5 +1,14 @@
 # Cambios de JP
 
+## 1.16.0 — «Nativo seguro» (2026-10-19)
+
+- **`??` y `?.` llegan al motor en C**: opcode nuevo
+  `SALTO_NO_NULO_MANTENER` (55) en `jp/compilar_nativo.py` y en
+  `motor-c/jpvm.c` (mira el tope sin popear, salta si no es `T_NULO`), con
+  emisión para el operador y para índices/llamadas seguras. Lo que la
+  v1.14 dejó rechazado limpiamente ya corre nativo, con salida idéntica
+  verificada contra la VM (`tests/test_v24.py`).
+
 ## 1.15.0 — «Pruébalo» (2026-10-19)
 
 - **Pruebas para programas JP** (`biblioteca/pruebas.jp`): `afirmar`,

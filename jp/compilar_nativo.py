@@ -118,6 +118,7 @@ OP_DICT = 51                     # u32 n: n pares clave/valor en la pila
 OP_MANEJAR = 52                  # u32 pc del bloque 'atrapa'
 OP_FIN_MANEJAR = 53
 OP_ERROR_EN = 54                 # u32 slot: guarda el mensaje del error capturado
+OP_SALTO_NO_NULO_MANTENER = 55   # i32 rel  (para '??' y '?.': mira el tope, no popea)
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -139,7 +140,7 @@ NOMBRES_OP = {
     OP_CELDA: "CELDA", OP_ITER_INIT: "ITER_INIT", OP_ITER_NEXT: "ITER_NEXT",
     OP_ITER_NEXT_CELDA: "ITER_NEXT_CELDA", OP_EXPR_SENT: "EXPR_SENT", OP_FIN: "FIN",
     OP_DICT: "DICT", OP_MANEJAR: "MANEJAR", OP_FIN_MANEJAR: "FIN_MANEJAR",
-    OP_ERROR_EN: "ERROR_EN",
+    OP_ERROR_EN: "ERROR_EN", OP_SALTO_NO_NULO_MANTENER: "SALTO_NO_NULO_MANTENER",
 }
 
 MAGIA = b"JPB1"
@@ -824,7 +825,18 @@ class CompiladorNativo:
 
         elif tipo is NodoLlamada:
             if nodo.seguro:
-                raise NoSoportadoNativo("la llamada segura '?.()' aún no está en el motor nativo", linea)
+                # [callee]; si es nulo salta al fin (queda el nulo, sin
+                # evaluar argumentos); si no, llamada normal.
+                actual = self.actual
+                self._expresion(nodo.callee)
+                a_cont = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
+                al_fin = actual.emitir_salto(OP_SALTO, linea)
+                actual.parchar_aqui(a_cont)
+                for argumento in nodo.argumentos:
+                    self._expresion(argumento)
+                actual.emitir(OP_LLAMAR, len(nodo.argumentos), linea=linea)
+                actual.parchar_aqui(al_fin)
+                return
             if isinstance(nodo.callee, NodoIndice) and MÉTODOS_PENDIENTES:
                 # Solo se rechaza lo que el motor en C todavía no sabe hacer: si no,
                 # sería un error en tiempo de ejecución en vez de una caída limpia.
@@ -840,7 +852,17 @@ class CompiladorNativo:
 
         elif tipo is NodoIndice:
             if nodo.seguro:
-                raise NoSoportadoNativo("el acceso seguro '?.' aún no está en el motor nativo", linea)
+                # [objeto]; si es nulo salta al fin (queda el nulo); si no,
+                # indice + INDICE como siempre.
+                actual = self.actual
+                self._expresion(nodo.objeto)
+                a_cont = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
+                al_fin = actual.emitir_salto(OP_SALTO, linea)
+                actual.parchar_aqui(a_cont)
+                self._expresion(nodo.indice)
+                actual.emitir(OP_INDICE, linea=linea)
+                actual.parchar_aqui(al_fin)
+                return
             self._expresion(nodo.objeto)
             self._expresion(nodo.indice)
             actual.emitir(OP_INDICE, linea=linea)
@@ -905,7 +927,14 @@ class CompiladorNativo:
             actual.parchar_aqui(hueco)
             return
         if operador == "??":
-            raise NoSoportadoNativo("el operador '??' aún no está en el motor nativo", linea)
+            # Igual que 'o' pero la condicion es "no es nulo": si lo de la
+            # izquierda no es nulo se conserva; si es nulo, se calcula lo otro.
+            self._expresion(nodo.izquierda)
+            hueco = actual.emitir_salto(OP_SALTO_NO_NULO_MANTENER, linea)
+            actual.emitir(OP_POP, linea=linea)
+            self._expresion(nodo.derecha)
+            actual.parchar_aqui(hueco)
+            return
         if operador == "o":
             self._expresion(nodo.izquierda)
             hueco = actual.emitir_salto(OP_SALTO_VERDAD_MANTENER, linea)

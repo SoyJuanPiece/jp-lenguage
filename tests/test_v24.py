@@ -5,13 +5,16 @@ from __future__ import annotations
 import io
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 
-from jp.compilar_nativo import NoSoportadoNativo, compilar_a_bytes
+from jp.compilar_nativo import compilar_a_bytes
 from jp.errores import ErrorJP
 from jp.interprete import Interprete
 from jp.lexer import tokenizar
 from jp.parser import parsear
 from jp.vm import MaquinaVM
+
+RAIZ = Path(__file__).resolve().parent.parent
 
 
 def ejecutar_en(maquina, codigo: str) -> str:
@@ -63,10 +66,30 @@ class TestAccesoSeguro(unittest.TestCase):
         with self.assertRaises(ErrorJP):
             parsear(tokenizar("variable u = {a: 1}\nu?.a = 2"))
 
-    def test_motor_c_lo_rechaza_limpio(self):
+    def test_motor_c_lo_compila(self):
+        # Desde la v1.16 el motor en C tambien sabe ?? y ?.: compila sin
+        # rechazar (opcode SALTO_NO_NULO_MANTENER en jpvm.c).
         for codigo in ("variable x = nulo ?? 3", "variable u = {a: nulo}\nvariable z = u?.a"):
-            with self.assertRaises(NoSoportadoNativo):
-                compilar_a_bytes(parsear(tokenizar(codigo)), "prueba")
+            self.assertTrue(compilar_a_bytes(parsear(tokenizar(codigo)), "prueba"))
+
+    @unittest.skipUnless((RAIZ / "motor-c" / "jpvm").exists(), "motor en C sin compilar")
+    def test_motor_c_lo_ejecuta_igual(self):
+        import subprocess
+        import sys
+        import tempfile
+        codigo = (
+            'variable u = {nombre: "Ana", dir: nulo}\n'
+            'muestra(nulo ?? "defecto", 5 ?? 9, u?.nombre, u?.dir?.ciudad, u?.dir?.ciudad ?? "sin")\n'
+        )
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = Path(carpeta) / "seguro.jp"
+            ruta.write_text(codigo, encoding="utf-8")
+            resultado = subprocess.run(
+                [sys.executable, "-m", "jp", "--c", str(ruta)],
+                cwd=str(RAIZ), capture_output=True, text=True, timeout=60,
+            )
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(resultado.stdout, "defecto 5 Ana nulo sin\n")
 
 
 if __name__ == "__main__":

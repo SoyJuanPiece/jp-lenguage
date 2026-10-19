@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.16.0 — **nativo seguro** (ver `CHANGELOG.md`). Nuevo:
+
+- ⚙️ **`??` y `?.` también en el motor en C** (opcode
+  `SALTO_NO_NULO_MANTENER`): lo de la v1.14 ya no cae a Python, corre
+  nativo con salida idéntica.
+
 v1.15.0 — **pruébalo** (ver `CHANGELOG.md`). Nuevo:
 
 - ✅ **Pruebas en JP para JP**: `biblioteca/pruebas.jp` (`afirmar_igual`,

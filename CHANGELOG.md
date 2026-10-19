@@ -1,5 +1,18 @@
 # Cambios de JP
 
+## 1.19.0 — «Web completa» (2026-10-19)
+
+- **Archivos estáticos**: la respuesta `{archivo: "ruta"}` sirve los bytes
+  con su tipo (HTML, CSS, SVG, imágenes...), y el framework gana
+  `app.estatico("/static", "publica")` con patrones comodín
+  (`/static/*` → `peticion.parametros.resto`). `biblioteca/ejemplo-web.jp`
+  ya sirve su portada y su CSS así (`biblioteca/publica/`).
+- **Cliente HTTP serio**: `pedir(url[, metodo, datos, cabeceras])` →
+  `{estado, cuerpo, json, cabeceras}`. No lanza por un 404 (el estado
+  viene en el diccionario), lee el JSON solo y manda dicts como JSON.
+  Con servidor y cliente en el mismo lenguaje, JP se habla a sí mismo.
+- `app.escuchar(puerto[, anfitrion])` admite `"0.0.0.0"`.
+
 ## 1.18.0 — «Formateador» (2026-10-19)
 
 - **`jp --formatear archivo.jp`** (y `--en-sitio` para reescribirlo):

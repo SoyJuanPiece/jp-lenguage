@@ -15,7 +15,7 @@ imprime(mates.factorial(6))
 | `colecciones.jp` | clases `Pila`, `Cola` y `Conjunto` (con `union`) |
 | `ia.jp` | clase `RedNeuronal` multicapa que aprende con backprop (el XOR incluido) |
 | `tabla.jp` | clase `Tabla` estilo pandas: `filtrar_con`, `ordenar_por`, `agrupar_por`, `agregar_columna`, `promedio_columna`... + `tabla_de_csv(ruta)` |
-| `web.jp` | mini-framework web: clase `Aplicacion` con rutas `/saludar/:nombre`, intermediarios, `json`, `pagina`, `redirigir` (demo: `ejemplo-web.jp`) |
+| `web.jp` | mini-framework web: clase `Aplicacion` con rutas `/saludar/:nombre` y comodines `/*`, intermediarios, `json`, `pagina`, `redirigir`, `archivo` y `app.estatico(...)` (demo: `ejemplo-web.jp`) |
 | `graficas.jp` | `grafica_barras`, `grafica_lineas`, `grafica_pastel` → texto SVG (con las primitivas `svg_*` del motor) |
 | `pruebas.jp` | afirmar en JP: `afirmar`, `afirmar_igual`, `afirmar_casi`, `afirmar_error`, `resumen` (con `jp --probar`) |
 

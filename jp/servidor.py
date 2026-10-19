@@ -9,14 +9,18 @@
 La peticion es un diccionario {metodo, ruta, consulta, cuerpo, cabeceras}
 mas `json` con el cuerpo ya leido si venia en JSON. La respuesta puede ser
 texto (200) o un diccionario {cuerpo, estado, tipo, cabeceras}; si el cuerpo
-es diccionario/lista sale como JSON automaticamente.
+es diccionario/lista sale como JSON automaticamente. Tambien vale
+{archivo: "ruta/al/archivo"}: se sirven sus bytes con el tipo que toque
+(estatico sin escribir codigo: imagenes, CSS, SVG...).
 """
 
 from __future__ import annotations
 
 import json
+import mimetypes
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .errores import ErrorEjecucion
@@ -76,6 +80,16 @@ def instalar(entorno: Entorno, invocar=None) -> None:
                     return self._responder(500, f"Error en el manejador: {error.mensaje}", "text/plain; charset=utf-8")
                 except Exception as error:  # el servidor no se cae por una peticion
                     return self._responder(500, f"Error en el manejador: {error}", "text/plain; charset=utf-8")
+                if isinstance(respuesta, dict) and isinstance(respuesta.get("archivo"), str):
+                    ruta_archivo = Path(respuesta["archivo"])
+                    if not ruta_archivo.is_file():
+                        return self._responder(404, "archivo no encontrado", "text/plain; charset=utf-8")
+                    tipo_archivo = mimetypes.guess_type(ruta_archivo.name)[0] or "application/octet-stream"
+                    return self._responder_bytes(
+                        int(respuesta.get("estado", 200)),
+                        ruta_archivo.read_bytes(),
+                        tipo_archivo,
+                    )
                 estado, datos, tipo = 200, "", "text/plain; charset=utf-8"
                 cabeceras_extra: dict = {}
                 if isinstance(respuesta, dict):
@@ -95,14 +109,17 @@ def instalar(entorno: Entorno, invocar=None) -> None:
                 self._responder(estado, datos, tipo, cabeceras_extra)
 
             def _responder(self, estado: int, datos: str, tipo: str, extra: dict | None = None) -> None:
-                crudo = datos.encode("utf-8")
+                self._responder_bytes(estado, datos.encode("utf-8"), tipo, extra)
+
+            def _responder_bytes(self, estado: int, crudo: bytes, tipo: str, extra: dict | None = None) -> None:
                 self.send_response(estado)
                 self.send_header("Content-Type", tipo)
                 self.send_header("Content-Length", str(len(crudo)))
                 for nombre, valor in (extra or {}).items():
                     self.send_header(nombre, valor)
                 self.end_headers()
-                self.wfile.write(crudo)
+                if crudo:
+                    self.wfile.write(crudo)
 
             def do_GET(self): self._atender("GET")
             def do_POST(self): self._atender("POST")

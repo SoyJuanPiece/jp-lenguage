@@ -17,18 +17,25 @@
 # devuelve lo mismo que respondería el servidor.
 
 # /saludar/:nombre contra /saludar/Ana → {nombre: "Ana"}; si no casa, nulo.
+# Un patron que termina en /* casa todo lo que siga: /static/* contra
+# /static/css/web.css → {resto: "css/web.css"}.
 funcion emparejar(patron, ruta) {
     variable partes_p = separar(patron, "/")
     variable partes_r = separar(ruta, "/")
-    si longitud(partes_p) != longitud(partes_r) { devuelve nulo }
     variable parametros = {}
     para i, parte en partes_p {
+        si parte == "*" {
+            parametros.resto = unir(sublista(partes_r, i), "/")
+            devuelve parametros
+        }
+        si i >= longitud(partes_r) { devuelve nulo }
         si empezar_con(parte, ":") {
             parametros[subtexto(parte, 1)] = partes_r[i]
         } sino {
             si parte != partes_r[i] { devuelve nulo }
         }
     }
+    si longitud(partes_r) != longitud(partes_p) { devuelve nulo }
     devuelve parametros
 }
 
@@ -43,6 +50,11 @@ funcion pagina(html, estado = 200) {
 
 funcion redirigir(destino) {
     devuelve {cuerpo: "", estado: 302, cabeceras: {Location: destino}}
+}
+
+# Servir un archivo tal cual (el servidor pone el tipo segun la extension).
+funcion archivo(ruta) {
+    devuelve {archivo: ruta}
 }
 
 clase Aplicacion {
@@ -92,8 +104,16 @@ clase Aplicacion {
         devuelve {cuerpo: {error: "ruta no encontrada", ruta: peticion.ruta}, estado: 404}
     }
 
-    funcion escuchar(puerto) {
-        imprime("Aplicación web escuchando en http://127.0.0.1:" + texto(puerto))
-        servir(puerto, este.atender)
+    # Sirve una carpeta entera: app.estatico("/static", "publica") hace que
+    # /static/estilo.css responda con publica/estilo.css.
+    funcion estatico(prefijo, carpeta) {
+        devuelve este.get(prefijo + "/*", funcion(p) {
+            devuelve archivo(carpeta + "/" + p.parametros.resto)
+        })
+    }
+
+    funcion escuchar(puerto, anfitrion = "127.0.0.1") {
+        imprime("Aplicación web escuchando en http://" + anfitrion + ":" + texto(puerto))
+        servir(puerto, este.atender, anfitrion)
     }
 }

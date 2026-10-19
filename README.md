@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.19.0 — **web completa** (ver `CHANGELOG.md`). Nuevo:
+
+- 🌐 **Web de verdad**: archivos estáticos con `app.estatico(...)` y
+  respuestas `{archivo: ruta}`, y cliente serio `pedir(...)` que
+  devuelve `{estado, cuerpo, json, cabeceras}` sin lanzar por un 404.
+
 v1.18.0 — **formateador** (ver `CHANGELOG.md`). Nuevo:
 
 - ✨ **`jp --formatear [--en-sitio]`**: todo el código con el mismo

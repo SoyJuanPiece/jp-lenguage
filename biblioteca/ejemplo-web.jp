@@ -11,8 +11,9 @@ app.usar(funcion(p) {
     visitas.total = visitas.total + 1
     devuelve nulo
 })
+app.estatico("/static", "biblioteca/publica")
 app.get("/", funcion(p) {
-    devuelve web.pagina("<h1>Mi sitio en JP</h1><p>Hecho con biblioteca/web.jp</p>")
+    devuelve web.archivo("biblioteca/publica/indice.html")
 })
 app.get("/saludar/:nombre", funcion(p) {
     devuelve web.pagina("<h1>Hola " + p.parametros.nombre + " 👋</h1>")

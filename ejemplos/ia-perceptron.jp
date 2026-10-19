@@ -1,0 +1,37 @@
+# IA desde cero: un perceptrón que aprende la tabla OR.
+# Sin librerías: solo listas, funciones y bucles de JP.
+# Aprende que [0,0] -> 0 y cualquier entrada con un 1 -> 1.
+
+funcion activar(suma) {
+    si suma >= 0 { devuelve 1 }
+    devuelve 0
+}
+
+funcion predecir(pesos, sesgo, punto) {
+    variable suma = sesgo
+    para i, peso en pesos {
+        suma = suma + peso * punto[i]
+    }
+    devuelve activar(suma)
+}
+
+variable datos = [[0, 0], [0, 1], [1, 0], [1, 1]]
+variable metas = [0, 1, 1, 1]
+variable pesos = [0, 0]
+variable sesgo = 0
+
+# Entrenamiento: 20 vueltas corrigiendo los pesos cuando se equivoca.
+para epoca en 1..20 {
+    para i, punto en datos {
+        variable error = metas[i] - predecir(pesos, sesgo, punto)
+        para j, entrada en punto {
+            pesos[j] = pesos[j] + error * entrada
+        }
+        sesgo = sesgo + error
+    }
+}
+
+imprime("pesos aprendidos:", pesos, "sesgo:", sesgo)
+para i, punto en datos {
+    imprime("{punto} -> {predecir(pesos, sesgo, punto)} (esperado {metas[i]})")
+}

@@ -85,7 +85,14 @@ def ejecutar_fuente(fuente: str, interprete: Interprete | MaquinaVM, ruta: str =
             from .nativo import instalar
 
             instalar(programa, interprete)
-        interprete.ejecutar(programa)
+        # 'importar' resuelve las rutas desde la carpeta del archivo actual
+        # (en el REPL y con -c, desde el directorio de trabajo).
+        directorio = None
+        if ruta not in ("<código>", "<repl>"):
+            candidato = Path(ruta).resolve().parent
+            if candidato.is_dir():
+                directorio = candidato
+        interprete.ejecutar(programa, directorio=directorio)
         return True
     except (ErrorLexico, ErrorSintaxis, ErrorEjecucion) as error:
         print(error.formatear(fuente), file=sys.stderr)

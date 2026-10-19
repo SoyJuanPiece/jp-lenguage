@@ -131,7 +131,7 @@ class Lexer:
             tipo = _SIGNOS_SIMPLES[c]
             if c == "*" and self._coincide("*"):
                 self._agregar(TToken.POTENCIA)          # **
-            elif self._coincide("="):
+            elif (c in _COMPUESTOS or c in "=<>") and self._coincide("="):
                 if c in _COMPUESTOS:
                     self._agregar(_COMPUESTOS[c])       # += -= *= /= %=
                 elif c == "=":
@@ -141,6 +141,8 @@ class Lexer:
                 else:
                     self._agregar(TToken.MAYOR_IGUAL)   # >=
             else:
+                # Ojo: ']' ')' '}' ',' ';' ':' '.' seguidos de '=' NO forman un
+                # signo compuesto: '[a]=1' son dos tokens, no un '>= ' raro.
                 self._agregar(tipo)
             return
 

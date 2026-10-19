@@ -10,25 +10,31 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 import time
+from pathlib import Path
 
 from .arbol import (
     Nodo,
     NodoAsignacion,
+    NodoAsignacionLista,
     NodoAsignarIndice,
     NodoBinario,
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
     NodoFuncion,
+    NodoImportar,
     NodoIntentar,
     NodoIndice,
     NodoInterpolacion,
     NodoLista,
+    NodoLanzar,
     NodoLlamada,
     NodoMientras,
     NodoNumero,
@@ -43,7 +49,7 @@ from .arbol import (
     NodoUnario,
     NodoVariable,
 )
-from .errores import ErrorEjecucion
+from .errores import ErrorEjecucion, ErrorJP
 
 
 # ----------------- Métodos de valor ("texto".mayusculas(), [1, 2].agregar(3), ...) -----------------
@@ -151,11 +157,15 @@ class Cierre:
     las funciones de los DOS motores con un solo isinstance.
     """
 
-    __slots__ = ("fun", "ambito")
+    __slots__ = ("fun", "ambito", "globales")
 
-    def __init__(self, fun, ambito) -> None:
+    def __init__(self, fun, ambito, globales=None) -> None:
         self.fun = fun
         self.ambito = ambito
+        # Diccionario de globales del motor/módulo donde se definió la función
+        # (la VM lo usa para que las funciones de un módulo importado sigan
+        # viendo SUS globales al ser llamadas desde otro archivo).
+        self.globales = globales
 
     def __repr__(self) -> str:
         return f"<fun {getattr(self.fun, 'nombre', '') or '<anónima>'}>"
@@ -221,6 +231,9 @@ def evaluar_paso(valor: object, linea: int) -> int:
     return paso
 
 
+_MAX_LLAMADAS = 6000  # tope del lenguaje, igual que _MAX_FRAMES de la VM
+
+
 # ----------------- Intérprete -----------------
 
 class Interprete:
@@ -232,6 +245,12 @@ class Interprete:
         from .archivos import instalar as _instalar_archivos
         _instalar_archivos(self.global_env)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
+        self._profundidad = 0  # llamadas JP activas (tope _MAX_LLAMADAS, como la VM)
+        # Módulos importados: ruta resuelta -> nombres exportados; y pila de
+        # rutas en curso para detectar importaciones circulares.
+        self._modulos_cache: dict[str, dict] = {}
+        self._importando: set[str] = set()
+        self.directorio_base: Path = Path.cwd()
         # Nombres globales instalados por el JIT (jp.nativo): la declaración
         # JP no los pisa para que la versión nativa siga viva.
         self.resguardadas: set[str] = set()
@@ -248,6 +267,9 @@ class Interprete:
             NodoMientras: self._ej_mientras,
             NodoPara: self._ejecutar_para,
             NodoFuncion: self._ej_funcion,
+            NodoLanzar: self._ej_lanzar,
+            NodoImportar: self._ej_importar,
+            NodoDeclaracionLista: self._ej_declaracion_lista,
             NodoRetorna: self._ej_retorna,
             NodoRomper: self._ej_romper,
             NodoContinuar: self._ej_continuar,
@@ -268,12 +290,20 @@ class Interprete:
             NodoDiccionario: self._ev_diccionario,
             NodoInterpolacion: self._ev_interpolacion,
             NodoLlamada: self._ev_llamada,
+            NodoAsignacionLista: self._ev_asignacion_lista,
             NodoFuncion: self._ev_funcion,  # función anónima usada como valor
         }
 
     # ---------- API pública ----------
 
-    def ejecutar(self, programa: NodoPrograma) -> None:
+    def ejecutar(self, programa: NodoPrograma, directorio: object = None) -> None:
+        # El tope del LENGUAJE es _MAX_LLAMADAS llamadas JP (igual que la VM);
+        # el de Python debe quedar por encima para no cortar antes de tiempo
+        # (cada llamada JP gasta varios marcos de Python en el árbol).
+        if sys.getrecursionlimit() < 150000:
+            sys.setrecursionlimit(150000)
+        if directorio is not None:
+            self.directorio_base = Path(str(directorio))
         self.ultimo_valor = None
         try:
             self._ejecutar_bloque(programa.sentencias, self.global_env)
@@ -306,6 +336,84 @@ class Interprete:
         if nodo.inicializador is not None:
             valor = self._evaluar(nodo.inicializador, entorno)
         entorno.definir(nodo.nombre, valor)
+
+    def _desestructurar(self, valor: object, nombres: list[str], linea: int) -> list:
+        if not isinstance(valor, list):
+            raise ErrorEjecucion(
+                f"la desestructuración '[a, b] = ...' espera una lista, no {jp_a_texto(valor)!r}", linea
+            )
+        if len(valor) != len(nombres):
+            raise ErrorEjecucion(
+                f"la desestructuración esperaba {len(nombres)} valor(es) y recibió {len(valor)}", linea
+            )
+        return list(valor)
+
+    def _ej_declaracion_lista(self, nodo: NodoDeclaracionLista, entorno: Entorno) -> None:
+        valores = self._desestructurar(
+            self._evaluar(nodo.inicializador, entorno), nodo.nombres, nodo.linea
+        )
+        for nombre, valor in zip(nodo.nombres, valores):
+            entorno.definir(nombre, valor)
+
+    def _ev_asignacion_lista(self, nodo: NodoAsignacionLista, entorno: Entorno):
+        valores = self._desestructurar(self._evaluar(nodo.valor, entorno), nodo.nombres, nodo.linea)
+        resultado = list(valores)
+        for nombre, valor in zip(nodo.nombres, valores):
+            entorno.asignar(nombre, valor, nodo.linea)
+        return resultado
+
+    def _ej_lanzar(self, nodo: NodoLanzar, entorno: Entorno) -> None:
+        valor = self._evaluar(nodo.expresion, entorno)
+        raise ErrorEjecucion(jp_a_texto(valor), nodo.linea)
+
+    def _ej_importar(self, nodo: NodoImportar, entorno: Entorno) -> None:
+        """importar "x.jp" [como n]: ejecuta el módulo una sola vez y trae sus nombres."""
+        ruta = (self.directorio_base / nodo.ruta).resolve()
+        if not ruta.is_file():
+            raise ErrorEjecucion(
+                f"no se encontró el módulo '{nodo.ruta}' (buscado en {ruta})", nodo.linea
+            )
+        clave = str(ruta)
+        if clave in self._modulos_cache:
+            exportaciones = self._modulos_cache[clave]
+        elif clave in self._importando:
+            raise ErrorEjecucion(
+                f"importación circular detectada: '{nodo.ruta}' ya se está importando", nodo.linea
+            )
+        else:
+            self._importando.add(clave)
+            try:
+                from .lexer import tokenizar
+                from .parser import parsear
+
+                fuente = ruta.read_text(encoding="utf-8")
+                sub = Interprete()
+                sub._modulos_cache = self._modulos_cache   # una sola ejecución en total
+                sub._importando = self._importando
+                antes = dict(sub.global_env.variables)
+                sub.ejecutar(parsear(tokenizar(fuente)), directorio=ruta.parent)
+                exportaciones = {
+                    nombre: valor
+                    for nombre, valor in sub.global_env.variables.items()
+                    if nombre not in antes or antes[nombre] is not valor
+                }
+                self._modulos_cache[clave] = exportaciones
+            except ErrorEjecucion:
+                raise
+            except (OSError, ErrorJP) as error:
+                detalle = getattr(error, "mensaje", str(error))
+                linea_mod = getattr(error, "linea", 0)
+                donde = f" (línea {linea_mod} del módulo)" if linea_mod else ""
+                raise ErrorEjecucion(
+                    f"error en el módulo '{nodo.ruta}'{donde}: {detalle}", nodo.linea
+                ) from None
+            finally:
+                self._importando.discard(clave)
+        if nodo.alias is not None:
+            entorno.definir(nodo.alias, exportaciones)
+        else:
+            for nombre, valor in exportaciones.items():
+                entorno.definir(nombre, valor)
 
     def _ej_expresion(self, nodo: NodoExpresion, entorno: Entorno) -> None:
         self.ultimo_valor = self._evaluar(nodo.expresion, entorno)
@@ -343,12 +451,20 @@ class Interprete:
         El nombre del error solo vive dentro del bloque 'atrapa'.
         """
         try:
-            self._ejecutar(nodo.cuerpo, entorno)
-        except ErrorEjecucion as error:
-            entorno_error = Entorno(padre=entorno)
-            if nodo.nombre_error is not None:
-                entorno_error.definir(nodo.nombre_error, error.mensaje)
-            self._ejecutar(nodo.captura, entorno_error)
+            try:
+                self._ejecutar(nodo.cuerpo, entorno)
+            except ErrorEjecucion as error:
+                if nodo.captura is None:
+                    raise
+                entorno_error = Entorno(padre=entorno)
+                if nodo.nombre_error is not None:
+                    entorno_error.definir(nodo.nombre_error, error.mensaje)
+                self._ejecutar(nodo.captura, entorno_error)
+        finally:
+            # 'finalmente' corre siempre: sin error, tras el 'atrapa' y antes
+            # de que un devuelve/romper/continuar salga del bloque.
+            if nodo.finalmente is not None:
+                self._ejecutar(nodo.finalmente, entorno)
 
     def _ej_mientras(self, nodo: NodoMientras, entorno: Entorno) -> None:
         while es_verdad(self._evaluar(nodo.condicion, entorno)):
@@ -391,6 +507,24 @@ class Interprete:
             raise ErrorEjecucion(
                 f"'para ... en' espera una lista, cadena, diccionario o número, no {jp_a_texto(iterable)!r}", nodo.linea
             )
+        if nodo.variable2 is not None:
+            # para i, valor en lista -> (posición desde 0, valor)
+            # para clave, valor en dict -> (clave, valor)
+            if isinstance(iterable, dict):
+                pares: list = list(iterable.items())
+            else:
+                pares = list(enumerate(elementos))
+            for primero, segundo in pares:
+                cuerpo_env = Entorno(padre=entorno)
+                cuerpo_env.definir(nodo.variable, primero)
+                cuerpo_env.definir(nodo.variable2, segundo)
+                try:
+                    self._ejecutar_bloque(nodo.cuerpo.sentencias, cuerpo_env)
+                except _Romper:
+                    break
+                except _Continuar:
+                    continue
+            return
         for elemento in elementos:
             cuerpo_env = Entorno(padre=entorno)
             cuerpo_env.definir(nodo.variable, elemento)
@@ -667,15 +801,30 @@ class Interprete:
 
     def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int) -> object:
         declaracion = funcion.declaracion
-        if len(argumentos) != len(declaracion.parametros):
+        defectos = declaracion.defectos or [None] * len(declaracion.parametros)
+        obligatorios = sum(1 for d in defectos if d is None)
+        if not obligatorios <= len(argumentos) <= len(declaracion.parametros):
+            espera = (
+                f"{obligatorios} a {len(declaracion.parametros)}"
+                if obligatorios != len(declaracion.parametros)
+                else f"{len(declaracion.parametros)}"
+            )
             raise ErrorEjecucion(
                 f"la función '{declaracion.nombre or '<anónima>'}' espera "
-                f"{len(declaracion.parametros)} argumento(s), recibió {len(argumentos)}",
+                f"{espera} argumento(s), recibió {len(argumentos)}",
                 linea,
             )
+        if self._profundidad >= _MAX_LLAMADAS:
+            raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
         entorno_local = Entorno(padre=funcion.cierre)
-        for nombre, valor in zip(declaracion.parametros, argumentos):
-            entorno_local.definir(nombre, valor)
+        for indice, nombre in enumerate(declaracion.parametros):
+            if indice < len(argumentos):
+                entorno_local.definir(nombre, argumentos[indice])
+            else:
+                # El defecto se evalúa en el ámbito local: puede usar los
+                # parámetros anteriores (funcion f(a, b = a + 1) { ... }).
+                entorno_local.definir(nombre, self._evaluar(defectos[indice], entorno_local))
+        self._profundidad += 1
         try:
             self._ejecutar_bloque(declaracion.cuerpo.sentencias, entorno_local)
         except Retornar as retorno:
@@ -685,6 +834,8 @@ class Interprete:
             raise ErrorEjecucion("'romper' fuera de un bucle", senal.linea) from None
         except _Continuar as senal:
             raise ErrorEjecucion("'continuar' fuera de un bucle", senal.linea) from None
+        finally:
+            self._profundidad -= 1
         return None
 
     # ---------- helpers ----------

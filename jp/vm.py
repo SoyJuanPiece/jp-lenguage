@@ -16,10 +16,12 @@ Semántica idéntica al intérprete de árbol (jp.interprete):
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .arbol import NodoPrograma
 from .bytecode import Chunk, Codigo
 from .compilador import FunCerrada, compilar
-from .errores import ErrorEjecucion
+from .errores import ErrorEjecucion, ErrorJP
 from .interprete import (
     Cierre,
     Entorno,
@@ -92,10 +94,16 @@ class MaquinaVM:
         # Nombres globales instalados por el JIT (jp.nativo): DECLARAR no los
         # pisa para que la versión nativa siga viva durante la ejecución.
         self.resguardadas: set[str] = set()
+        # Módulos importados (paridad con el árbol): una ejecución por ruta.
+        self._modulos_cache: dict[str, dict] = {}
+        self._importando: set[str] = set()
+        self.directorio_base: Path = Path.cwd()
 
     # ---------------- API pública ----------------
 
-    def ejecutar(self, programa: NodoPrograma) -> None:
+    def ejecutar(self, programa: NodoPrograma, directorio: object = None) -> None:
+        if directorio is not None:
+            self.directorio_base = Path(str(directorio))
         self.ultimo_valor = None
         self.pila.clear()
         self.frames.clear()
@@ -116,12 +124,80 @@ class MaquinaVM:
                 # Se restaura pila, frames y ámbito, y se salta al 'atrapa'.
                 if not self.manejadores:
                     raise
-                ops_manejador, destino, largo_pila, largo_frames, ambito = self.manejadores.pop()
+                ops_manejador, destino, largo_pila, largo_frames, ambito, globales = self.manejadores.pop()
                 del pila[largo_pila:]
                 del self.frames[largo_frames:]
                 self.ambito = ambito
+                self.globals = globales
                 self.error_actual = error.mensaje
                 op = ops_manejador[destino]
+
+    def _correr_ops(self, ops) -> None:
+        """Corre un chunk hasta el final (el valor queda en la pila).
+
+        Lo usan las llamadas hechas desde nativas (mapear, filtrar...) y los
+        valores por defecto: los 'intenta' internos se atrapan aquí; los de
+        fuera, no (el error sube tal cual).
+        """
+        pila = self.pila
+        base = len(self.manejadores)
+        op = ops[0]
+        while op is not None:
+            try:
+                op = op()
+            except ErrorEjecucion as error:
+                if len(self.manejadores) <= base:
+                    raise
+                ops_manejador, destino, largo_pila, largo_frames, ambito, globales = self.manejadores.pop()
+                del pila[largo_pila:]
+                del self.frames[largo_frames:]
+                self.ambito = ambito
+                self.globals = globales
+                self.error_actual = error.mensaje
+                op = ops_manejador[destino]
+
+    def _evaluar_defecto(self, chunk_defecto, ambito_local, globales, linea: int):
+        """Ejecuta el mini-chunk de un valor por defecto en el ámbito local."""
+        ops_defecto = self._compilar_ops(chunk_defecto)
+        pila = self.pila
+        ambito_previo, globales_previos = self.ambito, self.globals
+        alto_pila, n_frames = len(pila), len(self.frames)
+        self.frames.append([None, ambito_previo, alto_pila, globales_previos])
+        if globales is not None:
+            self.globals = globales
+        self.ambito = ambito_local
+        try:
+            self._correr_ops(ops_defecto)
+        except BaseException:
+            del self.frames[n_frames:]
+            del pila[alto_pila:]
+            self.ambito, self.globals = ambito_previo, globales_previos
+            raise
+        return pila.pop()
+
+    def _ambito_de_llamada(self, callee, argumentos: list, linea: int):
+        """Crea el ámbito local: argumentos + defectos de los que falten."""
+        fun = callee.fun
+        if not fun.aridad_minima <= len(argumentos) <= fun.aridad:
+            espera = (
+                f"{fun.aridad_minima} a {fun.aridad}"
+                if fun.aridad_minima != fun.aridad
+                else f"{fun.aridad}"
+            )
+            raise ErrorEjecucion(
+                f"la función '{fun.nombre or '<anónima>'}' espera {espera} "
+                f"argumento(s), recibió {len(argumentos)}",
+                linea,
+            )
+        ambito = Ambito(callee.ambito)
+        for indice, nombre in enumerate(fun.parametros):
+            if indice < len(argumentos):
+                ambito.vars[nombre] = argumentos[indice]
+            else:
+                ambito.vars[nombre] = self._evaluar_defecto(
+                    fun.defectos[indice], ambito, callee.globales, linea
+                )
+        return ambito
 
     def _llamar_valor(self, callee: object, argumentos: list, linea: int = 0) -> object:
         """Llama a un valor-función desde una nativa de orden superior.
@@ -142,38 +218,77 @@ class MaquinaVM:
         if tipo is not Cierre:
             raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", linea)
         fun = callee.fun
-        if len(argumentos) != fun.aridad:
-            raise ErrorEjecucion(
-                f"la función '{fun.nombre or '<anónima>'}' espera {fun.aridad} argumento(s), "
-                f"recibió {len(argumentos)}",
-                linea,
-            )
         if len(self.frames) >= _MAX_FRAMES:
             raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
         ops_fun = fun.chunk.ops
         if ops_fun is None:
             ops_fun = self._compilar_ops(fun.chunk)
-        self.frames.append([None, self.ambito, len(pila)])
-        self.ambito = Ambito(callee.ambito)
-        for nombre, valor in zip(fun.parametros, argumentos):
-            self.ambito.vars[nombre] = valor
-        # Los 'intenta' que viven dentro de esta llamada se atrapan aquí: el
-        # bucle de fuera no puede reanudar el chunk de esta función.
-        manejadores_de_fuera = len(self.manejadores)
-        op = ops_fun[0]
-        while op is not None:
-            try:
-                op = op()
-            except ErrorEjecucion as error:
-                if len(self.manejadores) <= manejadores_de_fuera:
-                    raise
-                ops_manejador, destino, largo_pila, largo_frames, ambito = self.manejadores.pop()
-                del pila[largo_pila:]
-                del self.frames[largo_frames:]
-                self.ambito = ambito
-                self.error_actual = error.mensaje
-                op = ops_manejador[destino]
+        ambito_local = self._ambito_de_llamada(callee, argumentos, linea)
+        self.frames.append([None, self.ambito, len(pila), self.globals])
+        if callee.globales is not None:
+            self.globals = callee.globales
+        self.ambito = ambito_local
+        # Los 'intenta' de dentro se atrapan en _correr_ops; los de fuera, no.
+        self._correr_ops(ops_fun)
         return pila.pop()
+
+    # ---------------- módulos (importar) ----------------
+
+    def _importar(self, ruta_texto: str, alias: str | None, linea: int) -> None:
+        """importar "x.jp" [como n]: paridad con el intérprete de árbol."""
+        ruta = (self.directorio_base / ruta_texto).resolve()
+        if not ruta.is_file():
+            raise ErrorEjecucion(
+                f"no se encontró el módulo '{ruta_texto}' (buscado en {ruta})", linea
+            )
+        clave = str(ruta)
+        if clave in self._modulos_cache:
+            exportaciones = self._modulos_cache[clave]
+        elif clave in self._importando:
+            raise ErrorEjecucion(
+                f"importación circular detectada: '{ruta_texto}' ya se está importando", linea
+            )
+        else:
+            self._importando.add(clave)
+            try:
+                from .lexer import tokenizar
+                from .parser import parsear
+
+                fuente = ruta.read_text(encoding="utf-8")
+                sub = MaquinaVM()
+                sub._modulos_cache = self._modulos_cache
+                sub._importando = self._importando
+                antes = dict(sub.globals)
+                sub.ejecutar(parsear(tokenizar(fuente)), directorio=ruta.parent)
+                exportaciones = {
+                    nombre: valor
+                    for nombre, valor in sub.globals.items()
+                    if nombre not in antes or antes[nombre] is not valor
+                }
+                self._modulos_cache[clave] = exportaciones
+            except ErrorEjecucion:
+                raise
+            except (OSError, ErrorJP) as error:
+                detalle = getattr(error, "mensaje", str(error))
+                linea_mod = getattr(error, "linea", 0)
+                donde = f" (línea {linea_mod} del módulo)" if linea_mod else ""
+                raise ErrorEjecucion(
+                    f"error en el módulo '{ruta_texto}'{donde}: {detalle}", linea
+                ) from None
+            finally:
+                self._importando.discard(clave)
+        if alias is not None:
+            self._definir(alias, exportaciones)
+        else:
+            for nombre, valor in exportaciones.items():
+                self._definir(nombre, valor)
+
+    def _definir(self, nombre: str, valor: object) -> None:
+        if self.ambito is None:
+            if nombre not in self.resguardadas:
+                self.globals[nombre] = valor
+        else:
+            self.ambito.vars[nombre] = valor
 
     # ---------------- compilación a cierres ----------------
 
@@ -207,7 +322,7 @@ class MaquinaVM:
             constante = chunk.constantes[operando]
             if type(constante) is FunCerrada:
                 def op():
-                    pila.append(Cierre(constante, self.ambito))
+                    pila.append(Cierre(constante, self.ambito, self.globals))
                     return lista[sig]
             else:
                 def op():
@@ -659,9 +774,23 @@ class MaquinaVM:
         # ---------- iteración (para ... en) ----------
 
         if codigo is Codigo.ITERAR:
+            en_pares = bool(operando)  # 'para a, b en ...': (índice/clave, valor)
+
             def op():
                 v = pila.pop()
-                if isinstance(v, (list, dict, str)):
+                if en_pares:
+                    if isinstance(v, dict):
+                        pila.append(IteradorJP(iter(v.items())))
+                    elif isinstance(v, (list, str)):
+                        pila.append(IteradorJP(iter(enumerate(v))))
+                    elif isinstance(v, (int, float)):
+                        pila.append(IteradorJP(iter(enumerate(range(1, int(v) + 1)))))
+                    else:
+                        raise ErrorEjecucion(
+                            f"'para ... en' espera una lista, cadena, diccionario o número, no {jp_a_texto(v)!r}",
+                            linea,
+                        )
+                elif isinstance(v, (list, dict, str)):
                     pila.append(IteradorJP(iter(v)))
                 elif isinstance(v, (int, float)):  # 'para i en 5' -> 1..5 (como el árbol)
                     pila.append(IteradorJP(iter(range(1, int(v) + 1))))
@@ -674,7 +803,11 @@ class MaquinaVM:
             return op
 
         if codigo is Codigo.ITERAR_SIGUIENTE:
-            nombre, fin = operando
+            if len(operando) == 3:
+                nombre, nombre2, fin = operando
+            else:
+                nombre, fin = operando
+                nombre2 = None
 
             def op():
                 it = pila.pop()
@@ -683,10 +816,15 @@ class MaquinaVM:
                 except StopIteration:
                     pila.append(it)  # el centinela lo quita el POP posterior
                     return lista[fin]
-                if self.ambito is None:  # defensivo: el 'para' siempre abre ámbito
-                    self.globals[nombre] = valor
+                if nombre2 is None:
+                    valores = ((nombre, valor),)
                 else:
-                    self.ambito.vars[nombre] = valor
+                    valores = ((nombre, valor[0]), (nombre2, valor[1]))
+                for nombre_v, valor_v in valores:
+                    if self.ambito is None:  # defensivo: el 'para' siempre abre ámbito
+                        self.globals[nombre_v] = valor_v
+                    else:
+                        self.ambito.vars[nombre_v] = valor_v
                 pila.append(it)
                 pila.append(valor)
                 return lista[sig]
@@ -714,7 +852,7 @@ class MaquinaVM:
 
             def op():
                 self.manejadores.append(
-                    (lista, destino, len(pila), len(frames), self.ambito)
+                    (lista, destino, len(pila), len(frames), self.ambito, self.globals)
                 )
                 return lista[sig]
             return op
@@ -732,6 +870,45 @@ class MaquinaVM:
                 return lista[sig]
             return op
 
+        if codigo is Codigo.LANZAR:
+            def op():
+                raise ErrorEjecucion(jp_a_texto(pila.pop()), linea)
+            return op
+
+        if codigo is Codigo.RELANZAR:
+            def op():
+                raise ErrorEjecucion(str(self.error_actual), linea)
+            return op
+
+        if codigo is Codigo.IMPORTAR:
+            ruta_importar, alias_importar = operando
+
+            def op():
+                self._importar(ruta_importar, alias_importar, linea)
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.DESESTRUCTURAR:
+            nombres_des = operando
+
+            def op():
+                valores = self._valores_lista(pila.pop(), nombres_des, linea)
+                for nombre_v, valor_v in zip(nombres_des, valores):
+                    self._definir(nombre_v, valor_v)
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.DESESTRUCTURAR_ASIG:
+            nombres_asig = operando
+
+            def op():
+                # La lista queda en la pila: es el valor de la expresión.
+                valores = self._valores_lista(pila[-1], nombres_asig, linea)
+                for nombre_v, valor_v in zip(nombres_asig, valores):
+                    self._asignar_nombre(nombre_v, valor_v, linea)
+                return lista[sig]
+            return op
+
         # ---------- llamadas y retorno ----------
 
         if codigo is Codigo.LLAMAR:
@@ -745,22 +922,16 @@ class MaquinaVM:
                 tipo = type(callee)
                 if tipo is Cierre:
                     fun = callee.fun
-                    if n != fun.aridad:
-                        raise ErrorEjecucion(
-                            f"la función '{fun.nombre or '<anónima>'}' espera {fun.aridad} "
-                            f"argumento(s), recibió {n}",
-                            linea,
-                        )
                     if len(frames) >= _MAX_FRAMES:
                         raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
                     ops_fun = fun.chunk.ops
                     if ops_fun is None:
                         ops_fun = self._compilar_ops(fun.chunk)
-                    frames.append([lista[reanudar], self.ambito, len(pila)])
-                    self.ambito = Ambito(callee.ambito)  # padre = ámbito de definición
-                    locales = self.ambito.vars
-                    for nombre_arg, valor in zip(fun.parametros, argumentos):
-                        locales[nombre_arg] = valor
+                    ambito_local = self._ambito_de_llamada(callee, argumentos, linea)
+                    frames.append([lista[reanudar], self.ambito, len(pila), self.globals])
+                    if callee.globales is not None:
+                        self.globals = callee.globales
+                    self.ambito = ambito_local  # padre = ámbito de definición
                     return ops_fun[0]
                 if tipo is FuncionNativa:
                     if callee.aridad is not None and n != callee.aridad:
@@ -791,6 +962,8 @@ class MaquinaVM:
                     return None
                 frame = frames.pop()
                 self.ambito = frame[1]
+                if len(frame) > 3:
+                    self.globals = frame[3]
                 # Volver al alto de pila del llamador: descarta lo que hayan
                 # dejado atrás bucles ('para' deja su iterador) o ámbitos.
                 del pila[frame[2]:]
@@ -843,6 +1016,35 @@ class MaquinaVM:
             return lambda: (pila.append(False), lista[sig])[1]
 
         raise ErrorEjecucion(f"instrucción desconocida: {codigo}", linea)  # pragma: no cover
+
+    # ---------------- helpers de nombres y desestructuración ----------------
+
+    @staticmethod
+    def _valores_lista(valor: object, nombres, linea: int) -> list:
+        """Valida la lista de una desestructuración (mismos errores que el árbol)."""
+        if not isinstance(valor, list):
+            raise ErrorEjecucion(
+                f"la desestructuración '[a, b] = ...' espera una lista, no {jp_a_texto(valor)!r}", linea
+            )
+        if len(valor) != len(nombres):
+            raise ErrorEjecucion(
+                f"la desestructuración esperaba {len(nombres)} valor(es) y recibió {len(valor)}", linea
+            )
+        return list(valor)
+
+    def _asignar_nombre(self, nombre: str, valor: object, linea: int) -> None:
+        ambito = self.ambito
+        while ambito is not None:
+            if nombre in ambito.vars:
+                ambito.vars[nombre] = valor
+                return
+            ambito = ambito.padre
+        if nombre in self.globals:
+            self.globals[nombre] = valor
+            return
+        raise ErrorEjecucion(
+            f"variable no definida: '{nombre}' (usa 'var' para declararla)", linea
+        )
 
     # ---------------- helpers de índices (misma semántica que el árbol) ----------------
 

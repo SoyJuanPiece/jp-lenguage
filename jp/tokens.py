@@ -69,6 +69,9 @@ class TToken(Enum):
     CASO = auto()         # caso
     INTENTA = auto()      # intenta
     ATRAPA = auto()       # atrapa
+    FINALMENTE = auto()   # finalmente
+    LANZAR = auto()       # lanzar
+    IMPORTAR = auto()     # importar
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -108,6 +111,9 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "caso": TToken.CASO,
     "intenta": TToken.INTENTA,
     "atrapa": TToken.ATRAPA,
+    "finalmente": TToken.FINALMENTE,
+    "lanzar": TToken.LANZAR,
+    "importar": TToken.IMPORTAR,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -166,5 +172,8 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.CASO: "'caso'",
     TToken.INTENTA: "'intenta'",
     TToken.ATRAPA: "'atrapa'",
+    TToken.FINALMENTE: "'finalmente'",
+    TToken.LANZAR: "'lanzar'",
+    TToken.IMPORTAR: "'importar'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

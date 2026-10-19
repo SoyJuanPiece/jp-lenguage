@@ -35,10 +35,14 @@ from .arbol import (
     NodoDiccionario,
     NodoElegir,
     NodoExpresion,
+    NodoAsignacionLista,
+    NodoDeclaracionLista,
     NodoFuncion,
+    NodoImportar,
     NodoIndice,
     NodoIntentar,
     NodoInterpolacion,
+    NodoLanzar,
     NodoLista,
     NodoLlamada,
     NodoMientras,
@@ -535,6 +539,15 @@ class CompiladorNativo:
         elif tipo is NodoFuncion:
             self._declarar_funcion(nodo)
 
+        elif tipo is NodoImportar:
+            raise NoSoportadoNativo("los módulos ('importar') aún no están en el motor nativo", linea)
+
+        elif tipo is NodoLanzar:
+            raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)
+
+        elif tipo is NodoDeclaracionLista:
+            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
+
         elif tipo is NodoExpresion:
             self._expresion(nodo.expresion)
             actual.emitir(OP_EXPR_SENT, linea=linea)
@@ -621,6 +634,8 @@ class CompiladorNativo:
                 actual.parchar_aqui(hueco)
 
         elif tipo is NodoIntentar:
+            if nodo.finalmente is not None or nodo.captura is None:
+                raise NoSoportadoNativo("'finalmente' aún no está en el motor nativo", linea)
             manejador = actual.emitir(OP_MANEJAR, 0, linea=linea)
             hueco = len(actual.palabras) - 1
             self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
@@ -682,6 +697,10 @@ class CompiladorNativo:
         actual.emitir(OP_POP, linea=linea)
 
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
+        if any(d is not None for d in getattr(nodo, "defectos", []) or []):
+            raise NoSoportadoNativo(
+                "los valores por defecto aún no están en el motor nativo", nodo.linea
+            )
         # los parámetros también pueden acabar en una closure: si una función
         # anidada los usa, el parámetro tiene que vivir en una celda desde el
         # primer instante (si no, la closure capturaría el valor crudo).
@@ -707,6 +726,8 @@ class CompiladorNativo:
         return indice
 
     def _para(self, nodo: NodoPara) -> None:
+        if nodo.variable2 is not None:
+            raise NoSoportadoNativo("'para a, b en' aún no está en el motor nativo", nodo.linea)
         actual = self.actual
         linea = nodo.linea
         slot_iter = actual.reservar()
@@ -838,6 +859,9 @@ class CompiladorNativo:
         elif tipo is NodoFuncion:
             indice = self._compilar_funcion(nodo)
             actual.emitir(OP_CIERRE, indice, linea=linea)
+
+        elif tipo is NodoAsignacionLista:
+            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
 
         elif tipo is NodoDiccionario:
             for clave, valor in nodo.pares:

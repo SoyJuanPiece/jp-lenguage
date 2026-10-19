@@ -14,6 +14,8 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - 🎯 Decisiones claras: `elegir n { caso 1 { ... } sino { ... } }`
 - 🛡️ Errores que no tumban el programa: `intenta { ... } atrapa error { ... }`
 - ⚡ Azúcar cómodo: `x += 1`, `2 ** 10`, `promedio *= 2`
+- 📦 Módulos (v1.6): `importar "utilidades.jp" como util` y `util.doble(2)`
+- 🎁 Extras v1.6: valores por defecto, desestructuración `[a, b] = [b, a]`, `lanzar` y `finalmente`
 
 ```
                                   ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
@@ -110,6 +112,27 @@ variable triple = funcion(x) { devuelve x * 3 }
 variable fs = [funcion(x) { devuelve x + 1 }, triple]
 imprime(fs[1](5))        # => 15
 ```
+
+### Módulos, valores por defecto y más (v1.6)
+
+```jp
+importar "utilidades.jp" como util     # otro archivo, ejecutado una sola vez
+imprime(util.doble(21))                # sus funciones ven SUS globales
+
+funcion saluda(nombre, saludo = "Hola") { devuelve saludo + ", " + nombre }
+imprime(saluda("Ana"))                 # Hola, Ana
+
+variable [a, b] = [1, 2]               # desestructuración
+[a, b] = [b, a]                        # intercambio sin variable temporal
+
+para i, valor en ["x", "y"] { imprime(i, valor) }        # posición y valor
+para clave, valor en {a: 1} { imprime(clave, valor) }    # en diccionarios
+
+intenta { lanzar "fallo mío" } atrapa e { imprime(e) } finalmente { imprime("siempre") }
+```
+
+`lanzar expr` crea un error propio atrapable; `finalmente` se ejecuta
+siempre (haya error o no, y antes de que un `devuelve` salga de la función).
 
 ### Elegir (switch) — sin caída entre casos
 
@@ -412,7 +435,7 @@ hay resultados silenciosamente distintos. (Los enteros de más de 64 bits
 también se rechazan, porque Python usa precisión arbitraria y el nativo no.)
 
 El motor se compila solo en GitHub Actions (`.github/workflows/motor-c.yml`)
-en cada push: corre la suite completa, compara la salida de los 23 ejemplos
+en cada push: corre la suite completa, compara la salida de los 26 ejemplos
 Python vs C y publica `jpvm` (más binarios de ejemplo autónomos) como
 **artefacto descargable** del workflow.
 
@@ -447,11 +470,27 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Módulos: `importar "utilidades.jp"` y biblioteca compartida
+- Llevar lo nuevo de la v1.6 (módulos, defectos, `finalmente`...) también al motor en C
 - Clases y objetos, o algo más sencillo: `objeto` + métodos
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.6.0 — **programas que se componen** (ver `CHANGELOG.md`). Nuevo, con la
+misma salida en el árbol y en la VM (280 tests, 28 nuevos de paridad):
+
+- 📦 **Módulos**: `importar "utilidades.jp" como util` → `util.doble(2)`
+  (también sin `como`); cada módulo se ejecuta una vez, con sus propios
+  globales, y los ciclos se detectan. Ejemplo: `ejemplos/modulos.jp`.
+- 🎁 **Valores por defecto** (`funcion f(a, b = 2)`), **desestructuración**
+  (`variable [a, b] = [1, 2]`, `[a, b] = [b, a]`), **`para i, valor en lista`**
+  y **`para clave, valor en diccionario`**, **`lanzar "error"`** y
+  **`finalmente`** (corre siempre, también antes de un `devuelve`).
+- 🔁 **Recursión unificada**: 6000 llamadas en los dos motores (el árbol ya no
+  corta antes que la VM) y arreglo del lexer para `lista[0]=1` sin espacios.
+- 🤖 Ejemplo de IA sin librerías: `ejemplos/ia-perceptron.jp` aprende la tabla OR.
+- El motor en C y el JIT aún no tienen lo nuevo de esta versión: se **niegan
+  con un mensaje claro** y el CLI sigue con el motor de Python.
 
 v1.5.0 — **el motor en C entiende todo el lenguaje**. Nuevo:
 

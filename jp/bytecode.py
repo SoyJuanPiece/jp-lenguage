@@ -74,6 +74,11 @@ class Codigo(Enum):
     TRY = auto()              # operando=destino del 'atrapa'; apila un manejador
     ENDTRY = auto()           # quita el manejador (camino feliz)
     ERROR_ACTUAL = auto()     # empuja el texto del último error capturado
+    LANZAR = auto()           # popea un valor y lo lanza como error atrapable
+    RELANZAR = auto()         # vuelve a lanzar el error actual (intenta/finalmente sin atrapa)
+    DESESTRUCTURAR = auto()   # operando=(nombres,); declara cada nombre desde la lista del tope
+    DESESTRUCTURAR_ASIG = auto()  # operando=(nombres,); asigna a variables existentes
+    IMPORTAR = auto()         # operando=(ruta, alias); ejecuta el módulo una vez y define sus nombres
     # (romper/continuar no necesitan opcode: el compilador emite los
     #  AMBITO_POP necesarios y un SALTAR normal)
 
@@ -108,6 +113,11 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.TRY: "TRY",
     Codigo.ENDTRY: "ENDTRY",
     Codigo.ERROR_ACTUAL: "ERROR_ACTUAL",
+    Codigo.LANZAR: "LANZAR",
+    Codigo.RELANZAR: "RELANZAR",
+    Codigo.DESESTRUCTURAR: "DESESTRUCTURAR",
+    Codigo.DESESTRUCTURAR_ASIG: "DESESTRUCTURAR_ASIG",
+    Codigo.IMPORTAR: "IMPORTAR",
     Codigo.SUMAR: "SUMAR",
     Codigo.RESTAR: "RESTAR",
     Codigo.MULTIPLICAR: "MULTIPLICAR",

@@ -33,7 +33,8 @@ en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`, `jp/sistema.py` y
 `coincide_patron`, `encontrar_patrones`, `reemplazar_patron`, `separar_patron` ·
 `leer_csv`, `leer_csv_texto`, `escribir_csv`, `convertir_csv`, `sublista` ·
 `sumar_dias`, `dias_entre` · `svg_linea`, `svg_rectangulo`, `svg_circulo`,
-`svg_texto`, `svg_lineas`, `svg_camino`, `crear_svg`, `guardar_svg`. De ellas, `sigmoide`, `producto_punto`, `promedio`,
+`svg_texto`, `svg_lineas`, `svg_camino`, `crear_svg`, `guardar_svg` ·
+`abrir_bd`, `bd_ejecutar`, `bd_consultar`, `bd_cerrar` (SQLite). De ellas, `sigmoide`, `producto_punto`, `promedio`,
 `mediana`, `norma`, `distancia` y `softmax` también están en el motor en C.
 
 El motor en C aún no tiene las nativas nuevas: si las usas con `--c`, se

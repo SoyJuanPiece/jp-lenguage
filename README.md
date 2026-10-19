@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.13.0 — **persistencia** (ver `CHANGELOG.md`). Nuevo:
+
+- 🗄️ **SQLite de verdad**: `abrir_bd`, `bd_consultar` (lista de
+  diccionarios, directa a una `Tabla`), `bd_ejecutar` con parámetros
+  seguros y `bd_cerrar`. Web + gráficos + datos guardados: pila completa.
+
 v1.12.0 — **gráficos** (ver `CHANGELOG.md`). Nuevo:
 
 - 🎨 **Gráficas SVG sin salir de JP**: primitivas `svg_*` en el motor y

@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.13.0 — «Persistencia» (2026-10-19)
+
+- **Bases de datos SQLite** (`jp/basedatos.py`): `abrir_bd(ruta)` (o
+  `":memory:"`), `bd_ejecutar` (devuelve filas afectadas, confirma solo),
+  `bd_consultar` → lista de diccionarios lista para una `Tabla`, y
+  `bd_cerrar`. Parámetros con `?` aparte del SQL (nada de comillas
+  rompiendo consultas), errores de SQL como `ErrorEjecucion` en español.
+  Con web + Tabla, JP ya hace aplicaciones completas con datos que se
+  quedan guardados (`ejemplos/base-datos.jp`).
+
 ## 1.12.0 — «Gráficos» (2026-10-19)
 
 - **SVG desde JP** (`jp/graficos.py`): primitivas `svg_linea`,

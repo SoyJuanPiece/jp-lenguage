@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.17.0 — «Depurador» (2026-10-19)
+
+- **`jp --depurar programa.jp`**: depurador paso a paso sobre el
+  intérprete de árbol. Pausa antes de cada sentencia (también dentro de
+  funciones y bucles) con comandos en español: `s` siguiente, `c`
+  continuar, `v <var>` ver una variable, `e <expr>` evaluar una expresión
+  en el entorno vivo, `l` listar variables, `p <línea>` punto de
+  interrupción y `q` salir. Sin terminal (EOF) continúa hasta el final
+  sin bloquearse. El motor gana el gancho `Interprete.gancho_paso`.
+
 ## 1.16.0 — «Nativo seguro» (2026-10-19)
 
 - **`??` y `?.` llegan al motor en C**: opcode nuevo

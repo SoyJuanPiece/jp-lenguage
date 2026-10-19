@@ -333,11 +333,21 @@ def evaluar_paso(valor: object, linea: int) -> int:
 
 _MAX_LLAMADAS = 6000  # tope del lenguaje, igual que _MAX_FRAMES de la VM
 
+# Sentencias ante las que el depurador (jp --depurar) hace pausa: se avisa
+# al gancho antes de ejecutarlas, con el entorno vivo para inspeccionarlo.
+_NODOS_PASO = frozenset({
+    NodoDeclaracionVar, NodoExpresion, NodoSi, NodoMientras, NodoPara,
+    NodoFuncion, NodoRetorna, NodoRomper, NodoContinuar, NodoLanzar,
+    NodoDeclaracionLista, NodoAsignacionLista, NodoImportar, NodoClase,
+    NodoIntentar,
+})
+
 
 # ----------------- Intérprete -----------------
 
 class Interprete:
     def __init__(self):
+        self.gancho_paso = None  # jp --depurar: callable(nodo, entorno) o None
         self.global_env = Entorno()
         _instalar_nativas(self.global_env, self._llamar_valor)
         from .red import instalar as _instalar_red
@@ -446,6 +456,8 @@ class Interprete:
             self._ejecutar(sentencia, entorno)
 
     def _ejecutar(self, nodo: Nodo, entorno: Entorno) -> None:
+        if self.gancho_paso is not None and type(nodo) in _NODOS_PASO:
+            self.gancho_paso(nodo, entorno)
         handler = self._ejecutores.get(type(nodo))
         if handler is None:
             raise ErrorEjecucion(f"nodo desconocido: {type(nodo).__name__}", getattr(nodo, "linea", 0))

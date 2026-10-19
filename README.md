@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.17.0 — **depurador** (ver `CHANGELOG.md`). Nuevo:
+
+- 🐞 **`jp --depurar`**: paso a paso por tu programa — ver variables
+  (`v x`), evaluar expresiones en vivo (`e x + 1`), puntos de
+  interrupción (`p 12`) y continuar (`c`), todo en español.
+
 v1.16.0 — **nativo seguro** (ver `CHANGELOG.md`). Nuevo:
 
 - ⚙️ **`??` y `?.` también en el motor en C** (opcode

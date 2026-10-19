@@ -183,6 +183,103 @@ def _modo_probar(archivos: list[str]) -> int:
     return 0 if pasan == len(rutas) else 1
 
 
+class _FinDepuracion(Exception):
+    """El usuario pidio salir del depurador con 'q'."""
+
+
+def _modo_depurar(ruta: str) -> int:
+    """Depurador paso a paso sobre el interprete de arbol.
+
+    Pausa antes de cada sentencia: s=siguiente, c=continuar, v <var>=ver,
+    e <expr>=evaluar, l=listar variables, p <linea>=punto de interrupcion,
+    q=salir. Sin terminal (EOF), sigue hasta el final sin bloquearse.
+    """
+    from .arbol import NodoExpresion
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+
+    lineas = fuente.splitlines()
+    interprete = Interprete()
+    estado = {"paso": True, "puntos": set()}
+
+    def al_paso(nodo, entorno) -> None:
+        linea = getattr(nodo, "linea", 0)
+        if not estado["paso"] and linea not in estado["puntos"]:
+            return
+        estado["paso"] = True
+        texto = lineas[linea - 1].strip() if 1 <= linea <= len(lineas) else ""
+        print(f"\n🐞 línea {linea}: {texto}")
+        while True:
+            try:
+                comando = input("🐞 (s/c/v/e/l/p/q) > ").strip()
+            except EOFError:
+                estado["paso"] = False
+                return
+            except KeyboardInterrupt:
+                raise _FinDepuracion from None
+            if not comando or comando == "s":
+                return
+            orden, _, resto = comando.partition(" ")
+            resto = resto.strip()
+            if orden == "c":
+                estado["paso"] = False
+                return
+            if orden == "q":
+                raise _FinDepuracion
+            if orden == "v" and resto:
+                try:
+                    print(f"  {resto} = {jp_a_texto(entorno.obtener(resto))}")
+                except ErrorEjecucion:
+                    print(f"  ({resto} no existe todavia)")
+            elif orden == "e" and resto:
+                try:
+                    sentencia = parsear(tokenizar(resto)).sentencias[0]
+                    if not isinstance(sentencia, NodoExpresion):
+                        print("  (escribe una expresion, ej: e x + 1)")
+                    else:
+                        print(f"  = {jp_a_texto(interprete._evaluar(sentencia.expresion, entorno))}")
+                except Exception as error:  # evaluar no debe tumbar el depurador
+                    print(f"  (no se pudo: {error})")
+            elif orden == "l":
+                visibles: dict[str, object] = {}
+                cadena = entorno
+                while cadena is not None:
+                    for nombre, valor in cadena.variables.items():
+                        visibles.setdefault(nombre, valor)
+                    cadena = cadena.padre
+                for nombre in sorted(visibles):
+                    resumen = jp_a_texto(visibles[nombre])
+                    if len(resumen) > 60:
+                        resumen = resumen[:57] + "..."
+                    print(f"  {nombre} = {resumen}")
+            elif orden == "p" and resto.isdigit():
+                numero = int(resto)
+                if numero in estado["puntos"]:
+                    estado["puntos"].discard(numero)
+                    print(f"  punto de interrupcion quitado de la linea {numero}")
+                else:
+                    estado["puntos"].add(numero)
+                    print(f"  punto de interrupcion en la linea {numero} (con 'c' corres hasta el)")
+            else:
+                print("  s=siguiente · c=continuar · v <var> · e <expr> · l=listar · p <linea> · q=salir")
+
+    interprete.gancho_paso = al_paso
+    print(f"🐞 Depurando {ruta} (intérprete de árbol). 's' avanza, 'c' continúa, 'q' sale.")
+    try:
+        ok = ejecutar_fuente(fuente, interprete, ruta)
+    except _FinDepuracion:
+        print("\n🐞 depuración terminada")
+        return 0
+    return 0 if ok else 65
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -394,6 +491,11 @@ def main(argv: list[str] | None = None) -> int:
         help="solo comprueba la sintaxis del archivo, sin ejecutarlo",
     )
     parser.add_argument(
+        "--depurar",
+        action="store_true",
+        help="depurador paso a paso: pausa en cada sentencia (s/c/v/e/l/p/q)",
+    )
+    parser.add_argument(
         "--compilar",
         action="store_true",
         help="compila el archivo .jp a bytecode nativo (.jpb)",
@@ -412,6 +514,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.depurar:
+        if args.archivo is None:
+            parser.error("--depurar necesita un archivo .jp")
+        return _modo_depurar(args.archivo)
     if args.check:
         if args.archivo is None:
             parser.error("--check necesita un archivo .jp")

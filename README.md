@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.18.0 — **formateador** (ver `CHANGELOG.md`). Nuevo:
+
+- ✨ **`jp --formatear [--en-sitio]`**: todo el código con el mismo
+  estilo, sin discutir (idempotente sobre los 45 `.jp` del repo;
+  pierde los comentarios, el parser aún no los conserva).
+
 v1.17.0 — **depurador** (ver `CHANGELOG.md`). Nuevo:
 
 - 🐞 **`jp --depurar`**: paso a paso por tu programa — ver variables

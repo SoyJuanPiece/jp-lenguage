@@ -280,6 +280,31 @@ def _modo_depurar(ruta: str) -> int:
     return 0 if ok else 65
 
 
+def _modo_formatear(ruta: str, en_sitio: bool) -> int:
+    """Reimprime el archivo con el estilo de la casa (jp/formateador.py)."""
+    from .formateador import formatear
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+    try:
+        texto = formatear(parsear(tokenizar(fuente)))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else f"{error.titulo}: {error.mensaje}", file=sys.stderr)
+        return 65
+    if en_sitio:
+        Path(ruta).write_text(texto, encoding="utf-8")
+        print(f"✔ formateado: {ruta}")
+    else:
+        sys.stdout.write(texto)
+    return 0
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -496,6 +521,16 @@ def main(argv: list[str] | None = None) -> int:
         help="depurador paso a paso: pausa en cada sentencia (s/c/v/e/l/p/q)",
     )
     parser.add_argument(
+        "--formatear",
+        action="store_true",
+        help="imprime el archivo con el estilo de la casa (ojo: pierde los comentarios)",
+    )
+    parser.add_argument(
+        "--en-sitio",
+        action="store_true",
+        help="con --formatear: reescribe el archivo en vez de imprimirlo",
+    )
+    parser.add_argument(
         "--compilar",
         action="store_true",
         help="compila el archivo .jp a bytecode nativo (.jpb)",
@@ -514,6 +549,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.formatear:
+        if args.archivo is None:
+            parser.error("--formatear necesita un archivo .jp")
+        return _modo_formatear(args.archivo, args.en_sitio)
     if args.depurar:
         if args.archivo is None:
             parser.error("--depurar necesita un archivo .jp")

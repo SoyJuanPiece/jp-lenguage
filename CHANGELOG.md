@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.18.0 — «Formateador» (2026-10-19)
+
+- **`jp --formatear archivo.jp`** (y `--en-sitio` para reescribirlo):
+  reimprime el programa con el estilo de la casa — sangría de 4, bloques
+  siempre en varias líneas, `} sino {` pegado, `caso` en línea cuando
+  cabe — respetando la precedencia al poner paréntesis y escapando las
+  llaves de las cadenas para no romper interpolaciones. El formateador
+  es idempotente sobre los 45 archivos `.jp` del repo (test incluido).
+  Ojo: pierde los comentarios, porque el parser no los conserva.
+
 ## 1.17.0 — «Depurador» (2026-10-19)
 
 - **`jp --depurar programa.jp`**: depurador paso a paso sobre el

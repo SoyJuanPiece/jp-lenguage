@@ -64,7 +64,22 @@ def instalar(entorno: Entorno, invocar=None) -> None:
         except ValueError:
             raise ErrorEjecucion(f"no pude leer la fecha {texto!r} con el formato {formato!r}") from None
 
+    def sumar_dias(marca: object, dias: object):
+        if isinstance(marca, bool) or not isinstance(marca, (int, float)):
+            raise ErrorEjecucion("sumar_dias() espera una marca de tiempo numérica")
+        if isinstance(dias, bool) or not isinstance(dias, (int, float)):
+            raise ErrorEjecucion("sumar_dias() espera el número de días")
+        return float(marca) + float(dias) * 86400
+
+    def dias_entre(a: object, b: object) -> int:
+        for v in (a, b):
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ErrorEjecucion("dias_entre() espera dos marcas de tiempo numéricas")
+        return int(abs(float(b) - float(a)) // 86400)
+
     nativas = {
+        "sumar_dias": FuncionNativa("sumar_dias", sumar_dias, aridad=2),
+        "dias_entre": FuncionNativa("dias_entre", dias_entre, aridad=2),
         "ahora": FuncionNativa("ahora", ahora, aridad=0),
         "fecha_actual": FuncionNativa("fecha_actual", fecha_actual, aridad=0),
         "fecha_de": FuncionNativa("fecha_de", fecha_de, aridad=1),

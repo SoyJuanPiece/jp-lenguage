@@ -1,0 +1,14 @@
+# Datos con la clase Tabla de la biblioteca (estilo pandas, en español).
+
+importar "../biblioteca/tabla.jp" como datos
+
+variable ventas = datos.tabla_de_csv("ejemplos/ventas.csv")
+imprime(ventas.a_texto())
+imprime("ventas grandes:", ventas.filtrar_con(funcion(f) { devuelve f.total >= 120 }).contar())
+imprime("promedio total:", ventas.promedio_columna("total"))
+
+variable por_ciudad = ventas.agrupar_por("ciudad")
+imprime("en Maturín se vendió:", por_ciudad["Maturín"].suma_columna("total"))
+
+variable con_iva = ventas.agregar_columna("con_iva", funcion(f) { devuelve f.total * 1.16 })
+imprime(con_iva.ordenar_por("con_iva", verdadero).cabeza(1).a_texto())

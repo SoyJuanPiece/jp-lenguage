@@ -498,6 +498,15 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.9.0 — **datos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🗃️ **CSV + clase `Tabla`** estilo pandas: `leer_csv` convierte tipos solo
+  y `biblioteca/tabla.jp` filtra, ordena, agrupa y agrega columnas
+  (`ejemplos/datos.jp` con `ejemplos/ventas.csv`).
+- ⚙️ **La biblioteca entra al motor en C**: `sigmoide`, `producto_punto`,
+  `promedio`, `mediana`, `norma`, `distancia` y `softmax` ya corren en el
+  binario `jpvm` sin Python, con salida idéntica.
+
 v1.8.0 — **la biblioteca** (ver `CHANGELOG.md` y `biblioteca/LEEME.md`).
 JP trae ahora **120 funciones nativas** y módulos en JP puro, con la misma
 salida en el árbol y en la VM (310 tests, 11 nuevos):

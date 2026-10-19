@@ -1,5 +1,22 @@
 # Cambios de JP
 
+## 1.9.0 — «Datos» (2026-10-19)
+
+Paridad árbol↔VM en todo (8 tests nuevos en `tests/test_v19.py`) y las
+primeras nativas de la biblioteca **dentro del motor en C**.
+
+- **CSV estilo pandas**: `leer_csv`, `leer_csv_texto`, `escribir_csv`,
+  `convertir_csv` (con conversión de tipos: "42" -> 42, "verdadero" -> booleano)
+  y `sublista`. Sobre eso, `biblioteca/tabla.jp` trae la clase `Tabla`:
+  `filtrar_con`, `ordenar_por`, `agrupar_por`, `agregar_columna`,
+  `promedio_columna`, `cabeza`, `guardar_csv`... Ejemplo con datos reales:
+  `ejemplos/datos.jp` + `ejemplos/ventas.csv`.
+- **Fechas**: `sumar_dias` y `dias_entre` se suman a las de la v1.8.
+- **Motor en C**: `sigmoide`, `producto_punto`, `promedio`, `mediana`,
+  `norma`, `distancia` y `softmax` ya están implementadas en `jpvm.c` —
+  un programa que solo use eso corre en el binario sin Python, con la
+  misma salida (test de paridad incluido).
+
 ## 1.8.0 — «La biblioteca» (2026-10-19)
 
 JP pasa de ~69 a **120 funciones nativas** y gana una biblioteca en JP puro.

@@ -1,0 +1,97 @@
+# biblioteca/tabla.jp — datos tabulares estilo pandas, en JP puro.
+#
+# Uso:
+#   importar "../biblioteca/tabla.jp" como datos
+#   variable t = datos.tabla_de_csv("ventas.csv")
+#   imprime(t.filtrar_con(funcion(f) { devuelve f.total > 100 }).promedio_columna("total"))
+
+clase Tabla {
+    funcion iniciar(filas) {
+        este.filas = filas
+    }
+
+    funcion contar() { devuelve longitud(este.filas) }
+
+    funcion columnas() {
+        si este.contar() == 0 { devuelve [] }
+        devuelve claves(este.filas[0])
+    }
+
+    funcion cabeza(n) {
+        variable pocas = []
+        para i, fila en este.filas {
+            si i >= n { romper }
+            pocas.agregar(fila)
+        }
+        devuelve Tabla(pocas)
+    }
+
+    funcion columna(nombre) {
+        variable valores = []
+        para fila en este.filas { valores.agregar(fila[nombre]) }
+        devuelve valores
+    }
+
+    funcion seleccionar(nombres) {
+        variable nuevas = []
+        para fila en este.filas {
+            variable nueva = {}
+            para nombre en nombres { nueva[nombre] = fila[nombre] }
+            nuevas.agregar(nueva)
+        }
+        devuelve Tabla(nuevas)
+    }
+
+    funcion filtrar_con(condicion) {
+        devuelve Tabla(filtrar(este.filas, condicion))
+    }
+
+    funcion ordenar_por(nombre, descendente = falso) {
+        variable ordenadas = ordenar(este.filas, funcion(f) { devuelve f[nombre] })
+        si descendente { ordenadas = invertir(ordenadas) }
+        devuelve Tabla(ordenadas)
+    }
+
+    funcion agregar_columna(nombre, calculo) {
+        para fila en este.filas { fila[nombre] = calculo(fila) }
+        devuelve este
+    }
+
+    funcion agregar_fila(fila) {
+        este.filas.agregar(fila)
+        devuelve este
+    }
+
+    funcion agrupar_por(nombre) {
+        variable grupos = {}
+        para fila en este.filas {
+            variable clave = texto(fila[nombre])
+            si no tiene(grupos, clave) { grupos[clave] = Tabla([]) }
+            grupos[clave].agregar_fila(fila)
+        }
+        devuelve grupos
+    }
+
+    funcion promedio_columna(nombre) { devuelve promedio(este.columna(nombre)) }
+    funcion suma_columna(nombre) { devuelve sumar(este.columna(nombre)) }
+
+    funcion guardar_csv(ruta) { devuelve escribir_csv(ruta, este.filas) }
+
+    funcion a_texto() {
+        variable lineas = [unir(este.columnas(), " | ")]
+        para fila en este.filas {
+            variable celdas = []
+            para nombre en este.columnas() { celdas.agregar(fila[nombre]) }
+            lineas.agregar(unir(celdas, " | "))
+        }
+        devuelve unir(lineas, "\n")
+    }
+}
+
+funcion tabla_de_csv(ruta) {
+    devuelve Tabla(leer_csv(ruta))
+}
+
+funcion tabla_de_texto(texto_csv) {
+    devuelve Tabla(leer_csv_texto(texto_csv))
+}

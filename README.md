@@ -493,7 +493,7 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Llevar módulos (`importar`) y tipos opcionales también al motor en C (las clases y los defectos llegaron en la v1.25)
+- El motor en C ya cubre clases, tipos, módulos y finalmente; lo que queda fuera por diseño es el host (servidores, SQLite, procesos, patrones)
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado

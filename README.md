@@ -498,6 +498,11 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.28.0 — **cobertura** (ver `CHANGELOG.md`). Nuevo:
+
+- 📊 **`jp --cobertura programa.jp`**: qué líneas llegaron a correr y
+  cuáles no, con rangos («Sin ejecutar: líneas 3-5, 9»).
+
 v1.27.0 — **tipos en C** (ver `CHANGELOG.md`). Nuevo:
 
 - 🏷️ **Tipos opcionales también en el motor en C**: `ejemplos/tipos.jp`

@@ -1,5 +1,19 @@
 # Cambios de JP
 
+## 1.28.0 — Cobertura de líneas (2026-10-19)
+
+La pieza que faltaba de la caja de herramientas de calidad:
+
+- **`jp --cobertura programa.jp`**: ejecuta con el intérprete de árbol
+  (gancho por sentencia, como el depurador) y reporta porcentaje de
+  líneas ejecutadas y las que nunca corrieron, agrupadas en rangos:
+  «Sin ejecutar: líneas 3-5, 9». Un error a mitad de camino también
+  imprime la cobertura parcial y sale con código 65.
+- Módulo `jp/cobertura.py` con la lógica (`lineas_ejecutables`,
+  `medir`, `InformeCobertura`). La medida es del archivo principal;
+  las líneas de módulos importados no se atribuyen. Tests:
+  `tests/test_v37.py`.
+
 ## 1.27.0 — Tipos opcionales en el motor en C (2026-10-19)
 
 La v1.23, ahora también nativa (`ejemplos/tipos.jp` idéntico):

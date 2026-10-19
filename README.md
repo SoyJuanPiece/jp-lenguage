@@ -498,6 +498,11 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.26.0 — **desestructurar en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🧩 **`para a, b en` y `[a, b] = ...` también en nativo**: la
+  paridad de ejemplos sube a 24 idénticos, 0 fallos.
+
 v1.25.0 — **clases en C** (ver `CHANGELOG.md`). Nuevo:
 
 - 🏛️ **Clases en el motor en C**: herencia, `este`, métodos ligados y

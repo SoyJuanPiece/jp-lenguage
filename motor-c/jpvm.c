@@ -146,12 +146,6 @@ typedef struct {
     Valor valor;
 } Celda;
 
-typedef struct {
-    Obj cabecera;
-    Lista *lista;
-    uint32_t indice;
-} Iter;
-
 /* Diccionario: claves de texto, en orden de inserción (como Python) y con
  * una tabla hash de índices para que buscar sea O(1). */
 typedef struct {
@@ -167,6 +161,13 @@ typedef struct {
     uint32_t capacidad_indice;  /* potencia de dos */
     uint32_t *indice;           /* ranura -> (índice de entrada + 1); 0 = libre */
 } Dicto;
+
+typedef struct {
+    Obj cabecera;
+    Lista *lista;
+    uint32_t indice;
+    Dicto *dicto;      /* si el iterable era un dict, para (clave, valor) */
+} Iter;
 
 /* Nativa ligada a un receptor: "hola".mayusculas  (sin llamar todavía). */
 typedef struct {
@@ -661,6 +662,7 @@ static void marcar_objeto(Obj *obj) {
             break;
         case O_ITER:
             marcar_objeto((Obj *)((Iter *)obj)->lista);
+            if (((Iter *)obj)->dicto) marcar_objeto((Obj *)((Iter *)obj)->dicto);
             break;
         case O_DICTO: {
             Dicto *d = (Dicto *)obj;
@@ -2675,7 +2677,8 @@ static void bucle(uint32_t pc_inicio) {
         &&L_CIERRE, &&L_CELDA, &&L_ITER_INIT, &&L_ITER_NEXT, &&L_ITER_NEXT_CELDA,
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
         &&L_SALTO_NO_NULO_MANTENER, &&L_CREAR_CLASE, &&L_DEFECTOS,
-        &&L_SALTAR_SI_HAY_VALOR,
+        &&L_SALTAR_SI_HAY_VALOR, &&L_ITER_NEXT_PAR, &&L_ITER_NEXT_PAR_CELDA,
+        &&L_DESESTRUCTURAR,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -3345,6 +3348,7 @@ L_ITER_INIT: {
     uint32_t slot = LEER_U32();
     Valor iterable = POP();
     Lista *l = NULL;
+    Dicto *dicto_origen = NULL;
     if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_LISTA) {
         l = (Lista *)iterable.v.obj;
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_TEXTO) {
@@ -3353,6 +3357,7 @@ L_ITER_INIT: {
         for (uint32_t i = 0; i < t->largo; i++) lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, 1)));
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_DICTO) {
         Dicto *d = (Dicto *)iterable.v.obj;
+        dicto_origen = d;
         l = nueva_lista(d->largo ? d->largo : 1);
         for (uint32_t i = 0; i < d->largo; i++) lista_agregar(l, de_texto(d->entradas[i].clave));
     } else if (iterable.etiqueta == T_INT) {
@@ -3372,6 +3377,7 @@ L_ITER_INIT: {
     Iter *it = nuevo_objeto(sizeof(Iter), O_ITER);
     it->lista = l;
     it->indice = 0;
+    it->dicto = dicto_origen;
     base[slot] = de_objeto((Obj *)it);
     SIGUIENTE();
 }
@@ -3397,6 +3403,69 @@ L_ITER_NEXT_CELDA: {
         SIGUIENTE();
     }
     base[slot_var] = de_objeto((Obj *)nueva_celda(it->lista->elementos[it->indice++]));
+    SIGUIENTE();
+}
+
+L_ITER_NEXT_PAR: {
+    uint32_t slot_iter = LEER_U32();
+    uint32_t slot_a = LEER_U32();
+    uint32_t slot_b = LEER_U32();
+    int32_t relativo = LEER_I32();
+    Iter *it = (Iter *)base[slot_iter].v.obj;
+    if (it->indice >= it->lista->largo) {
+        ip = ip + relativo;
+        SIGUIENTE();
+    }
+    uint32_t idx = it->indice++;
+    Valor elemento = it->lista->elementos[idx];
+    if (it->dicto) {
+        base[slot_a] = elemento;  /* la clave (las claves son la secuencia) */
+        Valor *v = dicto_buscar(it->dicto, (Texto *)elemento.v.obj);
+        base[slot_b] = v ? *v : de_nulo();
+    } else {
+        base[slot_a] = de_entero((int64_t)idx);
+        base[slot_b] = elemento;
+    }
+    SIGUIENTE();
+}
+L_ITER_NEXT_PAR_CELDA: {
+    uint32_t slot_iter = LEER_U32();
+    uint32_t slot_a = LEER_U32();
+    uint32_t slot_b = LEER_U32();
+    uint32_t mascara = LEER_U32();
+    int32_t relativo = LEER_I32();
+    Iter *it = (Iter *)base[slot_iter].v.obj;
+    if (it->indice >= it->lista->largo) {
+        ip = ip + relativo;
+        SIGUIENTE();
+    }
+    uint32_t idx = it->indice++;
+    Valor elemento = it->lista->elementos[idx];
+    if (it->dicto) {
+        base[slot_a] = elemento;
+        Valor *v = dicto_buscar(it->dicto, (Texto *)elemento.v.obj);
+        base[slot_b] = v ? *v : de_nulo();
+    } else {
+        base[slot_a] = de_entero((int64_t)idx);
+        base[slot_b] = elemento;
+    }
+    if (mascara & 1) base[slot_a] = de_objeto((Obj *)nueva_celda(base[slot_a]));
+    if (mascara & 2) base[slot_b] = de_objeto((Obj *)nueva_celda(base[slot_b]));
+    SIGUIENTE();
+}
+L_DESESTRUCTURAR: {
+    uint32_t n = LEER_U32();
+    Valor v = POP();
+    int linea = (int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1);
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_LISTA) {
+        char texto[512];
+        texto_de(v, texto, sizeof(texto));
+        error_en(linea, "la desestructuración '[a, b] = ...' espera una lista, no '%s'", texto);
+    }
+    Lista *l = (Lista *)v.v.obj;
+    if (l->largo != n)
+        error_en(linea, "la desestructuración esperaba %u valor(es) y recibió %u", n, l->largo);
+    for (uint32_t i = 0; i < n; i++) PUSH(l->elementos[i]);
     SIGUIENTE();
 }
 

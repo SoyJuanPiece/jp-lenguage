@@ -1,5 +1,22 @@
 # Cambios de JP
 
+## 1.26.0 — Desestructurar en el motor en C (2026-10-19)
+
+Sigue creciendo la cobertura nativa (24 ejemplos idénticos a Python):
+
+- **`para a, b en ...`**: opcodes `ITER_NEXT_PAR` (59) y
+  `ITER_NEXT_PAR_CELDA` (60). Sobre listas y textos da (índice desde
+  0, valor); sobre diccionarios, (clave, valor): el iterador de C
+  recuerda el diccionario de origen. Las dos variables pueden ser
+  capturadas por closures (máscara de celdas), verificadas en ASan.
+- **`variable [a, b] = ...` y `[a, b] = ...`**: opcode
+  `DESESTRUCTURAR` (61) exige una lista del largo exacto (mismos
+  mensajes de error que Python) y deja los elementos en la pila.
+- El análisis de ámbito del compilador conoce ahora la segunda
+  variable del `para` y los nombres desestructurados, para que las
+  closures puedan capturarlos. `ejemplos/utilidades.jp` ya corre
+  también nativo, y `tests/test_v35.py` cubre la paridad.
+
 ## 1.25.0 — Clases en el motor en C (2026-10-19)
 
 El proyecto grande: las clases ya viven en los tres motores.

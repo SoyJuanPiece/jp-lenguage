@@ -122,6 +122,9 @@ OP_SALTO_NO_NULO_MANTENER = 55   # i32 rel  (para '??' y '?.': mira el tope, no 
 OP_CREAR_CLASE = 56              # cadena nombre, u32 n, n×cadena método: pila [padre, m1..mn] -> clase
 OP_DEFECTOS = 57                 # u32 mínimos: prólogo que exige los argumentos sin defecto
 OP_SALTAR_SI_HAY_VALOR = 58      # u32 slot, i32 rel: si el slot no guarda el centinela, salta
+OP_ITER_NEXT_PAR = 59            # u32 iter, u32 a, u32 b, i32 rel: (índice, valor) o (clave, valor)
+OP_ITER_NEXT_PAR_CELDA = 60      # igual + u32 máscara (bit0/bit1 = a/b en celda) antes del salto
+OP_DESESTRUCTURAR = 61           # u32 n: lista en la pila -> sus n elementos (en orden)
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -145,7 +148,8 @@ NOMBRES_OP = {
     OP_DICT: "DICT", OP_MANEJAR: "MANEJAR", OP_FIN_MANEJAR: "FIN_MANEJAR",
     OP_ERROR_EN: "ERROR_EN", OP_SALTO_NO_NULO_MANTENER: "SALTO_NO_NULO_MANTENER",
     OP_CREAR_CLASE: "CREAR_CLASE", OP_DEFECTOS: "DEFECTOS",
-    OP_SALTAR_SI_HAY_VALOR: "SALTAR_SI_HAY_VALOR",
+    OP_SALTAR_SI_HAY_VALOR: "SALTAR_SI_HAY_VALOR", OP_ITER_NEXT_PAR: "ITER_NEXT_PAR",
+    OP_ITER_NEXT_PAR_CELDA: "ITER_NEXT_PAR_CELDA", OP_DESESTRUCTURAR: "DESESTRUCTURAR",
 }
 
 MAGIA = b"JPB1"
@@ -316,8 +320,12 @@ def _nombres_declarados(nodo: Nodo) -> set[str]:
             continue  # frontera: declara en su propio ámbito
         if isinstance(actual, NodoDeclaracionVar):
             resultado.add(actual.nombre)
+        elif isinstance(actual, NodoDeclaracionLista):
+            resultado.update(actual.nombres)
         elif isinstance(actual, NodoPara):
             resultado.add(actual.variable)
+            if actual.variable2:
+                resultado.add(actual.variable2)
         elif isinstance(actual, NodoIntentar) and actual.nombre_error:
             resultado.add(actual.nombre_error)
         elif isinstance(actual, (NodoBloque, NodoPrograma)):
@@ -578,7 +586,9 @@ class CompiladorNativo:
             raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)
 
         elif tipo is NodoDeclaracionLista:
-            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
+            self._expresion(nodo.inicializador)
+            actual.emitir(OP_DESESTRUCTURAR, len(nodo.nombres), linea=linea)
+            self._guardar_desestructurado(nodo.nombres, linea, declarar=True)
 
         elif tipo is NodoExpresion:
             self._expresion(nodo.expresion)
@@ -766,6 +776,38 @@ class CompiladorNativo:
             actual.emitir(OP_CELDA, slot, linea=linea)
         actual.emitir(OP_POP, linea=linea)
 
+    def _guardar_desestructurado(self, nombres: list[str], linea: int, declarar: bool) -> None:
+        """Guarda los n elementos que DESESTRUCTURAR dejó en la pila.
+
+        Se recorre al revés porque el último elemento es el que está en
+        el top. Con `declarar` liga nombres nuevos (como `_declarar`);
+        sin él, asigna a nombres que ya existen y la lista original
+        queda debajo como valor de la expresión."""
+        actual = self.actual
+        for nombre in reversed(nombres):
+            if declarar:
+                if len(self.pila) == 1 and len(actual.scopes) == 1:
+                    self.declarados.add(nombre)
+                    actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
+                    actual.emitir(OP_POP, linea=linea)
+                    continue
+                slot = actual.declarar(nombre)
+                actual.emitir(OP_SET_LOCAL, slot, linea=linea)
+                if actual.es_celda[slot]:
+                    actual.emitir(OP_CELDA, slot, linea=linea)
+                actual.emitir(OP_POP, linea=linea)
+            else:
+                clase, indice = self._resolver(nombre)
+                if clase == "local":
+                    actual.emitir(OP_SET_LOCAL, indice, linea=linea)
+                elif clase == "celda":
+                    actual.emitir(OP_SET_CELDA, indice, linea=linea)
+                elif clase == "upval":
+                    actual.emitir(OP_SET_UPVAL, indice, linea=linea)
+                else:
+                    actual.emitir(OP_SET_GLOBAL, indice, linea=linea)
+                actual.emitir(OP_POP, linea=linea)
+
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
         if nodo.tipo_retorno is not None or any(t is not None for t in (nodo.tipos or [])):
             raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", nodo.linea)
@@ -817,8 +859,6 @@ class CompiladorNativo:
         return indice
 
     def _para(self, nodo: NodoPara) -> None:
-        if nodo.variable2 is not None:
-            raise NoSoportadoNativo("'para a, b en' aún no está en el motor nativo", nodo.linea)
         actual = self.actual
         linea = nodo.linea
         slot_iter = actual.reservar()
@@ -828,8 +868,17 @@ class CompiladorNativo:
         self.iteradores.append((inicio, [], len(actual.palabras)))
         self._abrir()
         slot_var = actual.declarar(nodo.variable)
-        op = OP_ITER_NEXT_CELDA if actual.es_celda[slot_var] else OP_ITER_NEXT
-        actual.emitir(op, slot_iter, slot_var, 0, linea=linea)
+        if nodo.variable2 is not None:
+            slot_var2 = actual.declarar(nodo.variable2)
+            en_celda = actual.es_celda[slot_var] or actual.es_celda[slot_var2]
+            if en_celda:
+                mascara = (1 if actual.es_celda[slot_var] else 0) | (2 if actual.es_celda[slot_var2] else 0)
+                actual.emitir(OP_ITER_NEXT_PAR_CELDA, slot_iter, slot_var, slot_var2, mascara, 0, linea=linea)
+            else:
+                actual.emitir(OP_ITER_NEXT_PAR, slot_iter, slot_var, slot_var2, 0, linea=linea)
+        else:
+            op = OP_ITER_NEXT_CELDA if actual.es_celda[slot_var] else OP_ITER_NEXT
+            actual.emitir(op, slot_iter, slot_var, 0, linea=linea)
         hueco = len(actual.palabras) - 1
         self._bloque(nodo.cuerpo.sentencias)
         _, saltos_romper, _ = self.iteradores.pop()
@@ -977,7 +1026,10 @@ class CompiladorNativo:
             actual.emitir(OP_CIERRE, indice, linea=linea)
 
         elif tipo is NodoAsignacionLista:
-            raise NoSoportadoNativo("la desestructuración '[a, b] = ...' aún no está en el motor nativo", linea)
+            self._expresion(nodo.valor)
+            actual.emitir(OP_DUP, linea=linea)
+            actual.emitir(OP_DESESTRUCTURAR, len(nodo.nombres), linea=linea)
+            self._guardar_desestructurado(nodo.nombres, linea, declarar=False)
 
         elif tipo is NodoDiccionario:
             for clave, valor in nodo.pares:

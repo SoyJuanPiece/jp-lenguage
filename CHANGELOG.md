@@ -1,5 +1,16 @@
 # Cambios de JP
 
+## 1.15.0 — «Pruébalo» (2026-10-19)
+
+- **Pruebas para programas JP** (`biblioteca/pruebas.jp`): `afirmar`,
+  `afirmar_igual`, `afirmar_casi` (con tolerancia) y `afirmar_error`
+  escritas en JP puro, con `resumen()` que cuenta y lanza si algo falló.
+- **`jp --probar [archivos...]`**: corre cada archivo de prueba y resume
+  «N/M archivos de prueba pasan», saliendo con 0 o 1 como cualquier
+  corredor. Sin archivos descubre `pruebas/**/*.jp` y `./*_prueba.jp`.
+  El repo estrena las suyas: `pruebas/mates_prueba.jp` (7 afirmaciones
+  sobre `mates.jp` y `texto.jp`).
+
 ## 1.14.0 — «Sin nulos» (2026-10-19)
 
 - **`a ?? b` (por defecto si es nulo)**: devuelve `a` salvo que sea

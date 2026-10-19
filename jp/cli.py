@@ -148,6 +148,41 @@ def _modo_archivo(ruta: str) -> int:
     return 0 if ok else 65
 
 
+def _modo_probar(archivos: list[str]) -> int:
+    """Corre archivos de prueba .jp (con biblioteca/pruebas.jp) y resume.
+
+    Sin archivos: descubre pruebas/**/*.jp y ./*_prueba.jp. Devuelve 0 si
+    todo pasa y 1 si algo falla, como cualquier corredor de pruebas.
+    """
+    rutas: list[Path] = []
+    if archivos:
+        rutas = [Path(a) for a in archivos]
+    else:
+        vistas: set[Path] = set()
+        for patron in ("pruebas/**/*.jp", "*_prueba.jp"):
+            for ruta in sorted(Path(".").glob(patron)):
+                if ruta not in vistas:
+                    vistas.add(ruta)
+                    rutas.append(ruta)
+    if not rutas:
+        print("jp --probar: no encontre pruebas (pasa archivos o crea pruebas/*.jp)", file=sys.stderr)
+        return 66
+    pasan = 0
+    for ruta in rutas:
+        print(f"▶ {ruta}")
+        try:
+            fuente = ruta.read_text(encoding="utf-8")
+        except OSError:
+            print(f"jp: no se encontro el archivo: {ruta}", file=sys.stderr)
+            continue
+        if ejecutar_fuente(fuente, MaquinaVM(), str(ruta)):
+            pasan += 1
+        else:
+            print(f"✗ fallo: {ruta}", file=sys.stderr)
+    print(f"\n{pasan}/{len(rutas)} archivos de prueba pasan")
+    return 0 if pasan == len(rutas) else 1
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -343,6 +378,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("-c", "--codigo", help="ejecuta una línea de código JP")
     parser.add_argument(
+        "--probar",
+        nargs="*",
+        metavar="PRUEBA",
+        help="corre archivos de prueba .jp (sin archivos: descubre pruebas/ y *_prueba.jp)",
+    )
+    parser.add_argument(
         "--c",
         action="store_true",
         help="ejecuta con el motor nativo en C (compila a bytecode .jpb y lo corre)",
@@ -384,6 +425,8 @@ def main(argv: list[str] | None = None) -> int:
             salida = args.salida or (args.archivo + ".jpb")
             return _modo_bytecode(args.archivo, escribir=salida)
         return _modo_binario(args.archivo, args.salida or "programa")
+    if args.probar is not None:
+        return _modo_probar(args.probar)
     if args.codigo is not None:
         return _modo_codigo(args.codigo)
     if args.archivo is not None:

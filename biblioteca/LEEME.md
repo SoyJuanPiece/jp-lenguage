@@ -17,6 +17,7 @@ imprime(mates.factorial(6))
 | `tabla.jp` | clase `Tabla` estilo pandas: `filtrar_con`, `ordenar_por`, `agrupar_por`, `agregar_columna`, `promedio_columna`... + `tabla_de_csv(ruta)` |
 | `web.jp` | mini-framework web: clase `Aplicacion` con rutas `/saludar/:nombre`, intermediarios, `json`, `pagina`, `redirigir` (demo: `ejemplo-web.jp`) |
 | `graficas.jp` | `grafica_barras`, `grafica_lineas`, `grafica_pastel` → texto SVG (con las primitivas `svg_*` del motor) |
+| `pruebas.jp` | afirmar en JP: `afirmar`, `afirmar_igual`, `afirmar_casi`, `afirmar_error`, `resumen` (con `jp --probar`) |
 
 Además, el motor trae **120 funciones nativas** (51 nuevas en la v1.8.0,
 en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`, `jp/sistema.py` y

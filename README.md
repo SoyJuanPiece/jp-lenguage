@@ -498,6 +498,13 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.15.0 — **pruébalo** (ver `CHANGELOG.md`). Nuevo:
+
+- ✅ **Pruebas en JP para JP**: `biblioteca/pruebas.jp` (`afirmar_igual`,
+  `afirmar_casi`, `afirmar_error`...) y el comando **`jp --probar`**, que
+  descubre `pruebas/` y `*_prueba.jp` y sale con 0/1. El repo ya trae las
+  suyas en `pruebas/mates_prueba.jp`.
+
 v1.14.0 — **sin nulos** (ver `CHANGELOG.md`). Nuevo:
 
 - 🛟 **Operadores anti-nulo**: `dato ?? "defecto"` (solo el nulo dispara

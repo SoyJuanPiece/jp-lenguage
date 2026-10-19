@@ -297,7 +297,11 @@ class MaquinaVM:
 
     def _importar(self, ruta_texto: str, alias: str | None, linea: int) -> None:
         """importar "x.jp" [como n]: paridad con el intérprete de árbol."""
-        ruta = (self.directorio_base / ruta_texto).resolve()
+        if ruta_texto.startswith("@"):
+            from .paquetes import resolver_paquete
+            ruta = resolver_paquete(ruta_texto, self.directorio_base, linea)
+        else:
+            ruta = (self.directorio_base / ruta_texto).resolve()
         if not ruta.is_file():
             raise ErrorEjecucion(
                 f"no se encontró el módulo '{ruta_texto}' (buscado en {ruta})", linea

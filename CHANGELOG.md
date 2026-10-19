@@ -1,5 +1,22 @@
 # Cambios de JP
 
+## 1.21.0 — «Paquetes» (2026-10-19)
+
+- **Gestor de paquetes** (`jp/paquetes.py`): un paquete es una carpeta
+  con `paquete.json` (`nombre`, `version`, `principal`). Comandos:
+  `jp --instalar github:usuario/repo[/subcarpeta][@rama]` (descarga el
+  zip de GitHub, sin necesitar git), `jp --instalar ./carpeta` (local),
+  `jp --instalar` (las `dependencias` del `paquete.json` del proyecto),
+  `jp --instalar --aqui` (a `./paquetes` en vez de `~/.jp/paquetes`),
+  `jp --paquetes` (listar) y `jp --quitar-paquete nombre`.
+- **`importar "@paquete"`** en el árbol y en la VM: se busca en
+  `paquetes/` junto al archivo, `paquetes/` del trabajo, `$JP_PAQUETES`
+  y `~/.jp/paquetes`. Sin instalar: error que dice cómo instalarlo.
+- **Primer paquete del ecosistema**: `paquetes/saludos` vive en este
+  repo y se instala de verdad con
+  `jp --instalar github:SoyJuanPiece/jp-lenguage/paquetes/saludos`.
+  Cualquiera con un repo de GitHub ya puede publicar el suyo.
+
 ## 1.20.0 — «Proyecto» (2026-10-19)
 
 - **`jp --proyecto nombre`**: crea un proyecto JP listo para correr —

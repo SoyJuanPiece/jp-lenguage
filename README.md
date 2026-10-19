@@ -498,6 +498,13 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.21.0 — **paquetes** (ver `CHANGELOG.md`). Nuevo:
+
+- 📦 **Ecosistema**: `jp --instalar github:usuario/repo` instala paquetes
+  JP (carpeta con `paquete.json`) y se usan con `importar "@paquete"`.
+  El primero ya existe: `jp --instalar github:SoyJuanPiece/jp-lenguage/paquetes/saludos`.
+  También `jp --paquetes` y `jp --quitar-paquete`.
+
 v1.20.0 — **proyecto** (ver `CHANGELOG.md`). Nuevo:
 
 - 📦 **`jp --proyecto nombre`**: un proyecto JP nuevo con programa,

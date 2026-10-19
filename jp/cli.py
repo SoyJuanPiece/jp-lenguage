@@ -371,6 +371,51 @@ def _modo_proyecto(nombre: str) -> int:
     return 0
 
 
+def _modo_instalar(origen: str | None, aqui: bool) -> int:
+    """jp --instalar [origen]: instala paquetes JP (ver jp/paquetes.py)."""
+    from .paquetes import carpeta_global, instalar, instalar_dependencias
+
+    destino = Path("paquetes") if aqui else carpeta_global()
+    try:
+        if origen is None:
+            nombres = instalar_dependencias(Path.cwd(), destino)
+        else:
+            nombres = [instalar(origen, destino)]
+    except ErrorEjecucion as error:
+        print(f"jp: {error.mensaje}", file=sys.stderr)
+        return 65
+    except OSError as error:
+        print(f"jp: no se pudo instalar: {error}", file=sys.stderr)
+        return 66
+    for nombre in nombres:
+        print(f"✔ paquete '{nombre}' instalado en {destino}")
+    print('úsalo con: importar "@' + nombres[0] + '" como ' + nombres[0])
+    return 0
+
+
+def _modo_paquetes() -> int:
+    from .paquetes import listar
+
+    paquetes = listar()
+    if not paquetes:
+        print("no hay paquetes instalados (instala con: jp --instalar github:usuario/repo)")
+        return 0
+    for nombre, version, carpeta in paquetes:
+        print(f"{nombre} {version}  ({carpeta})")
+    return 0
+
+
+def _modo_quitar_paquete(nombre: str) -> int:
+    from .paquetes import quitar
+
+    quitado = quitar(nombre)
+    if quitado is None:
+        print(f"jp: el paquete '{nombre}' no está instalado", file=sys.stderr)
+        return 66
+    print(f"✔ paquete '{nombre}' quitado ({quitado})")
+    return 0
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -602,6 +647,29 @@ def main(argv: list[str] | None = None) -> int:
         help="crea un proyecto JP nuevo: NOMBRE/principal.jp + pruebas + LEEME",
     )
     parser.add_argument(
+        "--instalar",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ORIGEN",
+        help="instala un paquete JP (github:usuario/repo, carpeta local...); sin origen, las dependencias de paquete.json",
+    )
+    parser.add_argument(
+        "--aqui",
+        action="store_true",
+        help="con --instalar: instala en ./paquetes en vez de en ~/.jp/paquetes",
+    )
+    parser.add_argument(
+        "--paquetes",
+        action="store_true",
+        help="lista los paquetes JP instalados",
+    )
+    parser.add_argument(
+        "--quitar-paquete",
+        metavar="NOMBRE",
+        help="desinstala un paquete JP",
+    )
+    parser.add_argument(
         "--compilar",
         action="store_true",
         help="compila el archivo .jp a bytecode nativo (.jpb)",
@@ -620,6 +688,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.instalar is not None:
+        return _modo_instalar(args.instalar or None, args.aqui)
+    if args.paquetes:
+        return _modo_paquetes()
+    if args.quitar_paquete:
+        return _modo_quitar_paquete(args.quitar_paquete)
     if args.proyecto:
         return _modo_proyecto(args.proyecto)
     if args.formatear:

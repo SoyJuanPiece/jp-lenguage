@@ -518,7 +518,11 @@ class Interprete:
 
     def _ej_importar(self, nodo: NodoImportar, entorno: Entorno) -> None:
         """importar "x.jp" [como n]: ejecuta el módulo una sola vez y trae sus nombres."""
-        ruta = (self.directorio_base / nodo.ruta).resolve()
+        if nodo.ruta.startswith("@"):
+            from .paquetes import resolver_paquete
+            ruta = resolver_paquete(nodo.ruta, self.directorio_base, nodo.linea)
+        else:
+            ruta = (self.directorio_base / nodo.ruta).resolve()
         if not ruta.is_file():
             raise ErrorEjecucion(
                 f"no se encontró el módulo '{nodo.ruta}' (buscado en {ruta})", nodo.linea

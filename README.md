@@ -498,6 +498,11 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.24.0 — **revisor** (ver `CHANGELOG.md`). Nuevo:
+
+- 🔍 **`jp --revisar`**: análisis estático (sin declarar, sin usar,
+  asignar sin `variable`) con salida lista para CI.
+
 v1.23.0 — **tipos** (ver `CHANGELOG.md`). Nuevo:
 
 - 🏷️ **Tipos opcionales**: `funcion f(a: numero): numero` y

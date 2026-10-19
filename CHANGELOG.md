@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.24.0 — «Revisor» (2026-10-19)
+
+- **`jp --revisar archivo.jp`**: análisis estático sin ejecutar —
+  recorre el AST con pila de ámbitos y avisa de variables usadas sin
+  declarar, asignaciones sin `variable` previa y declaraciones que
+  nunca se usan (las de `_nombre` no acusan: son "a propósito"). Sale
+  con 1 si hay avisos y 0 si está limpio, listo para CI. Es una
+  aproximación amable: tras un `importar` sin alias no acusa lo que no
+  puede conocer (`jp/revisor.py`, `tests/test_v33.py`).
+
 ## 1.23.0 — «Tipos» (2026-10-19)
 
 - **Tipos opcionales con chequeo al ejecutar**, en el árbol y en la VM:

@@ -416,6 +416,32 @@ def _modo_quitar_paquete(nombre: str) -> int:
     return 0
 
 
+def _modo_revisar(ruta: str) -> int:
+    """Analisis estatico: variables sin declarar o sin usar (jp/revisor.py)."""
+    from .revisor import revisar
+
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"jp: no se encontró el archivo: {ruta}", file=sys.stderr)
+        return 66
+    except IsADirectoryError:
+        print(f"jp: es un directorio: {ruta}", file=sys.stderr)
+        return 66
+    try:
+        programa = parsear(tokenizar(fuente))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else f"{error.titulo}: {error.mensaje}", file=sys.stderr)
+        return 65
+    avisos = revisar(programa)
+    for aviso in avisos:
+        print(f"{ruta}: {aviso}")
+    if avisos:
+        return 1
+    print(f"✔ {ruta}: sin avisos")
+    return 0
+
+
 def _modo_codigo(codigo: str) -> int:
     ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
     return 0 if ok else 65
@@ -642,6 +668,11 @@ def main(argv: list[str] | None = None) -> int:
         help="con --formatear: reescribe el archivo en vez de imprimirlo",
     )
     parser.add_argument(
+        "--revisar",
+        action="store_true",
+        help="analisis estatico: avisa de variables sin declarar o sin usar, sin ejecutar",
+    )
+    parser.add_argument(
         "--proyecto",
         metavar="NOMBRE",
         help="crea un proyecto JP nuevo: NOMBRE/principal.jp + pruebas + LEEME",
@@ -688,6 +719,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.revisar:
+        if args.archivo is None:
+            parser.error("--revisar necesita un archivo .jp")
+        return _modo_revisar(args.archivo)
     if args.instalar is not None:
         return _modo_instalar(args.instalar or None, args.aqui)
     if args.paquetes:

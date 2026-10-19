@@ -107,6 +107,8 @@ class MaquinaVM:
         _instalar_graficos(entorno_global, self._llamar_valor)
         from .basedatos import instalar as _instalar_basedatos
         _instalar_basedatos(entorno_global, self._llamar_valor)
+        from .procesos import instalar as _instalar_procesos
+        _instalar_procesos(entorno_global, self._llamar_valor)
         self.globals: dict[str, object] = entorno_global.variables
         self.pila: list[object] = []
         # [cierre_de_reanudación, ámbito_previo, alto_de_pila_al_llamar]

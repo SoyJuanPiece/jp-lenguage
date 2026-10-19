@@ -498,6 +498,11 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.22.0 — **en paralelo** (ver `CHANGELOG.md`). Nuevo:
+
+- ⚡ **Concurrencia real**: `iniciar_proceso` / `esperar_proceso` lanzan
+  procesos que corren a la vez (3×1 s de sueño = 1 s en total).
+
 v1.21.0 — **paquetes** (ver `CHANGELOG.md`). Nuevo:
 
 - 📦 **Ecosistema**: `jp --instalar github:usuario/repo` instala paquetes

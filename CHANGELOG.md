@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.22.0 — «En paralelo» (2026-10-19)
+
+- **Concurrencia real por procesos** (`jp/procesos.py`):
+  `iniciar_proceso(comando)` lanza un proceso hijo (otro programa, otro
+  `.jp`...) que corre en paralelo de verdad, `proceso_en_curso(id)`,
+  `esperar_proceso(id[, limite])` → `{codigo, salida, errores,
+  terminado}` (con límite mata al que se cuelga) y `terminar_proceso`.
+  La demostración se mide sola: 3 procesos que duermen 1 s terminan en
+  ~1 s, no en 3 (`ejemplos/procesos.jp`).
+
 ## 1.21.0 — «Paquetes» (2026-10-19)
 
 - **Gestor de paquetes** (`jp/paquetes.py`): un paquete es una carpeta

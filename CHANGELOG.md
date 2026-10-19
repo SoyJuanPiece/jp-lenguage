@@ -1,5 +1,17 @@
 # Cambios de JP
 
+## 1.10.0 — «Web» (2026-10-19)
+
+- **Servidor web**: `servir(puerto, manejador[, anfitrion])` — JP ya no solo
+  consume APIs: las sirve. La petición llega como diccionario
+  `{metodo, ruta, consulta, cuerpo, cabeceras}` y la respuesta puede ser
+  texto o `{cuerpo, estado, tipo}` (dict/lista sale como JSON). Las llamadas
+  al manejador se serializan (el motor no es multi-hilo). Ejemplo ejecutable
+  en `biblioteca/ejemplo-servidor.jp`; test con HTTP real en
+  `tests/test_v20.py`.
+- **Seguridad básica**: `hash_texto(texto[, algoritmo])` (md5/sha1/sha256/
+  sha512), `codificar64`/`decodificar64` e `id_unico()`.
+
 ## 1.9.0 — «Datos» (2026-10-19)
 
 Paridad árbol↔VM en todo (8 tests nuevos en `tests/test_v19.py`) y las

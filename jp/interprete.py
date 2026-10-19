@@ -358,6 +358,10 @@ class Interprete:
         _instalar_patrones(self.global_env, self._llamar_valor)
         from .tablas import instalar as _instalar_tablas
         _instalar_tablas(self.global_env, self._llamar_valor)
+        from .servidor import instalar as _instalar_servidor
+        _instalar_servidor(self.global_env, self._llamar_valor)
+        from .seguridad import instalar as _instalar_seguridad
+        _instalar_seguridad(self.global_env, self._llamar_valor)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
         self._profundidad = 0  # llamadas JP activas (tope _MAX_LLAMADAS, como la VM)
         # Módulos importados: ruta resuelta -> nombres exportados; y pila de

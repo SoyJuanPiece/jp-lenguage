@@ -498,6 +498,13 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.10.0 — **web** (ver `CHANGELOG.md`). Nuevo:
+
+- 🌐 **Servidor web propio**: `servir(8080, atender)` sirve páginas y APIs
+  JSON (petición como diccionario, respuesta texto o `{cuerpo, estado}`).
+  JP ya crea servidores, no solo los consume: `biblioteca/ejemplo-servidor.jp`.
+- 🔐 **Seguridad**: `hash_texto` (SHA-256 y familia), `codificar64`, `id_unico()`.
+
 v1.9.0 — **datos** (ver `CHANGELOG.md`). Nuevo:
 
 - 🗃️ **CSV + clase `Tabla`** estilo pandas: `leer_csv` convierte tipos solo

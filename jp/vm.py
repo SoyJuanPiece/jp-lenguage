@@ -99,6 +99,10 @@ class MaquinaVM:
         _instalar_patrones(entorno_global, self._llamar_valor)
         from .tablas import instalar as _instalar_tablas
         _instalar_tablas(entorno_global, self._llamar_valor)
+        from .servidor import instalar as _instalar_servidor
+        _instalar_servidor(entorno_global, self._llamar_valor)
+        from .seguridad import instalar as _instalar_seguridad
+        _instalar_seguridad(entorno_global, self._llamar_valor)
         self.globals: dict[str, object] = entorno_global.variables
         self.pila: list[object] = []
         # [cierre_de_reanudación, ámbito_previo, alto_de_pila_al_llamar]

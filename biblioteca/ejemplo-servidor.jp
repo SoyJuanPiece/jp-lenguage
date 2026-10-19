@@ -1,0 +1,18 @@
+# Un servidor web en 12 lineas de JP. Ejecutalo con:
+#   python -m jp biblioteca/ejemplo-servidor.jp
+# y abre http://127.0.0.1:8080/hola o http://127.0.0.1:8080/api
+
+funcion atender(peticion) {
+    si peticion.ruta == "/hola" {
+        devuelve {cuerpo: "Hola desde JP 👋", estado: 200}
+    }
+    si peticion.ruta == "/api" {
+        devuelve {cuerpo: {ok: verdadero, metodo: peticion.metodo, consulta: peticion.consulta}}
+    }
+    si peticion.ruta == "/eco" {
+        devuelve {cuerpo: peticion.cuerpo}
+    }
+    devuelve {cuerpo: "no encontrado: " + peticion.ruta, estado: 404}
+}
+
+servir(8080, atender)

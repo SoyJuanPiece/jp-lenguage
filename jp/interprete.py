@@ -362,6 +362,8 @@ class Interprete:
         _instalar_servidor(self.global_env, self._llamar_valor)
         from .seguridad import instalar as _instalar_seguridad
         _instalar_seguridad(self.global_env, self._llamar_valor)
+        from .graficos import instalar as _instalar_graficos
+        _instalar_graficos(self.global_env, self._llamar_valor)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
         self._profundidad = 0  # llamadas JP activas (tope _MAX_LLAMADAS, como la VM)
         # Módulos importados: ruta resuelta -> nombres exportados; y pila de

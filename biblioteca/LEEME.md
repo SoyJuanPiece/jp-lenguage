@@ -16,6 +16,7 @@ imprime(mates.factorial(6))
 | `ia.jp` | clase `RedNeuronal` multicapa que aprende con backprop (el XOR incluido) |
 | `tabla.jp` | clase `Tabla` estilo pandas: `filtrar_con`, `ordenar_por`, `agrupar_por`, `agregar_columna`, `promedio_columna`... + `tabla_de_csv(ruta)` |
 | `web.jp` | mini-framework web: clase `Aplicacion` con rutas `/saludar/:nombre`, intermediarios, `json`, `pagina`, `redirigir` (demo: `ejemplo-web.jp`) |
+| `graficas.jp` | `grafica_barras`, `grafica_lineas`, `grafica_pastel` → texto SVG (con las primitivas `svg_*` del motor) |
 
 Además, el motor trae **120 funciones nativas** (51 nuevas en la v1.8.0,
 en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`, `jp/sistema.py` y
@@ -31,7 +32,8 @@ en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`, `jp/sistema.py` y
 `es_archivo`, `crear_carpeta`, `ejecutar` · `buscar_patron`,
 `coincide_patron`, `encontrar_patrones`, `reemplazar_patron`, `separar_patron` ·
 `leer_csv`, `leer_csv_texto`, `escribir_csv`, `convertir_csv`, `sublista` ·
-`sumar_dias`, `dias_entre`. De ellas, `sigmoide`, `producto_punto`, `promedio`,
+`sumar_dias`, `dias_entre` · `svg_linea`, `svg_rectangulo`, `svg_circulo`,
+`svg_texto`, `svg_lineas`, `svg_camino`, `crear_svg`, `guardar_svg`. De ellas, `sigmoide`, `producto_punto`, `promedio`,
 `mediana`, `norma`, `distancia` y `softmax` también están en el motor en C.
 
 El motor en C aún no tiene las nativas nuevas: si las usas con `--c`, se

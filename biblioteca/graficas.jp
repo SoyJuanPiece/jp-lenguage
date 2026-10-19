@@ -1,0 +1,94 @@
+# biblioteca/graficas.jp — gráficas SVG escritas en JP puro.
+#
+# Uso:
+#   importar "../biblioteca/graficas.jp" como g
+#   guardar_svg("ventas.svg", g.grafica_barras([120, 320], ["Maturín", "Caracas"], "Ventas"))
+#
+# Cada función devuelve el texto SVG completo, listo para guardar_svg()
+# o para servirlo en una web con tipo "image/svg+xml".
+
+variable COLORES = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7"]
+
+funcion color_en(i) { devuelve COLORES[i % longitud(COLORES)] }
+
+funcion fijo(n) { devuelve redondear(n * 100) / 100 }
+
+funcion grafica_barras(valores, etiquetas, titulo = "") {
+    variable ancho = 640
+    variable alto = 400
+    variable margen = 50
+    variable base = alto - 50
+    variable tope = 40
+    si titulo != "" { tope = 75 }
+    variable mayor = maximo(valores)
+    variable paso = (ancho - 2 * margen) / longitud(valores)
+    variable elementos = []
+    elementos.agregar(svg_linea(margen, base, ancho - margen, base, "#333333"))
+    si titulo != "" { elementos.agregar(svg_texto(margen, 32, titulo, 20)) }
+    para i, v en valores {
+        variable h = (v / mayor) * (base - tope)
+        variable x = margen + i * paso + 6
+        elementos.agregar(svg_rectangulo(x, base - h, paso - 12, fijo(h), color_en(i)))
+        elementos.agregar(svg_texto(x, base - h - 6, texto(v), 13))
+        elementos.agregar(svg_texto(x, base + 18, etiquetas[i], 12))
+    }
+    devuelve crear_svg(ancho, alto, elementos)
+}
+
+funcion grafica_lineas(valores, titulo = "") {
+    variable ancho = 640
+    variable alto = 400
+    variable margen = 50
+    variable base = alto - 50
+    variable tope = 40
+    si titulo != "" { tope = 75 }
+    variable mayor = maximo(valores)
+    variable paso = (ancho - 2 * margen) / (longitud(valores) - 1)
+    variable elementos = []
+    elementos.agregar(svg_linea(margen, base, ancho - margen, base, "#333333"))
+    elementos.agregar(svg_linea(margen, tope, margen, base, "#333333"))
+    si titulo != "" { elementos.agregar(svg_texto(margen, 32, titulo, 20)) }
+    variable puntos = []
+    para i, v en valores {
+        variable x = margen + i * paso
+        variable py = base - (v / mayor) * (base - tope)
+        puntos.agregar([fijo(x), fijo(py)])
+        elementos.agregar(svg_circulo(fijo(x), fijo(py), 4, "#e15759"))
+    }
+    elementos.insertar(2, svg_lineas(puntos, "#4e79a7", 2))
+    devuelve crear_svg(ancho, alto, elementos)
+}
+
+funcion grafica_pastel(valores, etiquetas) {
+    variable total = sumar(valores)
+    variable cx = 190
+    variable cy = 200
+    variable radio = 150
+    variable elementos = []
+    si longitud(valores) == 1 {
+        elementos.agregar(svg_circulo(cx, cy, radio, color_en(0)))
+    } sino {
+        variable acumulado = 0
+        para i, v en valores {
+            variable frac = v / total
+            variable a1 = acumulado * 2 * pi() - pi() / 2
+            acumulado = acumulado + frac
+            variable a2 = acumulado * 2 * pi() - pi() / 2
+            variable x1 = fijo(cx + radio * coseno(a1))
+            variable y1 = fijo(cy + radio * seno(a1))
+            variable x2 = fijo(cx + radio * coseno(a2))
+            variable y2 = fijo(cy + radio * seno(a2))
+            variable grande = 0
+            si frac > 0.5 { grande = 1 }
+            variable d = "M " + texto(cx) + " " + texto(cy) + " L " + texto(x1) + " " + texto(y1)
+            d = d + " A " + texto(radio) + " " + texto(radio) + " 0 " + texto(grande) + " 1 " + texto(x2) + " " + texto(y2) + " Z"
+            elementos.agregar(svg_camino(d, color_en(i)))
+        }
+    }
+    para i, v en valores {
+        variable porciento = redondear(v / total * 100)
+        elementos.agregar(svg_rectangulo(380, 66 + i * 26, 14, 14, color_en(i)))
+        elementos.agregar(svg_texto(402, 79 + i * 26, etiquetas[i] + ": " + texto(porciento) + "%", 13))
+    }
+    devuelve crear_svg(600, 400, elementos)
+}

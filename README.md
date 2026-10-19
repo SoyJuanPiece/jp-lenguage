@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.12.0 — **gráficos** (ver `CHANGELOG.md`). Nuevo:
+
+- 🎨 **Gráficas SVG sin salir de JP**: primitivas `svg_*` en el motor y
+  `grafica_barras`, `grafica_lineas`, `grafica_pastel` en JP puro
+  (`biblioteca/graficas.jp`). `ejemplos/grafica.jp` crea dos SVG reales.
+
 v1.11.0 — **web pro** (ver `CHANGELOG.md`). Nuevo:
 
 - 🕸️ **Mini-framework web en JP puro** (`biblioteca/web.jp`): rutas con

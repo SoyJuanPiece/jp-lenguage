@@ -1,5 +1,17 @@
 # Cambios de JP
 
+## 1.12.0 — «Gráficos» (2026-10-19)
+
+- **SVG desde JP** (`jp/graficos.py`): primitivas `svg_linea`,
+  `svg_rectangulo`, `svg_circulo`, `svg_texto` (con escape XML),
+  `svg_lineas`, `svg_camino`, `crear_svg` y `guardar_svg`, idénticas en el
+  árbol y en la VM. El SVG se puede guardar o servir por web con
+  `tipo: "image/svg+xml"`.
+- **Gráficas en JP puro** (`biblioteca/graficas.jp`): `grafica_barras`,
+  `grafica_lineas` y `grafica_pastel` (con leyenda y porcentajes) escritas
+  con las primitivas. `ejemplos/grafica.jp` genera `grafica-barras.svg` y
+  `grafica-pastel.svg` de las ventas por ciudad (incluidos como muestra).
+
 ## 1.11.0 — «Web Pro» (2026-10-19)
 
 - **Mini-framework web en JP puro** (`biblioteca/web.jp`): clase

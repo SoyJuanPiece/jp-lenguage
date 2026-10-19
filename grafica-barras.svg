@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+<rect width="640" height="400" fill="#ffffff"/>
+<line x1="50" y1="350" x2="590" y2="350" stroke="#333333" stroke-width="2"/>
+<text x="50" y="32" font-size="20" fill="black" font-family="sans-serif">Ventas por ciudad</text>
+<rect x="56" y="246.88" width="123" height="103.13" fill="#4e79a7"/>
+<text x="56" y="240.88" font-size="13" fill="black" font-family="sans-serif">120</text>
+<text x="56" y="368" font-size="12" fill="black" font-family="sans-serif">Maturín</text>
+<rect x="191" y="75" width="123" height="275" fill="#f28e2b"/>
+<text x="191" y="69" font-size="13" fill="black" font-family="sans-serif">320</text>
+<text x="191" y="368" font-size="12" fill="black" font-family="sans-serif">Caracas</text>
+<rect x="326" y="199.61" width="123" height="150.39" fill="#e15759"/>
+<text x="326" y="193.61" font-size="13" fill="black" font-family="sans-serif">175</text>
+<text x="326" y="368" font-size="12" fill="black" font-family="sans-serif">Valencia</text>
+<rect x="461" y="126.56" width="123" height="223.44" fill="#76b7b2"/>
+<text x="461" y="120.56" font-size="13" fill="black" font-family="sans-serif">260</text>
+<text x="461" y="368" font-size="12" fill="black" font-family="sans-serif">Maracaibo</text>
+</svg>

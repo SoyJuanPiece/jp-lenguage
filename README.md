@@ -498,6 +498,15 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.11.0 — **web pro** (ver `CHANGELOG.md`). Nuevo:
+
+- 🕸️ **Mini-framework web en JP puro** (`biblioteca/web.jp`): rutas con
+  `:parámetros`, intermediarios (claves, registro), `web.json`,
+  `web.pagina`, `web.redirigir` y 404 en JSON — un mini-Flask escrito en JP
+  (`biblioteca/ejemplo-web.jp`, y sin red en `ejemplos/web-rutas.jp`).
+- 📨 El servidor lee el JSON del cuerpo solo (`peticion.json`) y acepta
+  `cabeceras` propias en la respuesta.
+
 v1.10.0 — **web** (ver `CHANGELOG.md`). Nuevo:
 
 - 🌐 **Servidor web propio**: `servir(8080, atender)` sirve páginas y APIs

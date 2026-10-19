@@ -1,5 +1,19 @@
 # Cambios de JP
 
+## 1.11.0 — «Web Pro» (2026-10-19)
+
+- **Mini-framework web en JP puro** (`biblioteca/web.jp`): clase
+  `Aplicacion` con rutas por método y patrón (`app.get("/saludar/:nombre",
+  ...)` — los `:parámetros` llegan en `peticion.parametros`),
+  intermediarios (`app.usar(...)`, pueden cortar la petición: claves,
+  registro...), respuestas `web.json(datos, estado)`, `web.pagina(html)` y
+  `web.redirigir(destino)`, y 404 en JSON por defecto. `app.atender(...)`
+  permite probarlo sin abrir red (`ejemplos/web-rutas.jp`); sitio completo
+  en `biblioteca/ejemplo-web.jp`.
+- **Servidor más capaz**: la petición trae `json` con el cuerpo ya leído si
+  venía en JSON, y la respuesta acepta `cabeceras` propias (ej:
+  `{cabeceras: {"X-App": "JP"}}`, redirecciones con `Location`...).
+
 ## 1.10.0 — «Web» (2026-10-19)
 
 - **Servidor web**: `servir(puerto, manejador[, anfitrion])` — JP ya no solo

@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.24.1 — Arreglo del motor en C (2026-10-19)
+
+- **Segfault en `ejemplos/red-profunda.jp` corregido**: el GC del motor
+  en C barría los objetos `Nativa` del registro (`nativas_por_nombre`)
+  porque al cargar el programa el contador de globales se reinicia y
+  dejaban de estar marcados como raíces; cualquier método de valor
+  posterior leía memoria liberada. Ahora el registro de nativas y los
+  nombres de las globales se marcan en cada recolección. Detectado con
+  AddressSanitizer; la paridad Python↔C vuelve a 0 fallos.
+
 ## 1.24.0 — «Revisor» (2026-10-19)
 
 - **`jp --revisar archivo.jp`**: análisis estático sin ejecutar —

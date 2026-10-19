@@ -634,6 +634,14 @@ static void recolectar(void) {
         for (uint32_t i = 0; i < m->n_upvalues; i++) marcar_objeto(m->upvalues[i]);
     }
     for (uint32_t i = 0; i < vm->n_globales; i++) marcar(vm->globales[i].valor);
+    /* el registro de nativas es una raíz de por vida: al cargar el programa
+     * el contador de globales se reinicia y las Nativa quedarían solo en
+     * este array; sin marcarlas, el barrido las liberaba y cualquier
+     * método de valor posterior leía memoria muerta (red-profunda) */
+    for (uint32_t i = 0; i < n_nativas_registradas; i++)
+        if (nativas_por_nombre[i]) marcar_objeto((Obj *)nativas_por_nombre[i]);
+    for (uint32_t i = 0; i < vm->n_globales; i++)
+        if (vm->globales[i].nombre) marcar_objeto((Obj *)vm->globales[i].nombre);
     marcar(vm->ultimo_valor);
     /* las funciones y sus constantes nunca se liberan: son el programa */
     size_t vivos = 0, total = 0;

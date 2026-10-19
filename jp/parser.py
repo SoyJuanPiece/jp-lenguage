@@ -15,6 +15,7 @@ from .arbol import (
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoClase,
     NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
@@ -130,6 +131,8 @@ class Parser:
                 return self._sentencia_lanzar()
             if self._coincide(TToken.IMPORTAR):
                 return self._sentencia_importar()
+            if self._coincide(TToken.CLASE):
+                return self._sentencia_clase()
             if self._coincide(TToken.MIENTRAS):
                 return self._sentencia_mientras()
             if self._coincide(TToken.PARA):
@@ -187,6 +190,28 @@ class Parser:
         valor = self._expresion()
         asignacion = NodoAsignacionLista(nombres=nombres, valor=valor, linea=inicio.linea)
         return NodoExpresion(expresion=asignacion, linea=inicio.linea)
+
+    def _sentencia_clase(self) -> Nodo:
+        """clase Nombre [hereda Padre] { funcion metodo(...) { ... } ... }"""
+        token = self._actual()
+        nombre = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la clase: 'clase Persona { ... }'")
+        padre = None
+        if self._coincide(TToken.HEREDA):
+            padre = self._esperar(TToken.IDENTIFICADOR, "se esperaba la clase madre tras 'hereda'").lexema
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras el nombre de la clase")
+        metodos: list = []
+        while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
+            while self._coincide(TToken.PUNTO_Y_COMA):
+                pass
+            if self._actual().tipo == TToken.LLAVE_DER:
+                break
+            if not self._coincide(TToken.FUN):
+                raise self._error(
+                    "dentro de una clase solo van métodos: 'funcion nombre(...) { ... }'"
+                )
+            metodos.append(self._sentencia_fun())
+        self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar la clase")
+        return NodoClase(nombre=nombre.lexema, metodos=metodos, padre=padre, linea=token.linea)
 
     def _sentencia_lanzar(self) -> Nodo:
         token = self._actual()

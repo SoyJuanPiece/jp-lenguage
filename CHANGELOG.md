@@ -1,5 +1,25 @@
 # Cambios de JP
 
+## 1.7.0 — «Objetos» (2026-10-19)
+
+Todo lo nuevo funciona con la **misma salida en el intérprete de árbol y en la
+VM de bytecode** (19 tests nuevos en `tests/test_v17.py`; suite total: 299).
+El motor en C y el JIT rechazan limpiamente lo que aún no tienen.
+
+- **Clases y objetos**: `clase Persona { funcion iniciar(nombre) { este.nombre = nombre } ... }`,
+  herencia con `clase Empleado hereda Persona`, métodos con valores por
+  defecto, métodos como valores (`variable m = p.saludar`) y objetos que
+  funcionan también importados desde un módulo. Ejemplo: `ejemplos/clases.jp`.
+- **Errores con campos**: dentro de `atrapa`, el error sigue siendo el texto
+  de siempre y además trae `e.tipo` (`"division_por_cero"`, `"usuario"`,
+  `"indice_fuera_de_rango"`...), `e.mensaje` y `e.linea`.
+- **Kit de IA**: `sigmoide(x)` y `producto_punto(a, b)` como nativas rápidas
+  (~1,7x frente al bucle equivalente en JP). El perceptrón de ejemplo ahora
+  es una clase: `ejemplos/ia-perceptron.jp`.
+- **Rangos perezosos en `para`**: `para i en 1..5000000` ya no crea la lista
+  entera en memoria (pico de ~4 MB para 3 millones de vueltas).
+- **`jp --check archivo.jp`**: comprueba la sintaxis sin ejecutar (editores/CI).
+
 ## 1.6.0 — «Programas que se componen» (2026-10-19)
 
 Todo lo nuevo funciona con la **misma salida en el intérprete de árbol y en la

@@ -42,6 +42,13 @@ Además: `LICENSE` (T-01), `CHANGELOG.md` (T-02) y el arreglo del lexer para
 `lista[0]=1` sin espacios. El motor en C y el JIT rechazan limpiamente lo
 nuevo (módulos/defectos/`finalmente`/`para a, b`) y el CLI sigue con Python.
 
+### ✅ v1.7.0 (2026-10-19): clases, errores con campos y kit de IA
+
+`clase`/`hereda`/`este` con constructor `iniciar` (T-33, diseño minimalista:
+sin `super` todavía), errores atrapables con `.tipo/.mensaje/.linea` (T-05),
+`sigmoide`/`producto_punto` nativos, rangos perezosos en `para` y
+`jp --check` (T-10). Paridad árbol↔VM en todo (19 tests, `tests/test_v17.py`).
+
 **Números (esta máquina, Xeon 2.6 GHz, gcc 12 -O2):**
 
 | Medida | Motor Python | JIT | **Motor C** | CPython | Mejora |

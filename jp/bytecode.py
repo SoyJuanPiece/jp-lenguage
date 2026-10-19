@@ -79,6 +79,8 @@ class Codigo(Enum):
     DESESTRUCTURAR = auto()   # operando=(nombres,); declara cada nombre desde la lista del tope
     DESESTRUCTURAR_ASIG = auto()  # operando=(nombres,); asigna a variables existentes
     IMPORTAR = auto()         # operando=(ruta, alias); ejecuta el módulo una vez y define sus nombres
+    CREAR_CLASE = auto()      # operando=(nombre, (metodos...)); pila: padre, metodos... -> clase
+    ITERAR_RANGO = auto()     # inicio, fin[, paso] en pila -> IteradorJP perezoso (sin crear la lista)
     # (romper/continuar no necesitan opcode: el compilador emite los
     #  AMBITO_POP necesarios y un SALTAR normal)
 
@@ -118,6 +120,8 @@ _NOMBRES: dict[Codigo, str] = {
     Codigo.DESESTRUCTURAR: "DESESTRUCTURAR",
     Codigo.DESESTRUCTURAR_ASIG: "DESESTRUCTURAR_ASIG",
     Codigo.IMPORTAR: "IMPORTAR",
+    Codigo.CREAR_CLASE: "CREAR_CLASE",
+    Codigo.ITERAR_RANGO: "ITERAR_RANGO",
     Codigo.SUMAR: "SUMAR",
     Codigo.RESTAR: "RESTAR",
     Codigo.MULTIPLICAR: "MULTIPLICAR",

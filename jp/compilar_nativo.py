@@ -36,6 +36,7 @@ from .arbol import (
     NodoElegir,
     NodoExpresion,
     NodoAsignacionLista,
+    NodoClase,
     NodoDeclaracionLista,
     NodoFuncion,
     NodoImportar,
@@ -541,6 +542,9 @@ class CompiladorNativo:
 
         elif tipo is NodoImportar:
             raise NoSoportadoNativo("los módulos ('importar') aún no están en el motor nativo", linea)
+
+        elif tipo is NodoClase:
+            raise NoSoportadoNativo("las clases ('clase') aún no están en el motor nativo", linea)
 
         elif tipo is NodoLanzar:
             raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)

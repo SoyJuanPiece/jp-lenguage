@@ -23,6 +23,7 @@ from .arbol import (
     NodoBloque,
     NodoBooleano,
     NodoCadena,
+    NodoClase,
     NodoDeclaracionLista,
     NodoDeclaracionVar,
     NodoDiccionario,
@@ -171,6 +172,100 @@ class Cierre:
         return f"<fun {getattr(self.fun, 'nombre', '') or '<anónima>'}>"
 
 
+# ----------------- Clases y objetos (clase / hereda / este) -----------------
+
+class ClaseJP:
+    """Una clase definida en JP. Sus métodos son FuncionJP en el árbol y
+    Cierre en la VM: esta clase solo guarda el molde (nombre, métodos, madre)."""
+
+    __slots__ = ("nombre", "metodos", "padre")
+
+    def __init__(self, nombre: str, metodos: dict, padre: "ClaseJP | None" = None):
+        self.nombre = nombre
+        self.metodos = metodos
+        self.padre = padre
+
+    def __repr__(self) -> str:
+        return f"<clase {self.nombre}>"
+
+
+class Instancia:
+    """Un objeto: su clase + sus campos propios."""
+
+    __slots__ = ("clase", "campos")
+
+    def __init__(self, clase: ClaseJP):
+        self.clase = clase
+        self.campos: dict[str, object] = {}
+
+    def __repr__(self) -> str:
+        return f"<objeto {self.clase.nombre}>"
+
+
+class MetodoLigado:
+    """Un método ya unido a su objeto: p.saludar (sin llamarlo todavía)."""
+
+    __slots__ = ("instancia", "funcion")
+
+    def __init__(self, instancia: Instancia, funcion: object):
+        self.instancia = instancia
+        self.funcion = funcion
+
+    def __repr__(self) -> str:
+        nombre = getattr(self.funcion, "nombre", None) or getattr(
+            getattr(self.funcion, "fun", None), "nombre", ""
+        )
+        return f"<método {nombre}() de {self.instancia.clase.nombre}>"
+
+
+def buscar_metodo(clase: ClaseJP, nombre: str):
+    """Busca un método en la clase y en sus madres (herencia)."""
+    actual: ClaseJP | None = clase
+    while actual is not None:
+        if nombre in actual.metodos:
+            return actual.metodos[nombre]
+        actual = actual.padre
+    return None
+
+
+class ErrorValor(str):
+    """Lo que recibe el nombre de un 'atrapa': un texto (el mensaje, como
+    siempre) que además trae .tipo, .mensaje y .linea para poder decidir
+    sin comparar textos:  si e.tipo == "division_por_cero { ... }"""
+
+    def __new__(cls, mensaje: str, tipo: str = "ejecucion", linea: int = 0):
+        objeto = super().__new__(cls, mensaje)
+        objeto.mensaje = mensaje
+        objeto.tipo = tipo
+        objeto.linea = linea
+        return objeto
+
+
+_TIPOS_POR_MENSAJE = (
+    ("división por cero", "division_por_cero"),
+    ("módulo por cero", "division_por_cero"),
+    ("índice fuera de rango", "indice_fuera_de_rango"),
+    ("variable no definida", "variable_no_definida"),
+    ("desbordamiento de pila", "desbordamiento_de_pila"),
+    ("no se encontró el módulo", "modulo_no_encontrado"),
+    ("importación circular", "importacion_circular"),
+    ("no existe la clave", "clave_no_encontrada"),
+)
+
+
+def crear_error_valor(error: ErrorEjecucion) -> ErrorValor:
+    """Convierte un ErrorEjecucion en el ErrorValor que ve el 'atrapa'."""
+    tipo = getattr(error, "tipo", None)
+    if not tipo or tipo == "ejecucion":
+        for fragmento, codigo in _TIPOS_POR_MENSAJE:
+            if fragmento in error.mensaje:
+                tipo = codigo
+                break
+        else:
+            tipo = "ejecucion"
+    return ErrorValor(error.mensaje, tipo, getattr(error, "linea", 0))
+
+
 # ----------------- Utilidades de tipos -----------------
 
 def jp_a_texto(valor: object) -> str:
@@ -189,6 +284,11 @@ def jp_a_texto(valor: object) -> str:
         return "[" + ", ".join(_inspeccionar(v) for v in valor) + "]"
     if isinstance(valor, dict):
         return "{" + ", ".join(f"{_inspeccionar(k)}: {_inspeccionar(v)}" for k, v in valor.items()) + "}"
+    if isinstance(valor, Instancia):
+        if not valor.campos:
+            return f"{valor.clase.nombre}{{}}"
+        campos = ", ".join(f"{k}: {_inspeccionar(v)}" for k, v in valor.campos.items())
+        return f"{valor.clase.nombre}{{{campos}}}"
     return str(valor)
 
 
@@ -267,6 +367,7 @@ class Interprete:
             NodoMientras: self._ej_mientras,
             NodoPara: self._ejecutar_para,
             NodoFuncion: self._ej_funcion,
+            NodoClase: self._ej_clase,
             NodoLanzar: self._ej_lanzar,
             NodoImportar: self._ej_importar,
             NodoDeclaracionLista: self._ej_declaracion_lista,
@@ -364,7 +465,22 @@ class Interprete:
 
     def _ej_lanzar(self, nodo: NodoLanzar, entorno: Entorno) -> None:
         valor = self._evaluar(nodo.expresion, entorno)
-        raise ErrorEjecucion(jp_a_texto(valor), nodo.linea)
+        raise ErrorEjecucion(jp_a_texto(valor), nodo.linea, tipo="usuario")
+
+    def _ej_clase(self, nodo: NodoClase, entorno: Entorno) -> None:
+        padre = None
+        if nodo.padre is not None:
+            valor_padre = entorno.obtener(nodo.padre, nodo.linea)
+            if not isinstance(valor_padre, ClaseJP):
+                raise ErrorEjecucion(
+                    f"'{nodo.padre}' no es una clase: no se puede heredar de {jp_a_texto(valor_padre)!r}",
+                    nodo.linea,
+                )
+            padre = valor_padre
+        metodos = {
+            metodo.nombre: FuncionJP(metodo, entorno) for metodo in nodo.metodos
+        }
+        entorno.definir(nodo.nombre, ClaseJP(nodo.nombre, metodos, padre))
 
     def _ej_importar(self, nodo: NodoImportar, entorno: Entorno) -> None:
         """importar "x.jp" [como n]: ejecuta el módulo una sola vez y trae sus nombres."""
@@ -458,7 +574,7 @@ class Interprete:
                     raise
                 entorno_error = Entorno(padre=entorno)
                 if nodo.nombre_error is not None:
-                    entorno_error.definir(nodo.nombre_error, error.mensaje)
+                    entorno_error.definir(nodo.nombre_error, crear_error_valor(error))
                 self._ejecutar(nodo.captura, entorno_error)
         finally:
             # 'finalmente' corre siempre: sin error, tras el 'atrapa' y antes
@@ -493,8 +609,13 @@ class Interprete:
         raise _Continuar(nodo.linea)
 
     def _ejecutar_para(self, nodo: NodoPara, entorno: Entorno) -> None:
-        iterable = self._evaluar(nodo.iterable, entorno)
-        if isinstance(iterable, list):
+        if type(nodo.iterable) is NodoRango:
+            # Perezoso: 'para i en 1..1000000' no crea la lista entera.
+            elementos = self._rango_perezoso(nodo.iterable, entorno)
+            iterable = elementos
+        else:
+            iterable = self._evaluar(nodo.iterable, entorno)
+        if isinstance(iterable, (list, range)):
             elementos = iterable
         elif isinstance(iterable, dict):
             elementos = list(iterable.keys())
@@ -511,9 +632,9 @@ class Interprete:
             # para i, valor en lista -> (posición desde 0, valor)
             # para clave, valor en dict -> (clave, valor)
             if isinstance(iterable, dict):
-                pares: list = list(iterable.items())
+                pares = iterable.items()
             else:
-                pares = list(enumerate(elementos))
+                pares = enumerate(elementos)
             for primero, segundo in pares:
                 cuerpo_env = Entorno(padre=entorno)
                 cuerpo_env.definir(nodo.variable, primero)
@@ -561,6 +682,11 @@ class Interprete:
         objeto = self._evaluar(nodo.objeto, entorno)
         indice = self._evaluar(nodo.indice, entorno)
         valor = self._evaluar(nodo.valor, entorno)
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", nodo.linea)
+            objeto.campos[indice] = valor
+            return valor
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", nodo.linea)
@@ -637,6 +763,24 @@ class Interprete:
             if i > f:
                 paso = -paso
         return list(range(i, f + (1 if paso > 0 else -1), paso))
+
+    def _rango_perezoso(self, nodo: NodoRango, entorno: Entorno) -> range:
+        """El mismo rango que _rango, pero sin crear la lista (para 'para')."""
+        inicio = self._evaluar(nodo.izquierda, entorno)
+        fin = self._evaluar(nodo.derecha, entorno)
+        for valor in (inicio, fin):
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                raise ErrorEjecucion(
+                    f"el rango '..' espera números, recibió {jp_a_texto(valor)!r}", nodo.linea
+                )
+        i, f = int(inicio), int(fin)
+        if nodo.paso is None:
+            paso = 1 if i <= f else -1
+        else:
+            paso = evaluar_paso(self._evaluar(nodo.paso, entorno), nodo.linea)
+            if i > f:
+                paso = -paso
+        return range(i, f + (1 if paso > 0 else -1), paso)
 
     def _binario(self, nodo: NodoBinario, entorno: Entorno) -> object:
         operador = nodo.operador
@@ -732,6 +876,25 @@ class Interprete:
 
     @staticmethod
     def _indexar(objeto: object, indice: object, linea: int) -> object:
+        if isinstance(objeto, ErrorValor) and isinstance(indice, str):
+            if indice == "mensaje":
+                return objeto.mensaje
+            if indice == "tipo":
+                return objeto.tipo
+            if indice == "linea":
+                return objeto.linea
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", linea)
+            if indice in objeto.campos:
+                return objeto.campos[indice]
+            metodo = buscar_metodo(objeto.clase, indice)
+            if metodo is not None:
+                return MetodoLigado(objeto, metodo)
+            campos = ", ".join(objeto.campos) or "ninguno"
+            raise ErrorEjecucion(
+                f"el objeto {objeto.clase.nombre} no tiene '{indice}' (campos: {campos})", linea
+            )
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)
@@ -782,6 +945,13 @@ class Interprete:
     def _llamar_valor(self, callee: object, argumentos: list[object], linea: int = 0) -> object:
         """Llama a un valor-función (JP o nativa). La usan también las nativas
         de orden superior (mapear, filtrar, reducir, ordenar con clave...)."""
+        if isinstance(callee, ClaseJP):
+            return self._instanciar(callee, argumentos, linea)
+        if isinstance(callee, MetodoLigado):
+            funcion = callee.funcion
+            if not isinstance(funcion, FuncionJP):  # en el arbol siempre lo es
+                raise ErrorEjecucion("metodo no valido", linea)
+            return self._llamar_funcion(funcion, argumentos, linea, este=callee.instancia)
         if isinstance(callee, FuncionNativa):
             if callee.aridad is not None and len(argumentos) != callee.aridad:
                 raise ErrorEjecucion(
@@ -799,7 +969,20 @@ class Interprete:
 
         raise ErrorEjecucion(f"este valor no es una función: {jp_a_texto(callee)!r}", linea)
 
-    def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int) -> object:
+    def _instanciar(self, clase: ClaseJP, argumentos: list[object], linea: int):
+        """Clase(args): crea el objeto y llama a su 'iniciar' (si lo tiene)."""
+        instancia = Instancia(clase)
+        iniciar = buscar_metodo(clase, "iniciar")
+        if iniciar is not None:
+            self._llamar_funcion(iniciar, argumentos, linea, este=instancia)
+        elif argumentos:
+            raise ErrorEjecucion(
+                f"la clase '{clase.nombre}' no tiene un metodo 'iniciar' y no acepta argumentos",
+                linea,
+            )
+        return instancia
+
+    def _llamar_funcion(self, funcion: FuncionJP, argumentos: list[object], linea: int, este: object = None) -> object:
         declaracion = funcion.declaracion
         defectos = declaracion.defectos or [None] * len(declaracion.parametros)
         obligatorios = sum(1 for d in defectos if d is None)
@@ -817,6 +1000,8 @@ class Interprete:
         if self._profundidad >= _MAX_LLAMADAS:
             raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
         entorno_local = Entorno(padre=funcion.cierre)
+        if este is not None:
+            entorno_local.definir("este", este)
         for indice, nombre in enumerate(declaracion.parametros):
             if indice < len(argumentos):
                 entorno_local.definir(nombre, argumentos[indice])
@@ -1134,6 +1319,27 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             )
         return t[i]
 
+    def sigmoide(x: object) -> float:
+        """1 / (1 + e^-x): la activacion clasica de las redes neuronales."""
+        valor = _num(x, "sigmoide")
+        if valor >= 0:
+            return 1.0 / (1.0 + math.exp(-valor))
+        e = math.exp(valor)
+        return e / (1.0 + e)
+
+    def producto_punto(a: object, b: object):
+        """Suma de a[i]*b[i] de dos listas del mismo largo (nucleo de toda IA)."""
+        if not isinstance(a, list) or not isinstance(b, list):
+            raise ErrorEjecucion("producto_punto() espera dos listas de numeros")
+        if len(a) != len(b):
+            raise ErrorEjecucion(
+                f"producto_punto() espera listas del mismo largo ({len(a)} y {len(b)})"
+            )
+        total: float | int = 0
+        for x, y in zip(a, b):
+            total += _num(x, "producto_punto") * _num(y, "producto_punto")
+        return total
+
     def exp(x: object) -> float:
         """e^x (para sigmoides y matemática de redes neuronales)."""
         if isinstance(x, bool) or not isinstance(x, (int, float)):
@@ -1270,7 +1476,11 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             return "lista"
         if isinstance(valor, dict):
             return "diccionario"
-        if isinstance(valor, (FuncionJP, FuncionNativa, Cierre)):
+        if isinstance(valor, Instancia):
+            return "objeto"
+        if isinstance(valor, ClaseJP):
+            return "clase"
+        if isinstance(valor, (FuncionJP, FuncionNativa, Cierre, MetodoLigado)):
             return "función"
         return "valor"
 
@@ -1340,6 +1550,8 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         "agregar": FuncionNativa("agregar", agregar, aridad=2),
         "reloj": FuncionNativa("reloj", reloj, aridad=0),
         "exp": FuncionNativa("exp", exp, aridad=1),
+        "sigmoide": FuncionNativa("sigmoide", sigmoide, aridad=1),
+        "producto_punto": FuncionNativa("producto_punto", producto_punto, aridad=2),
         "seno": FuncionNativa("seno", seno, aridad=1),
         "coseno": FuncionNativa("coseno", coseno, aridad=1),
         # matemáticas

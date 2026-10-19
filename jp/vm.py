@@ -24,9 +24,15 @@ from .compilador import FunCerrada, compilar
 from .errores import ErrorEjecucion, ErrorJP
 from .interprete import (
     Cierre,
+    ClaseJP,
     Entorno,
+    ErrorValor,
     FuncionNativa,
+    Instancia,
+    MetodoLigado,
     _instalar_nativas,
+    buscar_metodo,
+    crear_error_valor,
     _metodo_de_valor,
     es_verdad,
     evaluar_paso,
@@ -129,7 +135,7 @@ class MaquinaVM:
                 del self.frames[largo_frames:]
                 self.ambito = ambito
                 self.globals = globales
-                self.error_actual = error.mensaje
+                self.error_actual = crear_error_valor(error)
                 op = ops_manejador[destino]
 
     def _correr_ops(self, ops) -> None:
@@ -153,7 +159,7 @@ class MaquinaVM:
                 del self.frames[largo_frames:]
                 self.ambito = ambito
                 self.globals = globales
-                self.error_actual = error.mensaje
+                self.error_actual = crear_error_valor(error)
                 op = ops_manejador[destino]
 
     def _evaluar_defecto(self, chunk_defecto, ambito_local, globales, linea: int):
@@ -175,8 +181,8 @@ class MaquinaVM:
             raise
         return pila.pop()
 
-    def _ambito_de_llamada(self, callee, argumentos: list, linea: int):
-        """Crea el ámbito local: argumentos + defectos de los que falten."""
+    def _ambito_de_llamada(self, callee, argumentos: list, linea: int, este: object = None):
+        """Crea el ámbito local: 'este' (si es método) + argumentos + defectos."""
         fun = callee.fun
         if not fun.aridad_minima <= len(argumentos) <= fun.aridad:
             espera = (
@@ -190,6 +196,8 @@ class MaquinaVM:
                 linea,
             )
         ambito = Ambito(callee.ambito)
+        if este is not None:
+            ambito.vars["este"] = este
         for indice, nombre in enumerate(fun.parametros):
             if indice < len(argumentos):
                 ambito.vars[nombre] = argumentos[indice]
@@ -207,6 +215,26 @@ class MaquinaVM:
         pila. Los errores suben al bucle principal, que sabe de 'intenta'.
         """
         pila = self.pila
+        if isinstance(callee, ClaseJP):
+            return self._instanciar(callee, argumentos, linea)
+        if isinstance(callee, MetodoLigado):
+            funcion = callee.funcion
+            if type(funcion) is not Cierre:
+                raise ErrorEjecucion("metodo no valido", linea)
+            if len(self.frames) >= _MAX_FRAMES:
+                raise ErrorEjecucion("desbordamiento de pila (¿recursión infinita?)", linea)
+            ops_fun = funcion.fun.chunk.ops
+            if ops_fun is None:
+                ops_fun = self._compilar_ops(funcion.fun.chunk)
+            ambito_local = self._ambito_de_llamada(
+                funcion, argumentos, linea, este=callee.instancia
+            )
+            self.frames.append([None, self.ambito, len(pila), self.globals])
+            if funcion.globales is not None:
+                self.globals = funcion.globales
+            self.ambito = ambito_local
+            self._correr_ops(ops_fun)
+            return pila.pop()
         tipo = type(callee)
         if tipo is FuncionNativa:
             if callee.aridad is not None and len(argumentos) != callee.aridad:
@@ -231,6 +259,19 @@ class MaquinaVM:
         # Los 'intenta' de dentro se atrapan en _correr_ops; los de fuera, no.
         self._correr_ops(ops_fun)
         return pila.pop()
+
+    def _instanciar(self, clase: ClaseJP, argumentos: list, linea: int):
+        """Clase(args): crea el objeto y llama a su 'iniciar' (si lo tiene)."""
+        instancia = Instancia(clase)
+        iniciar = buscar_metodo(clase, "iniciar")
+        if iniciar is not None:
+            self._llamar_valor(MetodoLigado(instancia, iniciar), argumentos, linea)
+        elif argumentos:
+            raise ErrorEjecucion(
+                f"la clase '{clase.nombre}' no tiene un metodo 'iniciar' y no acepta argumentos",
+                linea,
+            )
+        return instancia
 
     # ---------------- módulos (importar) ----------------
 
@@ -720,30 +761,11 @@ class MaquinaVM:
                     paso = pila.pop()
                     fin = pila.pop()
                     inicio = pila.pop()
-                    for v in (inicio, fin):
-                        if isinstance(v, bool) or not isinstance(v, (int, float)):
-                            raise ErrorEjecucion(
-                                f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
-                            )
                 else:
                     paso = None
                     fin = pila.pop()
                     inicio = pila.pop()
-                    for v in (inicio, fin):
-                        if isinstance(v, bool) or not isinstance(v, (int, float)):
-                            raise ErrorEjecucion(
-                                f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
-                            )
-                ini, finn = int(inicio), int(fin)
-                if paso is None:
-                    incremento = 1 if ini <= finn else -1
-                else:
-                    incremento = evaluar_paso(paso, linea)
-                    if ini > finn:
-                        incremento = -incremento
-                pila.append(
-                    list(range(ini, finn + (1 if incremento > 0 else -1), incremento))
-                )
+                pila.append(list(self._hacer_rango(inicio, fin, paso, con_paso, linea)))
                 return lista[sig]
             return op
 
@@ -799,6 +821,27 @@ class MaquinaVM:
                         f"'para ... en' espera una lista, cadena, diccionario o número, no {jp_a_texto(v)!r}",
                         linea,
                     )
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.ITERAR_RANGO:
+            con_paso_r = bool(operando & 1)
+            en_pares_r = bool(operando & 2)
+
+            def op():
+                if con_paso_r:
+                    paso = pila.pop()
+                    fin = pila.pop()
+                    inicio = pila.pop()
+                else:
+                    paso = None
+                    fin = pila.pop()
+                    inicio = pila.pop()
+                rango = self._hacer_rango(inicio, fin, paso, con_paso_r, linea)
+                if en_pares_r:
+                    pila.append(IteradorJP(iter(enumerate(rango))))
+                else:
+                    pila.append(IteradorJP(iter(rango)))
                 return lista[sig]
             return op
 
@@ -872,12 +915,15 @@ class MaquinaVM:
 
         if codigo is Codigo.LANZAR:
             def op():
-                raise ErrorEjecucion(jp_a_texto(pila.pop()), linea)
+                raise ErrorEjecucion(jp_a_texto(pila.pop()), linea, tipo="usuario")
             return op
 
         if codigo is Codigo.RELANZAR:
             def op():
-                raise ErrorEjecucion(str(self.error_actual), linea)
+                actual = self.error_actual
+                raise ErrorEjecucion(
+                    str(actual), linea, tipo=getattr(actual, "tipo", "ejecucion")
+                )
             return op
 
         if codigo is Codigo.IMPORTAR:
@@ -885,6 +931,28 @@ class MaquinaVM:
 
             def op():
                 self._importar(ruta_importar, alias_importar, linea)
+                return lista[sig]
+            return op
+
+        if codigo is Codigo.CREAR_CLASE:
+            nombre_clase, nombres_metodos = operando
+            n_metodos = len(nombres_metodos)
+
+            def op():
+                if n_metodos:
+                    valores = pila[-n_metodos - 1:]
+                    del pila[-n_metodos - 1:]
+                else:
+                    valores = [pila.pop()]
+                padre = valores[0]
+                if padre is not None and not isinstance(padre, ClaseJP):
+                    raise ErrorEjecucion(
+                        f"la clase '{nombre_clase}' hereda de algo que no es una clase: "
+                        f"{jp_a_texto(padre)!r}",
+                        linea,
+                    )
+                metodos = dict(zip(nombres_metodos, valores[1:]))
+                pila.append(ClaseJP(nombre_clase, metodos, padre))
                 return lista[sig]
             return op
 
@@ -920,6 +988,9 @@ class MaquinaVM:
                 argumentos = pila[-n:] if n else []
                 del pila[-n - 1:]
                 tipo = type(callee)
+                if tipo is ClaseJP or tipo is MetodoLigado:
+                    pila.append(self._llamar_valor(callee, argumentos, linea))
+                    return lista[sig]
                 if tipo is Cierre:
                     fun = callee.fun
                     if len(frames) >= _MAX_FRAMES:
@@ -1017,6 +1088,23 @@ class MaquinaVM:
 
         raise ErrorEjecucion(f"instrucción desconocida: {codigo}", linea)  # pragma: no cover
 
+    @staticmethod
+    def _hacer_rango(inicio, fin, paso, con_paso: bool, linea: int) -> range:
+        """El range (perezoso) de 'a..b [paso c]' con la semantica de JP."""
+        for v in (inicio, fin):
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ErrorEjecucion(
+                    f"el rango '..' espera números, recibió {jp_a_texto(v)!r}", linea
+                )
+        ini, finn = int(inicio), int(fin)
+        if not con_paso:
+            incremento = 1 if ini <= finn else -1
+        else:
+            incremento = evaluar_paso(paso, linea)
+            if ini > finn:
+                incremento = -incremento
+        return range(ini, finn + (1 if incremento > 0 else -1), incremento)
+
     # ---------------- helpers de nombres y desestructuración ----------------
 
     @staticmethod
@@ -1050,6 +1138,25 @@ class MaquinaVM:
 
     @staticmethod
     def _indice(objeto: object, indice: object, linea: int) -> object:
+        if isinstance(objeto, ErrorValor) and isinstance(indice, str):
+            if indice == "mensaje":
+                return objeto.mensaje
+            if indice == "tipo":
+                return objeto.tipo
+            if indice == "linea":
+                return objeto.linea
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", linea)
+            if indice in objeto.campos:
+                return objeto.campos[indice]
+            metodo = buscar_metodo(objeto.clase, indice)
+            if metodo is not None:
+                return MetodoLigado(objeto, metodo)
+            campos = ", ".join(objeto.campos) or "ninguno"
+            raise ErrorEjecucion(
+                f"el objeto {objeto.clase.nombre} no tiene '{indice}' (campos: {campos})", linea
+            )
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)
@@ -1098,6 +1205,11 @@ class MaquinaVM:
 
     @staticmethod
     def _asignar_indice(objeto: object, indice: object, valor: object, linea: int) -> None:
+        if isinstance(objeto, Instancia):
+            if not isinstance(indice, str):
+                raise ErrorEjecucion("los campos de un objeto se acceden con .nombre", linea)
+            objeto.campos[indice] = valor
+            return
         if isinstance(objeto, dict):
             if not isinstance(indice, str):
                 raise ErrorEjecucion("la clave de un diccionario debe ser texto", linea)

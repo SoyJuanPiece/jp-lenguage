@@ -16,6 +16,7 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - ⚡ Azúcar cómodo: `x += 1`, `2 ** 10`, `promedio *= 2`
 - 📦 Módulos (v1.6): `importar "utilidades.jp" como util` y `util.doble(2)`
 - 🎁 Extras v1.6: valores por defecto, desestructuración `[a, b] = [b, a]`, `lanzar` y `finalmente`
+- 🧩 Clases (v1.7): `clase Persona { funcion iniciar(n) { este.nombre = n } }`, con herencia (`hereda`)
 
 ```
                                   ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
@@ -133,6 +134,28 @@ intenta { lanzar "fallo mío" } atrapa e { imprime(e) } finalmente { imprime("si
 
 `lanzar expr` crea un error propio atrapable; `finalmente` se ejecuta
 siempre (haya error o no, y antes de que un `devuelve` salga de la función).
+Dentro del `atrapa`, el error es el texto de siempre y además trae campos:
+`e.tipo` (`"division_por_cero"`, `"usuario"`...), `e.mensaje` y `e.linea`.
+
+### Clases y objetos (v1.7)
+
+```jp
+clase Persona {
+    funcion iniciar(nombre, edad = 0) { este.nombre = nombre; este.edad = edad }
+    funcion saludar() { devuelve "Hola, soy " + este.nombre }
+}
+clase Empleado hereda Persona {          # herencia con 'hereda'
+    funcion saludar() { devuelve "Soy " + este.nombre + ", empleado" }
+}
+variable p = Persona("Ana", 30)
+imprime(p.saludar(), p.edad)             # los campos se crean en 'iniciar'
+```
+
+El constructor se llama `iniciar`; dentro de los métodos, `este` es el
+objeto. Para IA trae además `sigmoide(x)` y `producto_punto(a, b)` rápidas
+(mira `ejemplos/ia-perceptron.jp`: un perceptrón que es una clase), `jp
+--check archivo.jp` comprueba la sintaxis sin ejecutar, y `para i en 1..N`
+ya no crea la lista entera en memoria.
 
 ### Elegir (switch) — sin caída entre casos
 
@@ -470,11 +493,24 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- Llevar lo nuevo de la v1.6 (módulos, defectos, `finalmente`...) también al motor en C
-- Clases y objetos, o algo más sencillo: `objeto` + métodos
+- Llevar lo nuevo de la v1.6/v1.7 (módulos, clases, defectos...) también al motor en C
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.7.0 — **objetos** (ver `CHANGELOG.md`). Nuevo, con la misma salida en el
+árbol y en la VM (299 tests, 19 nuevos):
+
+- 🧩 **Clases con herencia**: `clase`, `hereda`, `este`, constructor `iniciar`
+  (con valores por defecto) y métodos como valores. También importadas
+  desde módulos. Ejemplo: `ejemplos/clases.jp`.
+- 🏷️ **Errores con campos**: `e.tipo`, `e.mensaje`, `e.linea` en el `atrapa`.
+- 🤖 **Kit de IA**: `sigmoide()` y `producto_punto()` nativos (~1,7× más
+  rápidos que el bucle en JP) y rangos perezosos en `para` (sin crear la
+  lista: ~4 MB para 3M de vueltas). El perceptrón ahora es una clase.
+- 🔎 **`jp --check`**: sintaxis sin ejecutar.
+- El motor en C y el JIT aún no tienen las clases: se **niegan con un
+  mensaje claro** y el CLI sigue con el motor de Python.
 
 v1.6.0 — **programas que se componen** (ver `CHANGELOG.md`). Nuevo, con la
 misma salida en el árbol y en la VM (280 tests, 28 nuevos de paridad):

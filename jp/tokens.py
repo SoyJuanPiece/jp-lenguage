@@ -72,6 +72,8 @@ class TToken(Enum):
     FINALMENTE = auto()   # finalmente
     LANZAR = auto()       # lanzar
     IMPORTAR = auto()     # importar
+    CLASE = auto()        # clase
+    HEREDA = auto()       # hereda
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -114,6 +116,8 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "finalmente": TToken.FINALMENTE,
     "lanzar": TToken.LANZAR,
     "importar": TToken.IMPORTAR,
+    "clase": TToken.CLASE,
+    "hereda": TToken.HEREDA,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -175,5 +179,7 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.FINALMENTE: "'finalmente'",
     TToken.LANZAR: "'lanzar'",
     TToken.IMPORTAR: "'importar'",
+    TToken.CLASE: "'clase'",
+    TToken.HEREDA: "'hereda'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

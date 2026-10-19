@@ -269,3 +269,16 @@ class NodoImportar(Nodo):
     ruta: str
     alias: str | None = None
     linea: int = 0
+
+
+@dataclass
+class NodoClase(Nodo):
+    """clase Nombre [hereda Padre] { funcion metodo(...) { ... } ... }
+
+    El constructor es el método 'iniciar' (opcional). Dentro de los métodos,
+    'este' es el objeto. Los métodos pueden tener valores por defecto.
+    """
+    nombre: str
+    metodos: list = field(default_factory=list)  # list[NodoFuncion]
+    padre: str | None = None
+    linea: int = 0

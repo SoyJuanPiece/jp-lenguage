@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from .arbol import (
     Nodo,
     NodoAsignacion,
+    NodoClase,
     NodoAsignacionLista,
     NodoAsignarIndice,
     NodoBinario,
@@ -260,6 +261,24 @@ class Compilador:
             self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
             return
 
+        if tipo is NodoClase:
+            # pila: [padre o NULO, metodo1, metodo2, ...] -> CREAR_CLASE -> clase
+            if nodo.padre is not None:
+                self._expresion(NodoVariable(nombre=nodo.padre, linea=nodo.linea), chunk)
+            else:
+                self._emitir(chunk, Codigo.NULO, linea=nodo.linea)
+            nombres_metodos = []
+            for metodo in nodo.metodos:
+                fun_cerrada = self._compilar_funcion(metodo)
+                indice = chunk.agregar_constante(fun_cerrada)
+                self._emitir(chunk, Codigo.CONSTANTE, indice, metodo.linea)
+                nombres_metodos.append(metodo.nombre)
+            self._emitir(chunk, Codigo.CREAR_CLASE, (nodo.nombre, tuple(nombres_metodos)), nodo.linea)
+            if self.ambitos and self.ambitos[-1] is not _SENTINELA:
+                self.ambitos[-1][nodo.nombre] = True
+            self._emitir(chunk, Codigo.DECLARAR, nodo.nombre, nodo.linea)
+            return
+
         if tipo is NodoRetorna:
             # El valor se evalúa DENTRO del 'intenta' (si falla, lo atrapa).
             if nodo.valor is not None:
@@ -448,9 +467,21 @@ class Compilador:
         """
         linea = nodo.linea
         base = len(self.ambitos)
-        self._expresion(nodo.iterable, chunk)   # se evalúa en el ámbito exterior
-        # ITERAR con operando 1 = pares (índice/clave, valor) para 'para a, b en'
-        self._emitir(chunk, Codigo.ITERAR, 1 if nodo.variable2 else 0, linea)  # pila: iter
+        if type(nodo.iterable) is NodoRango:
+            # Rango perezoso: 'para i en 1..1000000' no crea la lista entera.
+            # operando: bit0 = tiene paso, bit1 = pares (para a, b en).
+            rango = nodo.iterable
+            self._expresion(rango.izquierda, chunk)
+            self._expresion(rango.derecha, chunk)
+            operando_rango = 2 if nodo.variable2 else 0
+            if rango.paso is not None:
+                self._expresion(rango.paso, chunk)
+                operando_rango += 1
+            self._emitir(chunk, Codigo.ITERAR_RANGO, operando_rango, linea)  # pila: iter
+        else:
+            self._expresion(nodo.iterable, chunk)   # se evalúa en el ámbito exterior
+            # ITERAR con operando 1 = pares (índice/clave, valor) para 'para a, b en'
+            self._emitir(chunk, Codigo.ITERAR, 1 if nodo.variable2 else 0, linea)  # pila: iter
         nombres = {nodo.variable: True}
         if nodo.variable2:
             nombres[nodo.variable2] = True

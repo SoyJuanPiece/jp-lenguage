@@ -183,7 +183,7 @@ def _repl() -> int:
                     "Red y datos: http_get(), http_post(), json_leer(), json_texto(), tiene(), claves(), esperar()\n"
                     "Bots: telegram_leer(token), telegram_responder(token, de, texto)\n"
                     "Palabras clave: var/variable, fun/funcion, retorna/devuelve, si/sino, "
-                    "mientras, para...en, y, o, no\n"
+                    "mientras, para...en, clase/hereda (con 'este'), lanzar, importar, y, o, no\n"
                     "Trucos fáciles: 'si cond: una_sentencia' sin llaves · rangos '1..10' "
                     "inclusivos · comillas simples 'hola' · diccionarios {clave: valor}"
                 )
@@ -235,6 +235,22 @@ def _llaves_desbalanceadas(fuente: str) -> bool:
                 balance -= 1
         i += 1
     return balance > 0
+
+
+def _modo_check(ruta: str) -> int:
+    """--check: tokeniza y parsea sin ejecutar (para editores y CI)."""
+    try:
+        fuente = Path(ruta).read_text(encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no puedo leer {ruta}: {error}", file=sys.stderr)
+        return 66
+    try:
+        parsear(tokenizar(fuente))
+    except ErrorJP as error:
+        print(error.formatear(fuente) if hasattr(error, "formatear") else str(error), file=sys.stderr)
+        return 65
+    print(f"jp: {ruta}: sintaxis correcta")
+    return 0
 
 
 def _modo_bytecode(ruta: str, escribir: str | None, desensamblar: bool = False) -> int:
@@ -332,6 +348,11 @@ def main(argv: list[str] | None = None) -> int:
         help="ejecuta con el motor nativo en C (compila a bytecode .jpb y lo corre)",
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="solo comprueba la sintaxis del archivo, sin ejecutarlo",
+    )
+    parser.add_argument(
         "--compilar",
         action="store_true",
         help="compila el archivo .jp a bytecode nativo (.jpb)",
@@ -350,6 +371,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.check:
+        if args.archivo is None:
+            parser.error("--check necesita un archivo .jp")
+        return _modo_check(args.archivo)
     if args.compilar or args.bytecode or args.binario:
         if args.archivo is None:
             parser.error("--compilar/--bytecode/--binario necesitan un archivo .jp")

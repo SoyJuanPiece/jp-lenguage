@@ -87,6 +87,16 @@ class MaquinaVM:
         from .archivos import instalar as _instalar_archivos
 
         _instalar_archivos(entorno_global)
+        from .estadistica import instalar as _instalar_estadistica
+        _instalar_estadistica(entorno_global, self._llamar_valor)
+        from .matrices import instalar as _instalar_matrices
+        _instalar_matrices(entorno_global, self._llamar_valor)
+        from .fechas import instalar as _instalar_fechas
+        _instalar_fechas(entorno_global, self._llamar_valor)
+        from .sistema import instalar as _instalar_sistema
+        _instalar_sistema(entorno_global, self._llamar_valor)
+        from .patrones import instalar as _instalar_patrones
+        _instalar_patrones(entorno_global, self._llamar_valor)
         self.globals: dict[str, object] = entorno_global.variables
         self.pila: list[object] = []
         # [cierre_de_reanudación, ámbito_previo, alto_de_pila_al_llamar]

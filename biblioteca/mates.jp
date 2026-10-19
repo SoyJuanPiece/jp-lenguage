@@ -1,0 +1,58 @@
+# biblioteca/mates.jp — matemáticas en JP puro.
+# Uso:  importar "../biblioteca/mates.jp" como mates   (ruta según tu archivo)
+
+funcion factorial(n) {
+    si n <= 1 { devuelve 1 }
+    devuelve n * factorial(n - 1)
+}
+
+funcion es_primo(n) {
+    si n < 2 { devuelve falso }
+    variable d = 2
+    mientras d * d <= n {
+        si n % d == 0 { devuelve falso }
+        d = d + 1
+    }
+    devuelve verdadero
+}
+
+funcion primos_hasta(n) {
+    variable primos = []
+    para candidato en 2..n {
+        si es_primo(candidato) { primos.agregar(candidato) }
+    }
+    devuelve primos
+}
+
+# Máximo común divisor (algoritmo de Euclides, con el bucle de JP)
+funcion mcd(a, b) {
+    mientras b != 0 {
+        variable resto = a % b
+        a = b
+        b = resto
+    }
+    devuelve a
+}
+
+funcion mcm(a, b) {
+    devuelve a * b / mcd(a, b)
+}
+
+funcion fibonacci(n) {
+    variable a = 0
+    variable b = 1
+    para i en 1..n {
+        variable siguiente = a + b
+        a = b
+        b = siguiente
+    }
+    devuelve a
+}
+
+funcion sumatoria(inicio, fin) {
+    variable total = 0
+    para i en inicio..fin { total = total + i }
+    devuelve total
+}
+
+funcion es_par(n) { devuelve n % 2 == 0 }

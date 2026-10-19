@@ -498,6 +498,21 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.8.0 — **la biblioteca** (ver `CHANGELOG.md` y `biblioteca/LEEME.md`).
+JP trae ahora **120 funciones nativas** y módulos en JP puro, con la misma
+salida en el árbol y en la VM (310 tests, 11 nuevos):
+
+- 📚 **51 nativas nuevas** (la `statistics`, el mini-NumPy, las fechas, el
+  sistema y los regex de Python, en español): `promedio`, `mediana`,
+  `percentil`, `multiplicar_matrices`, `softmax`, `norma`, `fecha_actual`,
+  `formatear_fecha`, `plataforma`, `ejecutar`, `buscar_patron`,
+  `coincide_patron`... Multiplicar matrices 40×40 sale ~580x más rápido que
+  el triple bucle escrito en JP (medido: 0,14 s contra 78 s).
+- 🐍 **`biblioteca/` en JP puro**: `mates`, `texto`, `listas`,
+  `colecciones` (`Pila`, `Cola`, `Conjunto`) y una `RedNeuronal` multicapa
+  con backprop que aprende el XOR (`biblioteca/ia.jp`). Se usan con
+  `importar "../biblioteca/ia.jp" como ia`, como cualquier módulo tuyo.
+
 v1.7.0 — **objetos** (ver `CHANGELOG.md`). Nuevo, con la misma salida en el
 árbol y en la VM (299 tests, 19 nuevos):
 

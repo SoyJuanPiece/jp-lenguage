@@ -344,6 +344,18 @@ class Interprete:
         _instalar_red(self.global_env)
         from .archivos import instalar as _instalar_archivos
         _instalar_archivos(self.global_env)
+        # La libreria estandar (como la de Python, en espanol): estadistica,
+        # matrices/IA, fechas, sistema y patrones. La VM instala las mismas.
+        from .estadistica import instalar as _instalar_estadistica
+        _instalar_estadistica(self.global_env, self._llamar_valor)
+        from .matrices import instalar as _instalar_matrices
+        _instalar_matrices(self.global_env, self._llamar_valor)
+        from .fechas import instalar as _instalar_fechas
+        _instalar_fechas(self.global_env, self._llamar_valor)
+        from .sistema import instalar as _instalar_sistema
+        _instalar_sistema(self.global_env, self._llamar_valor)
+        from .patrones import instalar as _instalar_patrones
+        _instalar_patrones(self.global_env, self._llamar_valor)
         self.ultimo_valor: object = None  # valor de la última sentencia de expresión (para el REPL)
         self._profundidad = 0  # llamadas JP activas (tope _MAX_LLAMADAS, como la VM)
         # Módulos importados: ruta resuelta -> nombres exportados; y pila de

@@ -1,5 +1,25 @@
 # Cambios de JP
 
+## 1.8.0 — «La biblioteca» (2026-10-19)
+
+JP pasa de ~69 a **120 funciones nativas** y gana una biblioteca en JP puro.
+Todo con paridad árbol↔VM (11 tests nuevos en `tests/test_v18.py`; suite
+total: 310). El motor en C rechaza limpiamente las nativas que aún no tiene.
+
+- **51 nativas nuevas** en 5 módulos del motor (el equivalente humilde y en
+  español de `statistics`, un mini-NumPy, `datetime`, `os`/`subprocess` y `re`):
+  estadística (`promedio`, `mediana`, `moda`, `varianza`, `desviacion`,
+  `percentil`, `frecuencias`, `contar`, `resumen`), matrices y vectores
+  (`multiplicar_matrices`, `transponer`, `softmax`, `norma`, `distancia`,
+  `normalizar`, `matriz_aplicar`...), fechas (`fecha_actual`, `formatear_fecha`,
+  `convertir_fecha`, `hoy`...), sistema (`plataforma`, `ejecutar`,
+  `leer_entorno`, `unir_ruta`...) y patrones regex (`buscar_patron`,
+  `coincide_patron`, `encontrar_patrones`, `reemplazar_patron`, `separar_patron`).
+- **`biblioteca/` en JP puro**: `mates.jp`, `texto.jp`, `listas.jp`,
+  `colecciones.jp` (clases `Pila`, `Cola`, `Conjunto`) e `ia.jp` — una
+  `RedNeuronal` multicapa con backprop que aprende el XOR (ver
+  `biblioteca/LEEME.md`). Ejemplo: `ejemplos/biblioteca.jp`.
+
 ## 1.7.0 — «Objetos» (2026-10-19)
 
 Todo lo nuevo funciona con la **misma salida en el intérprete de árbol y en la

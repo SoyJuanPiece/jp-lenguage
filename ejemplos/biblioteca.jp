@@ -1,0 +1,28 @@
+# La biblioteca de JP: nativas nuevas + módulos en JP puro (biblioteca/).
+
+importar "../biblioteca/mates.jp" como mates
+importar "../biblioteca/colecciones.jp" como col
+
+# Estadística (nativa, como statistics de Python)
+variable notas = [7, 8, 6, 9, 8]
+imprime("promedio:", promedio(notas), "mediana:", mediana(notas))
+imprime("resumen:", resumen(notas))
+
+# Matrices (el mini-NumPy de la casa)
+variable a = [[1, 2], [3, 4]]
+variable b = [[5, 6], [7, 8]]
+imprime("a por b:", multiplicar_matrices(a, b))
+imprime("softmax:", softmax([1, 2, 3]))
+
+# Módulos en JP puro
+imprime("factorial de 6:", mates.factorial(6))
+imprime("primos hasta 20:", mates.primos_hasta(20))
+
+variable pila = col.Pila()
+pila.empujar("primero")
+pila.empujar("segundo")
+imprime("sale de la pila:", pila.sacar())
+
+# Sistema y patrones
+imprime("estás en:", plataforma())
+imprime("¿correo válido?", coincide_patron("[a-z]+@[a-z]+[.]com", "ana@correo.com"))

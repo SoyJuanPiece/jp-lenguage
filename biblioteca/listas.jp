@@ -1,0 +1,67 @@
+# biblioteca/listas.jp — listas en JP puro (lo que no trae la librería nativa).
+
+# [[1, 2], [3]] -> [1, 2, 3] (un solo nivel)
+funcion aplanar(lista) {
+    variable plana = []
+    para elemento en lista {
+        si tipo(elemento) == "lista" {
+            para interno en elemento { plana.agregar(interno) }
+        } sino {
+            plana.agregar(elemento)
+        }
+    }
+    devuelve plana
+}
+
+funcion unicos(lista) {
+    variable vistos = []
+    para elemento en lista {
+        si no contiene(vistos, elemento) { vistos.agregar(elemento) }
+    }
+    devuelve vistos
+}
+
+# Parte en trozos de tamaño n: [[1,2],[3,4],[5]]
+funcion particionar(lista, n) {
+    variable trozos = []
+    variable trozo = []
+    para elemento en lista {
+        trozo.agregar(elemento)
+        si longitud(trozo) == n {
+            trozos.agregar(trozo)
+            trozo = []
+        }
+    }
+    si longitud(trozo) > 0 { trozos.agregar(trozo) }
+    devuelve trozos
+}
+
+# Búsqueda binaria en una lista ORDENADA: posición o -1.
+funcion buscar_binario(lista, valor) {
+    variable bajo = 0
+    variable alto = longitud(lista) - 1
+    mientras bajo <= alto {
+        variable medio = (bajo + alto) / 2
+        si lista[medio] == valor { devuelve medio }
+        si lista[medio] < valor { bajo = medio + 1 } sino { alto = medio - 1 }
+    }
+    devuelve -1
+}
+
+funcion indice_del_mayor(lista) {
+    variable campeon = 0
+    para i, valor en lista {
+        si valor > lista[campeon] { campeon = i }
+    }
+    devuelve campeon
+}
+
+funcion intercalar(a, b) {
+    variable salida = []
+    variable tope = maximo(longitud(a), longitud(b))
+    para i en 0..tope - 1 {
+        si i < longitud(a) { salida.agregar(a[i]) }
+        si i < longitud(b) { salida.agregar(b[i]) }
+    }
+    devuelve salida
+}

@@ -49,6 +49,13 @@ sin `super` todavía), errores atrapables con `.tipo/.mensaje/.linea` (T-05),
 `sigmoide`/`producto_punto` nativos, rangos perezosos en `para` y
 `jp --check` (T-10). Paridad árbol↔VM en todo (19 tests, `tests/test_v17.py`).
 
+### ✅ v1.8.0 (2026-10-19): la biblioteca estándar
+
+51 nativas nuevas en `jp/estadistica.py`, `jp/matrices.py`, `jp/fechas.py`,
+`jp/sistema.py` y `jp/patrones.py` (120 en total) + `biblioteca/` en JP puro
+(`mates`, `texto`, `listas`, `colecciones` con `Pila`/`Cola`/`Conjunto` e
+`ia` con una `RedNeuronal` que aprende XOR). 11 tests, `tests/test_v18.py`.
+
 **Números (esta máquina, Xeon 2.6 GHz, gcc 12 -O2):**
 
 | Medida | Motor Python | JIT | **Motor C** | CPython | Mejora |

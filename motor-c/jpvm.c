@@ -782,6 +782,49 @@ static Cierre *buscar_metodo_clase(Clase *clase, Texto *nombre) {
     return NULL;
 }
 
+/* Tipos graduales (v1.27): mismas reglas y nombres que cumple_tipo() y
+ * nombre_tipo() de jp/interprete.py. Un tipo desconocido no estorba. */
+static int cumple_tipo(Valor v, Texto *tipo) {
+    const char *t = tipo->datos;
+    if (!strcmp(t, "cualquiera")) return 1;
+    if (!strcmp(t, "nulo")) return v.etiqueta == T_NULO;
+    if (!strcmp(t, "numero") || !strcmp(t, "número"))
+        return v.etiqueta == T_INT || v.etiqueta == T_DBL;
+    if (!strcmp(t, "entero")) return v.etiqueta == T_INT;
+    if (!strcmp(t, "texto")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_TEXTO;
+    if (!strcmp(t, "booleano")) return v.etiqueta == T_BOOL;
+    if (!strcmp(t, "lista")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_LISTA;
+    if (!strcmp(t, "diccionario")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_DICTO;
+    if (!strcmp(t, "funcion") || !strcmp(t, "función")) {
+        if (v.etiqueta != T_OBJ) return 0;
+        uint8_t k = v.v.obj->tipo;
+        return k == O_FUNCION || k == O_NATIVA || k == O_METODO || k == O_LIGADA || k == O_CLASE;
+    }
+    return 1;
+}
+
+static const char *nombre_tipo_jp(Valor v) {
+    switch (v.etiqueta) {
+        case T_NULO: return "nulo";
+        case T_BOOL: return "booleano";
+        case T_INT:
+        case T_DBL: return "número";
+        default: break;
+    }
+    switch (v.v.obj->tipo) {
+        case O_TEXTO: return "texto";
+        case O_LISTA: return "lista";
+        case O_DICTO: return "diccionario";
+        case O_INSTANCIA: return "objeto";
+        case O_CLASE: return "clase";
+        case O_FUNCION:
+        case O_NATIVA:
+        case O_METODO:
+        case O_LIGADA: return "función";
+        default: return "valor";
+    }
+}
+
 static Cierre *buscar_metodo_cstr(Clase *clase, const char *nombre) {
     size_t largo = strlen(nombre);
     for (Clase *c = clase; c;) {
@@ -2678,7 +2721,7 @@ static void bucle(uint32_t pc_inicio) {
         &&L_EXPR_SENT, &&L_FIN, &&L_DICT, &&L_MANEJAR, &&L_FIN_MANEJAR, &&L_ERROR_EN,
         &&L_SALTO_NO_NULO_MANTENER, &&L_CREAR_CLASE, &&L_DEFECTOS,
         &&L_SALTAR_SI_HAY_VALOR, &&L_ITER_NEXT_PAR, &&L_ITER_NEXT_PAR_CELDA,
-        &&L_DESESTRUCTURAR,
+        &&L_DESESTRUCTURAR, &&L_VERIFICAR_TIPO, &&L_VERIFICAR_ARG, &&L_VERIFICAR_RET,
     };
 
     #define PUSH(v) (*vm->sp++ = (v))
@@ -3466,6 +3509,50 @@ L_DESESTRUCTURAR: {
     if (l->largo != n)
         error_en(linea, "la desestructuración esperaba %u valor(es) y recibió %u", n, l->largo);
     for (uint32_t i = 0; i < n; i++) PUSH(l->elementos[i]);
+    SIGUIENTE();
+}
+
+L_VERIFICAR_TIPO: {
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Texto *nombre = marco->funcion->const_s[LEER_U32()];
+    Valor v = vm->sp[-1];
+    if (!cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la variable '%.*s' es de tipo %.*s y recibió %s ('%s')",
+                 (int)nombre->largo, nombre->datos, (int)tipo->largo, tipo->datos,
+                 nombre_tipo_jp(v), valor_txt);
+    }
+    SIGUIENTE();
+}
+L_VERIFICAR_ARG: {
+    uint32_t slot = LEER_U32();
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Texto *nombre = marco->funcion->const_s[LEER_U32()];
+    Valor v = base[slot];
+    if (!es_sin_valor(v) && !cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "el parámetro '%.*s' de '%.*s' es de tipo %.*s y recibió %s ('%s')",
+                 (int)nombre->largo, nombre->datos,
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 (int)tipo->largo, tipo->datos, nombre_tipo_jp(v), valor_txt);
+    }
+    SIGUIENTE();
+}
+L_VERIFICAR_RET: {
+    Texto *tipo = marco->funcion->const_s[LEER_U32()];
+    Valor v = vm->sp[-1];
+    if (!cumple_tipo(v, tipo)) {
+        char valor_txt[512];
+        texto_de(v, valor_txt, sizeof(valor_txt));
+        error_en((int)linea_de((uint32_t)(ip - marco->funcion->codigo) - 1),
+                 "la función '%.*s' debe devolver %.*s y devolvió %s ('%s')",
+                 (int)marco->funcion->nombre->largo, marco->funcion->nombre->datos,
+                 (int)tipo->largo, tipo->datos, nombre_tipo_jp(v), valor_txt);
+    }
     SIGUIENTE();
 }
 

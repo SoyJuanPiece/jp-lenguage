@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.27.0 — **tipos en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🏷️ **Tipos opcionales también en el motor en C**: `ejemplos/tipos.jp`
+  produce la misma salida (y los mismos errores) en los tres motores;
+  la paridad sube a 25 ejemplos idénticos.
+
 v1.26.0 — **desestructurar en C** (ver `CHANGELOG.md`). Nuevo:
 
 - 🧩 **`para a, b en` y `[a, b] = ...` también en nativo**: la

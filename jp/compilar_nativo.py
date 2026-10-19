@@ -125,6 +125,9 @@ OP_SALTAR_SI_HAY_VALOR = 58      # u32 slot, i32 rel: si el slot no guarda el ce
 OP_ITER_NEXT_PAR = 59            # u32 iter, u32 a, u32 b, i32 rel: (índice, valor) o (clave, valor)
 OP_ITER_NEXT_PAR_CELDA = 60      # igual + u32 máscara (bit0/bit1 = a/b en celda) antes del salto
 OP_DESESTRUCTURAR = 61           # u32 n: lista en la pila -> sus n elementos (en orden)
+OP_VERIFICAR_TIPO = 62           # cadena tipo, cadena nombre: el tope debe cumplir el tipo
+OP_VERIFICAR_ARG = 63            # u32 slot, cadena tipo, cadena nombre: el parámetro debe cumplirlo
+OP_VERIFICAR_RET = 64            # cadena tipo: el tope (lo devuelto) debe cumplirlo
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -149,7 +152,8 @@ NOMBRES_OP = {
     OP_ERROR_EN: "ERROR_EN", OP_SALTO_NO_NULO_MANTENER: "SALTO_NO_NULO_MANTENER",
     OP_CREAR_CLASE: "CREAR_CLASE", OP_DEFECTOS: "DEFECTOS",
     OP_SALTAR_SI_HAY_VALOR: "SALTAR_SI_HAY_VALOR", OP_ITER_NEXT_PAR: "ITER_NEXT_PAR",
-    OP_ITER_NEXT_PAR_CELDA: "ITER_NEXT_PAR_CELDA", OP_DESESTRUCTURAR: "DESESTRUCTURAR",
+    OP_ITER_NEXT_PAR_CELDA: "ITER_NEXT_PAR_CELDA", OP_DESESTRUCTURAR: "DESESTRUCTURAR", OP_VERIFICAR_TIPO: "VERIFICAR_TIPO",
+    OP_VERIFICAR_ARG: "VERIFICAR_ARG", OP_VERIFICAR_RET: "VERIFICAR_RET",
 }
 
 MAGIA = b"JPB1"
@@ -485,6 +489,7 @@ class CompiladorNativo:
         self.declarados: set[str] = set()  # globales que el programa define
         self.pila: list[_Funcion] = []
         self.iteradores: list[tuple[int, list[int], int]] = []  # (inicio, saltos_romper, fin_esperado)
+        self._retorno_esperado: str | None = None  # tipo de retorno de la función en curso
 
     # ------------------------------------------------------------ público
 
@@ -569,9 +574,7 @@ class CompiladorNativo:
             self._bloque(nodo.sentencias)
 
         elif tipo is NodoDeclaracionVar:
-            if getattr(nodo, "tipo", None) is not None:
-                raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", linea)
-            self._declarar(nodo.nombre, nodo.inicializador, linea)
+            self._declarar(nodo.nombre, nodo.inicializador, linea, getattr(nodo, "tipo", None))
 
         elif tipo is NodoFuncion:
             self._declarar_funcion(nodo)
@@ -627,6 +630,12 @@ class CompiladorNativo:
         elif tipo is NodoRetorna:
             if nodo.valor is not None:
                 self._expresion(nodo.valor)
+            elif self._retorno_esperado is not None:
+                actual.emitir(OP_NULO, linea=linea)
+            if self._retorno_esperado is not None:
+                actual.emitir(OP_VERIFICAR_RET, self._retorno_esperado, linea=linea)
+                actual.emitir(OP_RETORNAR, linea=linea)
+            elif nodo.valor is not None:
                 actual.emitir(OP_RETORNAR, linea=linea)
             else:
                 actual.emitir(OP_RETORNAR_NULO, linea=linea)
@@ -698,7 +707,8 @@ class CompiladorNativo:
         else:
             raise NoSoportadoNativo(f"sentencia no soportada: {tipo.__name__}", linea)
 
-    def _declarar(self, nombre: str, inicializador: Nodo | None, linea: int) -> None:
+    def _declarar(self, nombre: str, inicializador: Nodo | None, linea: int,
+                  tipo: str | None = None) -> None:
         actual = self.actual
         # ¿estamos en el nivel superior del programa? entonces es global
         if len(self.pila) == 1 and len(actual.scopes) == 1:
@@ -706,6 +716,8 @@ class CompiladorNativo:
                 self._expresion(inicializador)
             else:
                 actual.emitir(OP_NULO, linea=linea)
+            if tipo is not None:
+                actual.emitir(OP_VERIFICAR_TIPO, tipo, nombre, linea=linea)
             self.declarados.add(nombre)
             actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
@@ -715,6 +727,8 @@ class CompiladorNativo:
             self._expresion(inicializador)
         else:
             actual.emitir(OP_NULO, linea=linea)
+        if tipo is not None:
+            actual.emitir(OP_VERIFICAR_TIPO, tipo, nombre, linea=linea)
         actual.emitir(OP_SET_LOCAL, slot, linea=linea)
         if actual.es_celda[slot]:
             # la variable la captura una closure: el slot pasa a ser una celda
@@ -809,8 +823,6 @@ class CompiladorNativo:
                 actual.emitir(OP_POP, linea=linea)
 
     def _compilar_funcion(self, nodo: NodoFuncion) -> int:
-        if nodo.tipo_retorno is not None or any(t is not None for t in (nodo.tipos or [])):
-            raise NoSoportadoNativo("los tipos opcionales (': numero') aún no están en el motor nativo", nodo.linea)
         # los parámetros también pueden acabar en una closure: si una función
         # anidada los usa, el parámetro tiene que vivir en una celda desde el
         # primer instante (si no, la closure capturaría el valor crudo).
@@ -826,6 +838,8 @@ class CompiladorNativo:
                     if isinstance(interno, NodoFuncion):
                         usados |= _usados_de_funcion(interno)
         capturadas = _capturadas_por_anidadas(nodo.cuerpo) | (usados & set(nodo.parametros))
+        tipos = list(getattr(nodo, "tipos", []) or [])
+        tipos += [None] * (len(nodo.parametros) - len(tipos))
         funcion = _Funcion(nodo.nombre or "<anónima>", len(nodo.parametros), capturadas)
         for parametro in nodo.parametros:
             funcion.declarar(parametro)
@@ -848,13 +862,27 @@ class CompiladorNativo:
                 funcion.emitir(OP_SET_LOCAL, i, linea=nodo.linea)
                 funcion.emitir(OP_POP, linea=nodo.linea)
                 funcion.parchar_aqui(hueco)
+        # Tipos opcionales (v1.27): ya con los defectos aplicados, cada
+        # parámetro anotado se comprueba antes de encerrar en celdas.
+        for i, tipo in enumerate(tipos):
+            if tipo is not None:
+                funcion.emitir(OP_VERIFICAR_ARG, i, tipo, nodo.parametros[i], linea=nodo.linea)
         # las parámetros capturados necesitan celda desde el arranque
         for slot, es_celda in enumerate(funcion.es_celda[:len(nodo.parametros)]):
             if es_celda:
                 # el argumento ya vive en el slot: se convierte en celda sin tocar la pila
                 funcion.emitir(OP_CELDA, slot, linea=nodo.linea)
+        retorno_anterior = self._retorno_esperado
+        self._retorno_esperado = nodo.tipo_retorno
         self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
-        funcion.emitir(OP_RETORNAR_NULO, linea=nodo.linea)
+        self._retorno_esperado = retorno_anterior
+        if nodo.tipo_retorno is not None:
+            # también el 'devuelve' implícito del final se comprueba
+            funcion.emitir(OP_NULO, linea=nodo.linea)
+            funcion.emitir(OP_VERIFICAR_RET, nodo.tipo_retorno, linea=nodo.linea)
+            funcion.emitir(OP_RETORNAR, linea=nodo.linea)
+        else:
+            funcion.emitir(OP_RETORNAR_NULO, linea=nodo.linea)
         self.pila.pop()
         return indice
 

@@ -1,5 +1,21 @@
 # Cambios de JP
 
+## 1.27.0 — Tipos opcionales en el motor en C (2026-10-19)
+
+La v1.23, ahora también nativa (`ejemplos/tipos.jp` idéntico):
+
+- **Opcodes 62–64** en `jpvm.c`: `VERIFICAR_TIPO` al declarar una
+  variable anotada, `VERIFICAR_ARG` en el prólogo de la función
+  (después de aplicar los defectos, antes de encerrar en celdas) y
+  `VERIFICAR_RET` en cada `devuelve` y en el retorno implícito.
+- Mismas reglas (`cumple_tipo`) y mismos mensajes que Python:
+  «el parámetro 'a' de 'sumar' es de tipo numero y recibió texto
+  ('veinte')», con el valor entre comillas simples como en la VM.
+  `numero` y `número` equivalen; un tipo desconocido no estorba,
+  igual que en Python.
+- Tests: `tests/test_v36.py`; actualizado el test de la v1.23 que
+  exigía el rechazo. Paridad de ejemplos: 25 idénticos, 0 fallos.
+
 ## 1.26.0 — Desestructurar en el motor en C (2026-10-19)
 
 Sigue creciendo la cobertura nativa (24 ejemplos idénticos a Python):

@@ -151,7 +151,7 @@ def _modo_archivo(ruta: str) -> int:
 def _modo_probar(archivos: list[str]) -> int:
     """Corre archivos de prueba .jp (con biblioteca/pruebas.jp) y resume.
 
-    Sin archivos: descubre pruebas/**/*.jp y ./*_prueba.jp. Devuelve 0 si
+    Sin archivos: descubre pruebas/**/*_prueba.jp y ./*_prueba.jp. Devuelve 0 si
     todo pasa y 1 si algo falla, como cualquier corredor de pruebas.
     """
     rutas: list[Path] = []
@@ -159,7 +159,7 @@ def _modo_probar(archivos: list[str]) -> int:
         rutas = [Path(a) for a in archivos]
     else:
         vistas: set[Path] = set()
-        for patron in ("pruebas/**/*.jp", "*_prueba.jp"):
+        for patron in ("pruebas/**/*_prueba.jp", "*_prueba.jp"):
             for ruta in sorted(Path(".").glob(patron)):
                 if ruta not in vistas:
                     vistas.add(ruta)
@@ -302,6 +302,72 @@ def _modo_formatear(ruta: str, en_sitio: bool) -> int:
         print(f"✔ formateado: {ruta}")
     else:
         sys.stdout.write(texto)
+    return 0
+
+
+_PLANTILLA_PRINCIPAL = '''# {nombre} — un proyecto JP
+#
+# Correlo con:  python -m jp principal.jp
+# Y sus pruebas:  python -m jp --probar   (desde esta carpeta)
+
+funcion fibonacci(n) {{
+    si n < 2 {{ devuelve n }}
+    devuelve fibonacci(n - 1) + fibonacci(n - 2)
+}}
+
+imprime("¡Hola desde {nombre}!")
+para i en 1..8 {{
+    imprime("fibonacci(", i, ") =", fibonacci(i))
+}}
+'''
+
+_PLANTILLA_PRUEBA = '''importar "pruebas.jp" como p
+
+p.afirmar_igual(2, 1 + 1)
+p.afirmar(3 > 2, "tres es mas que dos")
+p.resumen()
+'''
+
+_PLANTILLA_LEEME = '''# {nombre}
+
+Un proyecto [JP](https://github.com/SoyJuanPiece/jp-lenguage).
+
+- `principal.jp` — el programa. Correlo con `python -m jp principal.jp`.
+- `pruebas/` — las pruebas. Correlas con `python -m jp --probar`.
+
+## Ideas para seguir
+
+- Datos que se quedan: `abrir_bd("datos.db")` (SQLite).
+- Una web: la clase `Aplicacion` de la biblioteca (`web.jp`).
+- Graficas SVG: `grafica_barras(...)` de `graficas.jp`.
+'''
+
+
+def _modo_proyecto(nombre: str) -> int:
+    """Crea la carpeta de un proyecto JP nuevo con programa y pruebas."""
+    destino = Path(nombre)
+    if destino.exists():
+        print(f"jp: ya existe '{nombre}', no toco nada", file=sys.stderr)
+        return 66
+    try:
+        (destino / "pruebas").mkdir(parents=True)
+        (destino / "principal.jp").write_text(
+            _PLANTILLA_PRINCIPAL.format(nombre=nombre), encoding="utf-8")
+        (destino / "LEEME.md").write_text(
+            _PLANTILLA_LEEME.format(nombre=nombre), encoding="utf-8")
+        (destino / "pruebas" / "principal_prueba.jp").write_text(
+            _PLANTILLA_PRUEBA, encoding="utf-8")
+        # La mini-biblioteca de pruebas viaja con el proyecto.
+        (destino / "pruebas" / "pruebas.jp").write_text(
+            (RAIZ / "biblioteca" / "pruebas.jp").read_text(encoding="utf-8"),
+            encoding="utf-8")
+    except OSError as error:
+        print(f"jp: no pude crear el proyecto: {error}", file=sys.stderr)
+        return 66
+    print(f"✔ proyecto '{nombre}' creado:")
+    print(f"    {nombre}/principal.jp")
+    print(f"    {nombre}/pruebas/ (corre: cd {nombre} && python -m jp --probar)")
+    print(f"    {nombre}/LEEME.md")
     return 0
 
 
@@ -503,7 +569,7 @@ def main(argv: list[str] | None = None) -> int:
         "--probar",
         nargs="*",
         metavar="PRUEBA",
-        help="corre archivos de prueba .jp (sin archivos: descubre pruebas/ y *_prueba.jp)",
+        help="corre archivos de prueba .jp (sin archivos: descubre los *_prueba.jp)",
     )
     parser.add_argument(
         "--c",
@@ -531,6 +597,11 @@ def main(argv: list[str] | None = None) -> int:
         help="con --formatear: reescribe el archivo en vez de imprimirlo",
     )
     parser.add_argument(
+        "--proyecto",
+        metavar="NOMBRE",
+        help="crea un proyecto JP nuevo: NOMBRE/principal.jp + pruebas + LEEME",
+    )
+    parser.add_argument(
         "--compilar",
         action="store_true",
         help="compila el archivo .jp a bytecode nativo (.jpb)",
@@ -549,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
 
+    if args.proyecto:
+        return _modo_proyecto(args.proyecto)
     if args.formatear:
         if args.archivo is None:
             parser.error("--formatear necesita un archivo .jp")

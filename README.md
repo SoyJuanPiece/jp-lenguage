@@ -498,6 +498,12 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.20.0 — **proyecto** (ver `CHANGELOG.md`). Nuevo:
+
+- 📦 **`jp --proyecto nombre`**: un proyecto JP nuevo con programa,
+  pruebas que ya pasan y LEEME con ideas — de cero a corriendo en un
+  comando.
+
 v1.19.0 — **web completa** (ver `CHANGELOG.md`). Nuevo:
 
 - 🌐 **Web de verdad**: archivos estáticos con `app.estatico(...)` y

@@ -1,5 +1,15 @@
 # Cambios de JP
 
+## 1.20.0 — «Proyecto» (2026-10-19)
+
+- **`jp --proyecto nombre`**: crea un proyecto JP listo para correr —
+  `principal.jp` (fibonacci de bienvenida), `pruebas/` con su primera
+  prueba y una copia viajera de `pruebas.jp`, y un `LEEME.md` con ideas.
+  Si la carpeta ya existe, no toca nada (exit 66).
+- Ajuste: `jp --probar` sin archivos ahora descubre solo
+  `*_prueba.jp` (antes ejecutaba también cualquier `.jp` de `pruebas/`,
+  incluida la propia biblioteca de afirmaciones).
+
 ## 1.19.0 — «Web completa» (2026-10-19)
 
 - **Archivos estáticos**: la respuesta `{archivo: "ruta"}` sirve los bytes

@@ -128,6 +128,9 @@ OP_DESESTRUCTURAR = 61           # u32 n: lista en la pila -> sus n elementos (e
 OP_VERIFICAR_TIPO = 62           # cadena tipo, cadena nombre: el tope debe cumplir el tipo
 OP_VERIFICAR_ARG = 63            # u32 slot, cadena tipo, cadena nombre: el parámetro debe cumplirlo
 OP_VERIFICAR_RET = 64            # cadena tipo: el tope (lo devuelto) debe cumplirlo
+OP_IMPORTAR = 65                 # u32 módulo: lo ejecuta una vez y deja su diccionario
+OP_LANZAR = 66                   # lanza un error con el texto del valor
+OP_RELANZAR = 67                 # vuelve a lanzar el error guardado (tras un 'finalmente')
 
 NOMBRES_OP = {
     OP_CONST_I: "CONST_I", OP_CONST_D: "CONST_D", OP_CONST_S: "CONST_S",
@@ -154,10 +157,11 @@ NOMBRES_OP = {
     OP_SALTAR_SI_HAY_VALOR: "SALTAR_SI_HAY_VALOR", OP_ITER_NEXT_PAR: "ITER_NEXT_PAR",
     OP_ITER_NEXT_PAR_CELDA: "ITER_NEXT_PAR_CELDA", OP_DESESTRUCTURAR: "DESESTRUCTURAR", OP_VERIFICAR_TIPO: "VERIFICAR_TIPO",
     OP_VERIFICAR_ARG: "VERIFICAR_ARG", OP_VERIFICAR_RET: "VERIFICAR_RET",
+    OP_IMPORTAR: "IMPORTAR", OP_LANZAR: "LANZAR", OP_RELANZAR: "RELANZAR",
 }
 
 MAGIA = b"JPB1"
-VERSION_FORMATO = 1
+VERSION_FORMATO = 2
 
 
 # Métodos que el motor en C todavía no implementa (se rechazan al compilar para
@@ -189,9 +193,12 @@ def _nativas_del_motor_c() -> frozenset[str]:
         "leer", "leer_archivo", "letra", "lista_archivos", "log", "longitud",
         "maximo", "mayusculas", "minimo", "minusculas", "muestra", "numero",
         "pi", "piso", "potencia", "producto_punto", "promedio", "mediana", "norma",
-        "distancia", "softmax", "sigmoide", "quitar", "raiz", "rango", "recortar",
+        "distancia", "softmax", "resumen", "sigmoide", "quitar", "raiz", "rango", "recortar",
         "redondear", "reemplazar", "reloj", "repetir", "seno", "separar",
-        "subtexto", "sumar", "tamano_archivo", "techo", "terminar_con", "texto",
+        "sublista", "subtexto", "sumar", "forma", "crear_matriz", "identidad", "transponer",
+        "sumar_matrices", "restar_matrices", "multiplicar_matrices", "escalar_matriz",
+        "matriz_vector", "sumar_vectores", "restar_vectores", "multiplicar_vectores",
+        "matriz_aplicar", "tamano_archivo", "techo", "terminar_con", "texto",
         "tiene", "tipo", "unir", "valores",
     })
 
@@ -393,6 +400,7 @@ class _Funcion:
         self.const_d: list[float] = []
         self.const_s: list[str] = []
         self.scopes: list[dict[str, int]] = [{}]
+        self.modulo = 0  # índice del módulo (programa o 'importar') que la define
 
     # --- emisión (todo el bytecode son palabras de 32 bits) ---
     def emitir(self, op: int, *operandos: object, linea: int = 0) -> int:
@@ -477,25 +485,59 @@ class _Funcion:
         return None
 
 
+class _ModuloEstado:
+    """Un archivo que se compila al mismo blob: el programa (índice 0)
+    o un módulo traído con 'importar'.
+
+    Cada módulo tiene SU espacio de globales (índices relativos). Todas
+    las funciones de un módulo leen y escriben en él, para que
+    `principal.saludar` y `modulo.saludar` nunca se pisen."""
+
+    def __init__(self, nombre: str, fuente: str, directorio, funcion: int = 0):
+        self.nombre = nombre
+        self.fuente = fuente
+        self.directorio = directorio       # pathlib.Path o None
+        self.funcion = funcion             # índice de su función principal
+        self.globales: dict[str, int] = {}
+        self.globales_orden: list[str] = []
+        self.declarados: set[str] = set()  # nombres que el módulo define (lo exportado)
+
+
 class CompiladorNativo:
     """AST de JP -> blob .jpb para el motor en C."""
 
     def __init__(self, nombre_programa: str = "<código>"):
+        from pathlib import Path
+
         self.nombre_programa = nombre_programa
         self.fuente = ""
         self.funciones: list[_Funcion] = []
-        self.globales: dict[str, int] = {}
-        self.globales_orden: list[str] = []
-        self.declarados: set[str] = set()  # globales que el programa define
         self.pila: list[_Funcion] = []
-        self.iteradores: list[tuple[int, list[int], int]] = []  # (inicio, saltos_romper, fin_esperado)
+        self.iteradores: list = []  # (inicio, saltos_romper, esperado, marca_intentos)
+        self._intentos: list = []   # 'finalmente' activos (NodoBloque o None)
         self._retorno_esperado: str | None = None  # tipo de retorno de la función en curso
+        # módulos: índice 0 = el programa; los 'importar' añaden más
+        self.modulos: list[_ModuloEstado] = []
+        self._modulo_actual = 0
+        self._ids_modulos: dict[str, int] = {}   # ruta resuelta -> índice
+        self._importando: set[str] = set()       # rutas en compilación (ciclos)
+        self._principales: set[int] = set()      # ids de funciones "programa"
+        self._directorio_base = Path.cwd()
 
     # ------------------------------------------------------------ público
 
-    def compilar(self, programa: NodoPrograma) -> bytes:
+    def compilar(self, programa: NodoPrograma, directorio=None) -> bytes:
+        from pathlib import Path
+
+        if directorio is not None:
+            self._directorio_base = Path(directorio)
+        estado = _ModuloEstado(self.nombre_programa, self.fuente,
+                               self._directorio_base, funcion=0)
+        self.modulos.append(estado)
         principal = _Funcion("<programa>", 0, _capturadas_por_anidadas(programa))
+        principal.modulo = 0
         self.funciones.append(principal)
+        self._principales.add(id(principal))
         self.pila.append(principal)
         self._bloque(programa.sentencias)
         principal.emitir(OP_RETORNAR_NULO)
@@ -508,11 +550,20 @@ class CompiladorNativo:
     def actual(self) -> _Funcion:
         return self.pila[-1]
 
+    @property
+    def _modulo(self) -> _ModuloEstado:
+        return self.modulos[self._modulo_actual]
+
+    def _es_nivel_global(self, actual: _Funcion) -> bool:
+        """¿Estamos en la superficie de un módulo (su función principal)?"""
+        return id(actual) in self._principales and len(actual.scopes) == 1
+
     def _global(self, nombre: str) -> int:
-        if nombre not in self.globales:
-            self.globales[nombre] = len(self.globales_orden)
-            self.globales_orden.append(nombre)
-        return self.globales[nombre]
+        modulo = self._modulo
+        if nombre not in modulo.globales:
+            modulo.globales[nombre] = len(modulo.globales_orden)
+            modulo.globales_orden.append(nombre)
+        return modulo.globales[nombre]
 
     def _resolver(self, nombre: str) -> tuple[str, int]:
         """('local'|'celda'|'upval'|'global', índice).
@@ -580,13 +631,14 @@ class CompiladorNativo:
             self._declarar_funcion(nodo)
 
         elif tipo is NodoImportar:
-            raise NoSoportadoNativo("los módulos ('importar') aún no están en el motor nativo", linea)
+            self._sentencia_importar(nodo)
 
         elif tipo is NodoClase:
             self._declarar_clase(nodo)
 
         elif tipo is NodoLanzar:
-            raise NoSoportadoNativo("'lanzar' aún no está en el motor nativo", linea)
+            self._expresion(nodo.expresion)
+            actual.emitir(OP_LANZAR, linea=linea)
 
         elif tipo is NodoDeclaracionLista:
             self._expresion(nodo.inicializador)
@@ -616,9 +668,9 @@ class CompiladorNativo:
             inicio = len(actual.palabras)
             self._expresion(nodo.condicion)
             salto_fin = actual.emitir_salto(OP_SALTO_FALSO, linea)
-            self.iteradores.append((inicio, [], len(actual.palabras)))
+            self.iteradores.append((inicio, [], len(actual.palabras), len(self._intentos)))
             self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
-            _, saltos_romper, _ = self.iteradores.pop()
+            _, saltos_romper, _, _marca = self.iteradores.pop()
             actual.salto_a(inicio, linea)
             actual.parchar_aqui(salto_fin)
             for hueco in saltos_romper:
@@ -632,6 +684,9 @@ class CompiladorNativo:
                 self._expresion(nodo.valor)
             elif self._retorno_esperado is not None:
                 actual.emitir(OP_NULO, linea=linea)
+            # el valor ya está en la pila: los 'finalmente' que el
+            # retorno cruza corren ahora, antes de salir de la función
+            self._emitir_cierre_intentos(0, linea)
             if self._retorno_esperado is not None:
                 actual.emitir(OP_VERIFICAR_RET, self._retorno_esperado, linea=linea)
                 actual.emitir(OP_RETORNAR, linea=linea)
@@ -643,12 +698,14 @@ class CompiladorNativo:
         elif tipo is NodoRomper:
             if not self.iteradores:
                 raise NoSoportadoNativo("'romper' fuera de un bucle", linea)
+            self._emitir_cierre_intentos(self.iteradores[-1][3], linea)
             hueco = actual.emitir_salto(OP_SALTO, linea)
             self.iteradores[-1][1].append(hueco)
 
         elif tipo is NodoContinuar:
             if not self.iteradores:
                 raise NoSoportadoNativo("'continuar' fuera de un bucle", linea)
+            self._emitir_cierre_intentos(self.iteradores[-1][3], linea)
             inicio = self.iteradores[-1][0]
             actual.salto_a(inicio, linea)
 
@@ -685,40 +742,170 @@ class CompiladorNativo:
                 actual.parchar_aqui(hueco)
 
         elif tipo is NodoIntentar:
-            if nodo.finalmente is not None or nodo.captura is None:
-                raise NoSoportadoNativo("'finalmente' aún no está en el motor nativo", linea)
-            manejador = actual.emitir(OP_MANEJAR, 0, linea=linea)
+            # camino feliz y camino de error como _intentar() de la VM
+            actual.emitir(OP_MANEJAR, 0, linea=linea)
             hueco = len(actual.palabras) - 1
+            self._intentos.append(nodo.finalmente)
             self._bloque(nodo.cuerpo.sentencias, ambito_nuevo=True)
+            self._intentos.pop()
             actual.emitir(OP_FIN_MANEJAR, linea=linea)
-            salto_fin = actual.emitir_salto(OP_SALTO, linea)
+            if nodo.finalmente is not None:
+                self._bloque(nodo.finalmente.sentencias, ambito_nuevo=True)
+            al_fin = actual.emitir_salto(OP_SALTO, linea)
             actual.parchar(hueco, len(actual.palabras))
-            self._abrir()
-            if nodo.nombre_error is not None:
-                slot = actual.declarar(nodo.nombre_error)
-                actual.emitir(OP_ERROR_EN, slot, linea=linea)
-                if actual.es_celda[slot]:
-                    actual.emitir(OP_CELDA, slot, linea=linea)
-            self._bloque(nodo.captura.sentencias)
-            self._cerrar()
-            actual.parchar_aqui(salto_fin)
-            del manejador
+            if nodo.captura is None:
+                # solo 'finalmente': corre y el error sigue su camino
+                if nodo.finalmente is not None:
+                    self._bloque(nodo.finalmente.sentencias, ambito_nuevo=True)
+                actual.emitir(OP_RELANZAR, linea=linea)
+            else:
+                self._abrir()
+                if nodo.nombre_error is not None:
+                    slot = actual.declarar(nodo.nombre_error)
+                    actual.emitir(OP_ERROR_EN, slot, linea=linea)
+                    if actual.es_celda[slot]:
+                        actual.emitir(OP_CELDA, slot, linea=linea)
+                hueco2 = None
+                if nodo.finalmente is not None:
+                    # segundo centinela: también protege al propio atrapa
+                    actual.emitir(OP_MANEJAR, 0, linea=linea)
+                    hueco2 = len(actual.palabras) - 1
+                    self._intentos.append(nodo.finalmente)
+                self._bloque(nodo.captura.sentencias)
+                self._cerrar()
+                if nodo.finalmente is not None:
+                    self._intentos.pop()
+                    actual.emitir(OP_FIN_MANEJAR, linea=linea)
+                    self._bloque(nodo.finalmente.sentencias, ambito_nuevo=True)
+                    al_fin2 = actual.emitir_salto(OP_SALTO, linea)
+                    actual.parchar(hueco2, len(actual.palabras))
+                    self._bloque(nodo.finalmente.sentencias, ambito_nuevo=True)
+                    actual.emitir(OP_RELANZAR, linea=linea)
+                    actual.parchar_aqui(al_fin2)
+            actual.parchar_aqui(al_fin)
 
         else:
             raise NoSoportadoNativo(f"sentencia no soportada: {tipo.__name__}", linea)
+
+    def _ligar_nombre(self, nombre: str, linea: int) -> None:
+        """Liga el valor que hay en la pila a un nombre nuevo (como el
+        final de `variable nombre = valor`): global en la superficie
+        del módulo, local dentro de una función."""
+        actual = self.actual
+        if self._es_nivel_global(actual):
+            self._modulo.declarados.add(nombre)
+            actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
+            actual.emitir(OP_POP, linea=linea)
+            return
+        slot = actual.declarar(nombre)
+        actual.emitir(OP_SET_LOCAL, slot, linea=linea)
+        if actual.es_celda[slot]:
+            actual.emitir(OP_CELDA, slot, linea=linea)
+        actual.emitir(OP_POP, linea=linea)
+
+    def _sentencia_importar(self, nodo: NodoImportar) -> None:
+        """importar "x.jp" [como alias]: compila el módulo (una vez) y
+        emite IMPORTAR. Con alias, el diccionario del módulo se liga a
+        ese nombre; sin alias, cada nombre exportado se copia dentro."""
+        actual = self.actual
+        linea = nodo.linea
+        indice = self._compilar_modulo(nodo)
+        modulo = self.modulos[indice]
+        actual.emitir(OP_IMPORTAR, indice, linea=linea)
+        if nodo.alias is not None:
+            self._ligar_nombre(nodo.alias, linea)
+            return
+        for nombre in modulo.globales_orden:
+            if nombre not in modulo.declarados:
+                continue
+            actual.emitir(OP_DUP, linea=linea)
+            actual.emitir(OP_CONST_S, nombre, linea=linea)
+            actual.emitir(OP_INDICE, linea=linea)
+            self._ligar_nombre(nombre, linea)
+        actual.emitir(OP_POP, linea=linea)
+
+    def _compilar_modulo(self, nodo: NodoImportar) -> int:
+        """Resuelve y compila el archivo importado como una función y un
+        espacio de globales del mismo blob. Devuelve su índice."""
+        from pathlib import Path
+
+        from .errores import ErrorJP
+
+        linea = nodo.linea
+        base = self._modulo.directorio or self._directorio_base
+        if nodo.ruta.startswith("@"):
+            from .paquetes import resolver_paquete
+
+            try:
+                ruta = resolver_paquete(nodo.ruta, base, linea)
+            except ErrorJP as error:
+                raise NoSoportadoNativo(
+                    f"no se pudo resolver '{nodo.ruta}': {error}", linea
+                ) from None
+        else:
+            ruta = (Path(base) / nodo.ruta).resolve()
+        if not ruta.is_file():
+            raise NoSoportadoNativo(
+                f"no se encontró el módulo '{nodo.ruta}' (buscado en {ruta})", linea
+            )
+        clave = str(ruta)
+        # el chequeo de ciclo va ANTES que la caché: un módulo a medio
+        # compilar ya está registrado, y volver a entrar sería un ciclo
+        if clave in self._importando:
+            raise NoSoportadoNativo(
+                f"importación circular detectada: '{nodo.ruta}' ya se está importando",
+                linea,
+            )
+        if clave in self._ids_modulos:
+            return self._ids_modulos[clave]
+        try:
+            fuente = ruta.read_text(encoding="utf-8")
+            from .lexer import tokenizar as _tokenizar
+            from .parser import parsear as _parsear
+
+            arbol = _parsear(_tokenizar(fuente))
+        except ErrorJP as error:
+            raise NoSoportadoNativo(
+                f"error en el módulo '{nodo.ruta}': {error}", linea
+            ) from None
+        except OSError as error:
+            raise NoSoportadoNativo(
+                f"no se pudo leer el módulo '{nodo.ruta}': {error}", linea
+            ) from None
+        estado = _ModuloEstado(nodo.ruta, fuente, ruta.parent)
+        indice = len(self.modulos)
+        self.modulos.append(estado)
+        self._ids_modulos[clave] = indice
+        funcion = _Funcion(f"<módulo {ruta.name}>", 0, _capturadas_por_anidadas(arbol))
+        funcion.modulo = indice
+        estado.funcion = len(self.funciones)
+        self.funciones.append(funcion)
+        self._principales.add(id(funcion))
+        anterior = self._modulo_actual
+        self._modulo_actual = indice
+        self._importando.add(clave)
+        self.pila.append(funcion)
+        try:
+            self._bloque(arbol.sentencias)
+        finally:
+            self.pila.pop()
+            self._importando.discard(clave)
+            self._modulo_actual = anterior
+        funcion.emitir(OP_RETORNAR_NULO)
+        return indice
 
     def _declarar(self, nombre: str, inicializador: Nodo | None, linea: int,
                   tipo: str | None = None) -> None:
         actual = self.actual
         # ¿estamos en el nivel superior del programa? entonces es global
-        if len(self.pila) == 1 and len(actual.scopes) == 1:
+        if self._es_nivel_global(actual):
             if inicializador is not None:
                 self._expresion(inicializador)
             else:
                 actual.emitir(OP_NULO, linea=linea)
             if tipo is not None:
                 actual.emitir(OP_VERIFICAR_TIPO, tipo, nombre, linea=linea)
-            self.declarados.add(nombre)
+            self._modulo.declarados.add(nombre)
             actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
             return
@@ -739,8 +926,8 @@ class CompiladorNativo:
         actual = self.actual
         linea = nodo.linea
         indice = self._compilar_funcion(nodo)
-        if len(self.pila) == 1 and len(actual.scopes) == 1:
-            self.declarados.add(nodo.nombre)
+        if self._es_nivel_global(actual):
+            self._modulo.declarados.add(nodo.nombre)
             actual.emitir(OP_CIERRE, indice, linea=linea)
             actual.emitir(OP_DECL_GLOBAL, self._global(nodo.nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
@@ -779,8 +966,8 @@ class CompiladorNativo:
             actual.emitir(OP_CIERRE, indice, linea=linea)
         actual.emitir(OP_CREAR_CLASE, nodo.nombre, len(indices),
                       *[m.nombre for m in nodo.metodos], linea=linea)
-        if len(self.pila) == 1 and len(actual.scopes) == 1:
-            self.declarados.add(nodo.nombre)
+        if self._es_nivel_global(actual):
+            self._modulo.declarados.add(nodo.nombre)
             actual.emitir(OP_DECL_GLOBAL, self._global(nodo.nombre), linea=linea)
             actual.emitir(OP_POP, linea=linea)
             return
@@ -800,8 +987,8 @@ class CompiladorNativo:
         actual = self.actual
         for nombre in reversed(nombres):
             if declarar:
-                if len(self.pila) == 1 and len(actual.scopes) == 1:
-                    self.declarados.add(nombre)
+                if self._es_nivel_global(actual):
+                    self._modulo.declarados.add(nombre)
                     actual.emitir(OP_DECL_GLOBAL, self._global(nombre), linea=linea)
                     actual.emitir(OP_POP, linea=linea)
                     continue
@@ -841,6 +1028,7 @@ class CompiladorNativo:
         tipos = list(getattr(nodo, "tipos", []) or [])
         tipos += [None] * (len(nodo.parametros) - len(tipos))
         funcion = _Funcion(nodo.nombre or "<anónima>", len(nodo.parametros), capturadas)
+        funcion.modulo = self._modulo_actual
         for parametro in nodo.parametros:
             funcion.declarar(parametro)
         self.funciones.append(funcion)
@@ -886,6 +1074,23 @@ class CompiladorNativo:
         self.pila.pop()
         return indice
 
+    def _emitir_cierre_intentos(self, hasta: int, linea: int) -> None:
+        """Cierra en línea los 'intenta' abiertos sobre `hasta`: quita
+        su manejador y corre su 'finalmente' aquí, duplicado en este
+        camino de salida (como _emitir_cierre_intentos de la VM).
+
+        Lo usan 'devuelve', 'romper' y 'continuar' al cruzarlo. La
+        lista se repone al final: sintácticamente lo siguiente sigue
+        dentro del mismo 'intenta'."""
+        actual = self.actual
+        objetivos = self._intentos[hasta:]
+        del self._intentos[hasta:]
+        for finalmente in reversed(objetivos):
+            actual.emitir(OP_FIN_MANEJAR, linea=linea)
+            if finalmente is not None:
+                self._bloque(finalmente.sentencias, ambito_nuevo=True)
+        self._intentos.extend(objetivos)
+
     def _para(self, nodo: NodoPara) -> None:
         actual = self.actual
         linea = nodo.linea
@@ -893,7 +1098,7 @@ class CompiladorNativo:
         self._expresion(nodo.iterable)
         actual.emitir(OP_ITER_INIT, slot_iter, linea=linea)
         inicio = len(actual.palabras)
-        self.iteradores.append((inicio, [], len(actual.palabras)))
+        self.iteradores.append((inicio, [], len(actual.palabras), len(self._intentos)))
         self._abrir()
         slot_var = actual.declarar(nodo.variable)
         if nodo.variable2 is not None:
@@ -909,7 +1114,7 @@ class CompiladorNativo:
             actual.emitir(op, slot_iter, slot_var, 0, linea=linea)
         hueco = len(actual.palabras) - 1
         self._bloque(nodo.cuerpo.sentencias)
-        _, saltos_romper, _ = self.iteradores.pop()
+        _, saltos_romper, _, _marca = self.iteradores.pop()
         actual.salto_a(inicio, linea)
         actual.parchar_aqui(hueco)
         for hueco_romper in saltos_romper:
@@ -1123,16 +1328,17 @@ class CompiladorNativo:
     # -------------------------------------------------------- empaquetar
 
     def _empaquetar(self) -> bytes:
-        # Un nombre global que el programa no declara tiene que ser una nativa:
+        # Un nombre global que un módulo no declara tiene que ser una nativa:
         # si el motor en C no la trae, se rechaza aquí (y el CLI sigue con el
         # motor de Python) en vez de fallar en tiempo de ejecución.
-        for nombre in self.globales_orden:
-            if nombre in self.declarados or nombre in NATIVAS_EN_C:
-                continue
-            raise NoSoportadoNativo(
-                f"la función nativa '{nombre}' aún no está en el motor nativo "
-                "(el motor de Python sí la tiene)"
-            )
+        for modulo in self.modulos:
+            for nombre in modulo.globales_orden:
+                if nombre in modulo.declarados or nombre in NATIVAS_EN_C:
+                    continue
+                raise NoSoportadoNativo(
+                    f"la función nativa '{nombre}' aún no está en el motor nativo "
+                    "(el motor de Python sí la tiene)"
+                )
 
         # tabla de cadenas global (nombres de globales + cadenas por función)
         cadenas: dict[str, int] = {}
@@ -1142,8 +1348,16 @@ class CompiladorNativo:
                 cadenas[texto] = len(cadenas)
             return cadenas[texto]
 
-        for nombre in self.globales_orden:
-            cadena(nombre)
+        # bases de los globales: cada módulo tiene los suyos, concatenados
+        bases: list[int] = []
+        total_globales = 0
+        for modulo in self.modulos:
+            bases.append(total_globales)
+            total_globales += len(modulo.globales_orden)
+            for nombre in modulo.globales_orden:
+                cadena(nombre)
+        for modulo in self.modulos:
+            cadena(modulo.nombre)
         for funcion in self.funciones:
             cadena(funcion.nombre)
             for texto in funcion.const_s:
@@ -1154,18 +1368,20 @@ class CompiladorNativo:
         salida = bytearray()
         salida += MAGIA
         salida += struct.pack("<IIIII", VERSION_FORMATO, len(self.funciones),
-                              len(orden), len(self.globales_orden), 0)
+                              len(orden), total_globales, 0)
         # cadenas
         for texto in orden:
             datos = texto.encode("utf-8")
             salida += struct.pack("<I", len(datos))
             salida += datos
-        # nombres de globales
-        for nombre in self.globales_orden:
-            salida += struct.pack("<I", cadenas[nombre])
-        # funciones
+        # nombres de globales (los de todos los módulos, concatenados)
+        for modulo in self.modulos:
+            for nombre in modulo.globales_orden:
+                salida += struct.pack("<I", cadenas[nombre])
+        # funciones (con el índice de su módulo)
         for funcion in self.funciones:
-            salida += struct.pack("<III", cadenas[funcion.nombre], funcion.aridad, funcion.slots)
+            salida += struct.pack("<IIII", cadenas[funcion.nombre], funcion.aridad,
+                                  funcion.modulo, funcion.slots)
             salida += bytes(1 if celda else 0 for celda in funcion.es_celda)
             salida += struct.pack("<I", len(funcion.upvalues))
             for es_local, indice in funcion.upvalues:
@@ -1185,6 +1401,18 @@ class CompiladorNativo:
             salida += struct.pack("<I", len(funcion.lineas))
             for pc, numero in funcion.lineas:
                 salida += struct.pack("<II", pc, numero)
+        # la tabla de módulos (v1.29): función principal, base de sus
+        # globales en la tabla concatenada, lo que exporta y su fuente
+        salida += struct.pack("<I", len(self.modulos))
+        for indice_mod, modulo in enumerate(self.modulos):
+            exportados = [n for n in modulo.globales_orden if n in modulo.declarados]
+            salida += struct.pack("<IIII", cadenas[modulo.nombre], modulo.funcion,
+                                  bases[indice_mod], len(exportados))
+            for nombre in exportados:
+                salida += struct.pack("<II", cadenas[nombre], modulo.globales[nombre])
+            fuente_modulo = modulo.fuente.encode("utf-8")
+            salida += struct.pack("<I", len(fuente_modulo))
+            salida += fuente_modulo
         # el código fuente (para errores con la línea culpable, como el de Python)
         fuente = self.fuente.encode("utf-8")
         salida += struct.pack("<I", len(fuente))
@@ -1192,11 +1420,20 @@ class CompiladorNativo:
         return bytes(salida)
 
 
-def compilar_a_bytes(programa: NodoPrograma, nombre: str = "<código>", fuente: str = "") -> bytes:
-    """Compila un AST de JP al blob .jpb del motor nativo en C."""
+def compilar_a_bytes(programa: NodoPrograma, nombre: str = "<código>", fuente: str = "",
+                     directorio=None) -> bytes:
+    """Compila un AST de JP al blob .jpb del motor nativo en C.
+
+    Los 'importar' se resuelven relativos a `directorio` (el de la
+    ruta del programa si parece una, o el directorio actual)."""
+    from pathlib import Path
+
     compilador = CompiladorNativo(nombre)
     compilador.fuente = fuente
-    return compilador.compilar(programa)
+    if directorio is None and nombre:
+        candidato = Path(nombre)
+        directorio = candidato.resolve().parent if candidato.suffix == ".jp" else Path.cwd()
+    return compilador.compilar(programa, directorio=directorio)
 
 
 # ------------------------------------------------------------- desensamblado
@@ -1220,8 +1457,12 @@ def desensamblar_blob(blob: bytes) -> str:
 
     lineas_salida = [f"JPB1 v{version}: {n_fun} función(es), {n_globales} global(es)"]
     for indice_fun in range(n_fun):
-        (nombre_idx, aridad, slots) = struct.unpack_from("<III", blob, pos)
-        pos += 12
+        if version >= 2:
+            (nombre_idx, aridad, _modulo, slots) = struct.unpack_from("<IIII", blob, pos)
+            pos += 16
+        else:
+            (nombre_idx, aridad, slots) = struct.unpack_from("<III", blob, pos)
+            pos += 12
         flags = blob[pos:pos + slots]
         pos += slots
         (n_up, ) = struct.unpack_from("<I", blob, pos)

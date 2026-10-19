@@ -1,5 +1,32 @@
 # Cambios de JP
 
+## 1.29.0 — Módulos en el motor en C (2026-10-19)
+
+El último hueco grande del motor nativo: `importar` funciona en C,
+con todo su séquito.
+
+- **Formato .jpb v2**: el blob juntan ahora N archivos — cada uno
+  con su función principal y su espacio de globales dentro de la
+  tabla concatenada (las funciones saben su módulo y la base de sus
+  globales). El `OP_IMPORTAR` (65) ejecuta el módulo la primera vez
+  y congela el diccionario con lo exportado, como los motores de
+  Python: `importar "figuras.jp" como fig`, y sin `como` trae los
+  nombres. Paquetes `@x` se resuelven también al compilar, y la
+  importación circular se detecta al compilar (en Python, al
+  ejecutar).
+- **De paso**: `lanzar` (OP_LANZAR 66), `finalmente` completo con la
+  técnica de la VM (duplicado en cada salida; OP_RELANZAR 67 y un
+  segundo centinela protegiendo al `atrapa`), `sublista`, `resumen`,
+  y todo el paquete de matrices en C (forma, crear_matriz,
+  identidad, transponer, sumar/restar/multiplicar matrices, escalar,
+  matriz_vector, los tres `*_vectores` y matriz_aplicar). Los errores
+  de un módulo enseñan su propia fuente y línea.
+- Los blobs v2 antiguos (de v1.28 y antes) deben recompilarse: el
+  motor avisa («versión de bytecode no soportada... recompila»).
+  `ejemplos/biblioteca.jp` y `modulos.jp` son idénticos en C.
+  Paridad: 26 idénticos, 8 no soportados, 0 fallos. Tests
+  `test_v38.py` y `test_v39.py`.
+
 ## 1.28.0 — Cobertura de líneas (2026-10-19)
 
 La pieza que faltaba de la caja de herramientas de calidad:

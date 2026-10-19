@@ -498,6 +498,13 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 
 ## Estado
 
+v1.29.0 — **módulos en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 📚 **`importar` también en el motor en C**: varios archivos viven
+  en un mismo .jpb con sus propios globales; hay también `lanzar`,
+  `finalmente` y todo el paquete de matrices. La paridad sube a 26
+  ejemplos idénticos, 0 fallos.
+
 v1.28.0 — **cobertura** (ver `CHANGELOG.md`). Nuevo:
 
 - 📊 **`jp --cobertura programa.jp`**: qué líneas llegaron a correr y

@@ -1,5 +1,32 @@
 # Cambios de JP
 
+## 1.31.0 — Editores: gramática tree-sitter y servidor LSP (2026-11-22)
+
+Hasta ahora JP solo existía en una terminal. Un lenguaje se adopta cuando el
+editor lo entiende, así que esta versión es toda de herramienta, no de
+features del lenguaje.
+
+- **Gramática tree-sitter** (`tree-sitter-jp/`): resaltado, plegado y
+  referencias locales para VS Code, Neovim, Zed, Helix y Emacs. Derivada de
+  `lexer.py` y `parser.py`, con las precedencias reales del parser. Las
+  cadenas van como token opaco (interpolar dentro de ellas necesita un
+  *external scanner* y quedó fuera de esta entrega).
+- **Servidor LSP** (`jp lsp`): diagnósticos del parser en vivo, autocompletado
+  con las 149 funciones nativas y su aridad, y ayuda al pasar el ratón. Solo
+  biblioteca estándar; no hay dependencias nuevas.
+- **Referencia generada** (`docs/referencia.md`, `herramientas/referencia.py`):
+  sale del registro real de nativas, así que añadir una función actualiza la
+  documentación sola. De paso quedó a la vista la deuda: 120 de las 149
+  nativas no tienen docstring.
+- **Tutorial** (`docs/jp-en-20-minutos.md`): diez programas completos, de
+  "hola" a clases y errores. `herramientas/tutorial.py` ejecuta cada bloque
+  en CI, así que el tutorial no puede quedarse desactualizado.
+- **CI de editores** (`editores.yml`): genera la gramática, comprueba que las
+  queries solo usan nodos que existen y exige que los 36 ejemplos se analicen
+  **sin nodos `ERROR`**.
+- **Arreglo**: `jp/__init__.py` seguía en 1.29.0 mientras `pyproject.toml` ya
+  decía 1.30.0, así que `jp --version` mentía.
+
 ## 1.30.0 — Español de verdad en el motor en C (2026-11-22)
 
 El motor nativo contaba **bytes** donde debía contar **letras**: en un

@@ -640,6 +640,12 @@ def _modo_binario(ruta: str, salida: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     global _USA_VM, _TURBO, _NATIVO, _MOTOR_C
     argumentos = argv if argv is not None else sys.argv[1:]
+    # `jp lsp`: servidor de lenguaje para editores (no es una bandera porque
+    # se queda escuchando en stdio hasta que el editor lo cierra).
+    if argumentos[:1] == ["lsp"]:
+        from .lsp import servir
+
+        return servir()
     _USA_VM = "--interprete" not in argumentos
     _TURBO = "--turbo" in argumentos
     _NATIVO = "--nativo" in argumentos

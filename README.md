@@ -17,6 +17,7 @@ español y una sintaxis pensada para ser **lo más fácil posible**:
 - 📦 Módulos (v1.6): `importar "utilidades.jp" como util` y `util.doble(2)`
 - 🎁 Extras v1.6: valores por defecto, desestructuración `[a, b] = [b, a]`, `lanzar` y `finalmente`
 - 🧩 Clases (v1.7): `clase Persona { funcion iniciar(n) { este.nombre = n } }`, con herencia (`hereda`)
+- 🔤 Texto en español de verdad (v1.30): `longitud("Maturín")` es 7 y `mayusculas("ñandú")` es `ÑANDÚ`, también en el motor en C
 
 ```
                                   ┌─ [--nativo: JIT a x86-64 para funciones numéricas]
@@ -458,7 +459,7 @@ hay resultados silenciosamente distintos. (Los enteros de más de 64 bits
 también se rechazan, porque Python usa precisión arbitraria y el nativo no.)
 
 El motor se compila solo en GitHub Actions (`.github/workflows/motor-c.yml`)
-en cada push: corre la suite completa, compara la salida de los 26 ejemplos
+en cada push: corre la suite completa, compara la salida de los 29 ejemplos
 Python vs C y publica `jpvm` (más binarios de ejemplo autónomos) como
 **artefacto descargable** del workflow.
 
@@ -471,6 +472,15 @@ Python vs C y publica `jpvm` (más binarios de ejemplo autónomos) como
 | `benchmark-nativo.jp` (5M + fib(25) + armónica 2M) | — | 39,9 s | **0,104 s** | no aplica (usa `reloj()`) | 0,233 s | 2,16 s |
 | Micro: suma 10M + fib(32) | — | 41,1 s | 44,7 / 36,2 ms (por función) | — | **0,481 s** | 0,813 s |
 | Micro: armónica 10M (flotantes) | — | 29,0 s | 63,9 ms | — | **0,487 s** | 1,140 s |
+
+Y contra los grandes, con el mismo `benchmark.jp` (bucle de 1M + fib(22),
+mejor de 5 corridas, Linux x86-64, gcc 15):
+
+| Motor | Tiempo | Comparación |
+|---|---|---|
+| **JP (motor en C)** | **0,041 s** | — |
+| CPython 3.12 | 0,110 s | 2,7x más lento |
+| Node (V8) | 0,607 s | 14,8x más lento |
 
 Lecturas honestas: el motor en C **le gana a CPython en bucles y en flotantes
 (1,7x y 2,3x)** y es **60–85x más rápido que la VM de Python**; el JIT sigue
@@ -493,10 +503,19 @@ ejemplo y compara la salida del motor en C contra la del motor de Python.
 ## Próximos pasos posibles
 
 - Websockets (bots de Discord en vivo)
-- El motor en C ya cubre clases, tipos, módulos y finalmente; lo que queda fuera por diseño es el host (servidores, SQLite, procesos, patrones)
+- El motor en C ya cubre clases, tipos, módulos, finalmente, SVG, CSV y patrones; lo que queda fuera es el host (red, servidores, SQLite, procesos)
 - Bootstrapping: reescribir el intérprete... ¡en el propio JP!
 
 ## Estado
+
+v1.30.0 — **español de verdad en el motor en C** (ver `CHANGELOG.md`). Nuevo:
+
+- 🔤 **UTF-8 por caracteres**: `longitud`, `letra`, `subtexto`,
+  `invertir`, `buscar`, `texto[i]` y `para c en texto` dejan de contar
+  bytes; `mayusculas`/`minusculas` entienden tildes y la ñ.
+- 🖼️ **SVG, 📊 CSV, 🔎 patrones y `plataforma()` nativos**: 18 nativas
+  nuevas en C (103 en total). `grafica.jp` genera un SVG idéntico byte a
+  byte al de Python. Paridad: **29 idénticos, 0 fallos**.
 
 v1.29.0 — **módulos en C** (ver `CHANGELOG.md`). Nuevo:
 

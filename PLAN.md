@@ -15,6 +15,16 @@
 > los T-20/T-21 (optimizar la VM de Python) pasan a segundo plano, porque el
 > trabajo equivalente se hace ahora en el motor propio.
 
+### ✅ v1.30.0 (2026-11-22): el español del motor nativo
+
+El motor en C contaba **bytes** donde debía contar **letras**: `longitud("Maturín")`
+daba 8 y `mayusculas("ñandú")` dejaba la ñ intacta. Arreglado con helpers
+`utf8_*` en `longitud`, `letra`, `subtexto`, `invertir`, `buscar`,
+`indice_de`, `texto[i]` y `para c en texto`, más `mayusculas`/`minusculas`
+con el bloque latino-1. De paso entraron 18 nativas: SVG (8), CSV (4),
+patrones (5) y `plataforma()`. Paridad: **29 idénticos, 0 fallos**;
+suite: 415 tests (`tests/test_v40.py`).
+
 ### Lo que ya está hecho y medido (v1.5.0)
 
 | Pieza | Archivo | Estado |
@@ -78,18 +88,22 @@ precisión arbitraria) — nunca hay números distintos en silencio.
 | N-1 | **Métodos de valor en C** (`"x".mayusculas()`, `lista.agregar(v)`) | los 14 ejemplos que hoy se rechazan por esto pasan a idénticos | L | ✅ **hecho** |
 | N-2 | **Diccionarios en C** (tabla hash con claves de texto + `claves/valores/elementos/tiene`) | `agenda.jp`, `api-json.jp`, `discord-webhook.jp` con paridad | L | ✅ **hecho** (`discord-webhook` espera N-4) |
 | N-3 | **`intenta/atrapa` y `elegir` en C** | `seguro.jp`, `calculadora.jp` con paridad; el motor nunca aborta el proceso ante un error capturable | M | ✅ **hecho** |
-| N-4 | **Red y archivos nativos** (`leer_archivo`, `escribir_archivo`, `http_get/post`, `json_leer/texto`) | `bot-telegram.jp` y `api-json.jp` nativos | M | 🔶 archivos y JSON sí; red (`http_get/post`, telegram) pendiente |
+| N-4 | **Red y archivos nativos** (`leer_archivo`, `escribir_archivo`, `http_get/post`, `json_leer/texto`) | `bot-telegram.jp` y `api-json.jp` nativos | M | 🔶 archivos, JSON, **CSV y SVG** sí; red (`http_get/post`, telegram) pendiente |
+| N-10 | **Texto Unicode en el motor en C** (contar caracteres, no bytes) | `longitud("Maturín")` = 7 y `mayusculas("ñandú")` = `ÑANDÚ` en los tres motores | M | ✅ **hecho** (v1.30) |
+| N-11 | **Patrones nativos** (motor de retroceso propio para las 5 `*_patron`) | `biblioteca.jp` idéntico; patrón inválido avisa | M | ✅ **hecho** (v1.30) |
 | N-5 | **`mapear/filtrar/reducir/para_cada/ordenar`** (nativas de orden superior, que ya saben llamar a un cierre desde el motor) | `funcional.jp` con paridad | M | ✅ **hecho** |
 | N-6 | **Frontend propio** (lexer+parser en C, o bootstrap del compilador en JP) | `jpvm` compila y ejecuta un `.jp` **sin Python**; `jp` queda como comando de conveniencia | L |
 | N-7 | **Tier de compilación a máquina** dentro del motor C (AOT por función numérica, como el JIT actual pero sin Python) | superar al JIT en `benchmark-nativo.jp` y acercarse a C puro | L |
 | N-8 | **Extras de tipo**: bignums (o error claro), GC generacional, cache de métodos, superinstrucciones | 500+ tests verdes y menos tiempo por despacho | L |
 | N-9 | **Distribución**: `make install`, binarios para Linux/macOS/Windows, wheels en PyPI con el binario dentro | `pipx install jp-lang && jp --c hola.jp` en una máquina limpia | M |
 
-**Meta de paridad:** los 23 ejemplos en verde bajo el motor en C
-(**hoy: 20 idénticos · 2 no soportados todavía (`bot-telegram`,
-`discord-webhook`, ambos esperando N-4) · 0 fallos** · 2 no deterministas
-(`red-neuronal`, `red-profunda`: misma estructura, números distintos) ·
-`espiral.jp` y `benchmark-nativo.jp` se omiten por tiempo/cronometraje).
+**Meta de paridad:** todos los ejemplos en verde bajo el motor en C
+(**hoy: 29 idénticos · 5 no soportados todavía · 0 fallos**). Los 5 que
+faltan necesitan el host, no el lenguaje: `bot-telegram` y
+`discord-webhook` (red, N-4), `web-rutas` (servidor), `base-datos`
+(SQLite) y `procesos`. Además, 2 no deterministas (`red-neuronal`,
+`red-profunda`: misma estructura, números distintos) y `espiral.jp` y
+`benchmark-nativo.jp` se omiten por tiempo/cronometraje.
 El arnés `herramientas/paridad.py` es el marcador.
 
 ---

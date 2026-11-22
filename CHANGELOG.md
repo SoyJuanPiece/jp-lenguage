@@ -1,5 +1,38 @@
 # Cambios de JP
 
+## 1.30.0 — Español de verdad en el motor en C (2026-11-22)
+
+El motor nativo contaba **bytes** donde debía contar **letras**: en un
+lenguaje en español eso es un error de fondo, no un detalle.
+
+- **UTF-8 correcto**: `longitud("Maturín")` ya es 7 (antes 8), y
+  `letra`, `subtexto`, `invertir`, `buscar`, `indice_de`, `texto[i]` y
+  `para c en texto` trabajan por caracteres, sin partir una tilde por la
+  mitad. `mayusculas`/`minusculas` entienden `á é í ó ú ü ñ` y sus
+  mayúsculas (bloque latino-1 de UTF-8). Helpers `utf8_*` en `jpvm.c`.
+- **Gráficos SVG nativos** (8): `svg_linea`, `svg_rectangulo`,
+  `svg_circulo`, `svg_texto`, `svg_lineas`, `svg_camino`, `crear_svg` y
+  `guardar_svg`, con el mismo formato de números y el mismo escapado que
+  `jp/graficos.py`. `ejemplos/grafica.jp` genera un SVG **idéntico byte a
+  byte** al del motor de Python.
+- **Tablas CSV nativas** (4): `leer_csv`, `leer_csv_texto`,
+  `escribir_csv` y `convertir_csv`, con comillas, `""` dentro y la misma
+  conversión automática (`"42"`→42, `"3.5"`→3.5, `verdadero`/`falso`→
+  booleano, vacío→nulo). `ejemplos/datos.jp` idéntico.
+- **Patrones nativos** (5): un motor de retroceso propio, sin
+  dependencias, para `buscar_patron`, `coincide_patron`,
+  `encontrar_patrones`, `reemplazar_patron` y `separar_patron`. Cubre
+  literales, `.`, clases `[a-z0-9]` con rangos y negación, `\d \w \s`
+  (y mayúsculas), grupos `( )` con captura, alternativas `|`, `* + ?` y
+  los anclajes `^ $`. Un patrón inválido avisa, no revienta.
+- **`plataforma()`** en C (`Linux`/`Darwin`/`Windows`).
+- **Paridad: 29 idénticos · 0 fallos** (antes 26 · 1 fallo). Los 5 que
+  quedan esperan red, base de datos o procesos (`bot-telegram`,
+  `discord-webhook`, `web-rutas`, `base-datos`, `procesos`).
+- 18 nativas nuevas en C (103 en total) y 11 tests nuevos
+  (`tests/test_v40.py`, suite: 415). El compilador nativo no necesitó
+  tocarse: su lista blanca se lee de `instalar_nativa` en `jpvm.c`.
+
 ## 1.29.0 — Módulos en el motor en C (2026-10-19)
 
 El último hueco grande del motor nativo: `importar` funciona en C,

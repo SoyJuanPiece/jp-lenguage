@@ -376,6 +376,40 @@ static Texto *nuevo_texto(const char *datos) {
     return nuevo_texto_largo(datos, datos ? (uint32_t)strlen(datos) : 0);
 }
 
+/* ---------------------------------------------------------------- UTF-8
+ * JP es un lenguaje en español: "Maturín" tiene 7 letras, no 8. El texto se
+ * guarda en bytes (UTF-8), pero longitud/letra/subtexto/invertir y compañía
+ * cuentan CARACTERES, igual que el motor de Python. */
+
+static uint32_t utf8_ancho(unsigned char primero) {
+    if (primero < 0x80) return 1;
+    if ((primero & 0xE0) == 0xC0) return 2;
+    if ((primero & 0xF0) == 0xE0) return 3;
+    if ((primero & 0xF8) == 0xF0) return 4;
+    return 1; /* byte suelto: se trata como un carácter para no perder nada */
+}
+
+/* Cuántos caracteres hay en estos bytes. */
+static uint32_t utf8_largo(const char *datos, uint32_t bytes) {
+    uint32_t i = 0, n = 0;
+    while (i < bytes) { i += utf8_ancho((unsigned char)datos[i]); n++; }
+    return n;
+}
+
+/* El byte donde empieza el carácter número `caracter` (bytes si se pasa). */
+static uint32_t utf8_byte_de(const char *datos, uint32_t bytes, uint32_t caracter) {
+    uint32_t i = 0, n = 0;
+    while (i < bytes && n < caracter) { i += utf8_ancho((unsigned char)datos[i]); n++; }
+    return i;
+}
+
+/* Cuántos caracteres hay antes de este byte (para devolver posiciones). */
+static uint32_t utf8_caracter_de(const char *datos, uint32_t byte) {
+    uint32_t i = 0, n = 0;
+    while (i < byte) { i += utf8_ancho((unsigned char)datos[i]); n++; }
+    return n;
+}
+
 static Lista *nueva_lista(uint32_t capacidad) {
     Lista *l = nuevo_objeto(sizeof(Lista), O_LISTA);
     l->largo = 0;
@@ -1074,7 +1108,10 @@ static Valor nativa_longitud(VM *v, int argc, Valor *args) {
     (void)v;
     if (argc != 1) error_en(0, "longitud() espera 1 argumento");
     Valor x = args[0];
-    if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_TEXTO) return de_entero(((Texto *)x.v.obj)->largo);
+    if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_TEXTO) {
+        Texto *t = (Texto *)x.v.obj;
+        return de_entero(utf8_largo(t->datos, t->largo));
+    }
     if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_LISTA) return de_entero(((Lista *)x.v.obj)->largo);
     if (x.etiqueta == T_OBJ && x.v.obj->tipo == O_DICTO) return de_entero(((Dicto *)x.v.obj)->largo);
     char texto[256];
@@ -1705,30 +1742,44 @@ static Valor nativa_azar(VM *v, int argc, Valor *args) {
     return de_entero(1 + rand() % n);
 }
 
+/* Mayúsculas y minúsculas del español: ASCII más el bloque latino-1 de
+ * UTF-8 (C3 xx), donde viven á é í ó ú ü ñ y sus mayúsculas. */
+static Valor texto_cambiando_caja(Texto *t, int a_mayusculas) {
+    char *copia = memoria(t->largo + 1);
+    memcpy(copia, t->datos, t->largo + 1);
+    for (uint32_t i = 0; i < t->largo;) {
+        unsigned char c = (unsigned char)copia[i];
+        if (c < 0x80) {
+            copia[i] = (char)(a_mayusculas ? toupper(c) : tolower(c));
+            i += 1;
+            continue;
+        }
+        uint32_t ancho = utf8_ancho(c);
+        if (c == 0xC3 && i + 1 < t->largo) {
+            unsigned char d = (unsigned char)copia[i + 1];
+            /* C3 80..9E = mayúsculas (menos 97 ×), C3 A0..BE = minúsculas (menos B7 ÷) */
+            if (a_mayusculas && d >= 0xA0 && d <= 0xBE && d != 0xB7) copia[i + 1] = (char)(d - 0x20);
+            else if (!a_mayusculas && d >= 0x80 && d <= 0x9E && d != 0x97) copia[i + 1] = (char)(d + 0x20);
+        }
+        i += ancho ? ancho : 1;
+    }
+    Texto *nuevo = nuevo_texto_largo(copia, t->largo);
+    free(copia);
+    return de_texto(nuevo);
+}
+
 static Valor nativa_mayusculas(VM *v, int argc, Valor *args) {
     (void)v;
     if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
         error_en(0, "mayusculas() espera una cadena");
-    Texto *t = (Texto *)args[0].v.obj;
-    char *copia = memoria(t->largo + 1);
-    memcpy(copia, t->datos, t->largo + 1);
-    for (uint32_t i = 0; i < t->largo; i++) copia[i] = (char)toupper((unsigned char)copia[i]);
-    Texto *nuevo = nuevo_texto_largo(copia, t->largo);
-    free(copia);
-    return de_texto(nuevo);
+    return texto_cambiando_caja((Texto *)args[0].v.obj, 1);
 }
 
 static Valor nativa_minusculas(VM *v, int argc, Valor *args) {
     (void)v;
     if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
         error_en(0, "minusculas() espera una cadena");
-    Texto *t = (Texto *)args[0].v.obj;
-    char *copia = memoria(t->largo + 1);
-    memcpy(copia, t->datos, t->largo + 1);
-    for (uint32_t i = 0; i < t->largo; i++) copia[i] = (char)tolower((unsigned char)copia[i]);
-    Texto *nuevo = nuevo_texto_largo(copia, t->largo);
-    free(copia);
-    return de_texto(nuevo);
+    return texto_cambiando_caja((Texto *)args[0].v.obj, 0);
 }
 
 static Valor nativa_recortar(VM *v, int argc, Valor *args) {
@@ -1786,7 +1837,15 @@ static Valor nativa_invertir(VM *v, int argc, Valor *args) {
     if (args[0].etiqueta == T_OBJ && args[0].v.obj->tipo == O_TEXTO) {
         Texto *t = (Texto *)args[0].v.obj;
         char *copia = memoria(t->largo + 1);
-        for (uint32_t i = 0; i < t->largo; i++) copia[i] = t->datos[t->largo - 1 - i];
+        uint32_t escrito = 0, leido = 0;
+        while (leido < t->largo) {
+            uint32_t ancho = utf8_ancho((unsigned char)t->datos[leido]);
+            if (leido + ancho > t->largo) ancho = t->largo - leido;
+            memmove(copia + t->largo - leido - ancho, t->datos + leido, ancho);
+            leido += ancho;
+            escrito += ancho;
+        }
+        (void)escrito;
         copia[t->largo] = '\0';
         Texto *nuevo = nuevo_texto_largo(copia, t->largo);
         free(copia);
@@ -2030,17 +2089,20 @@ static Valor nativa_subtexto(VM *v, int argc, Valor *args) {
     Texto *t = (Texto *)args[0].v.obj;
     if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
         error_en(0, "subtexto() espera números para inicio y fin");
+    uint32_t caracteres = utf8_largo(t->datos, t->largo);
     int64_t inicio = a_entero(args[1]);
     int64_t fin = argc > 2 ? (args[2].etiqueta == T_BOOL || !es_numero(args[2])
                                   ? (error_en(0, "subtexto() espera números para inicio y fin"), 0)
                                   : a_entero(args[2]))
-                           : (int64_t)t->largo;
-    if (inicio < 0) inicio += t->largo;
-    if (fin < 0) fin += t->largo;
+                           : (int64_t)caracteres;
+    if (inicio < 0) inicio += caracteres;
+    if (fin < 0) fin += caracteres;
     if (inicio < 0) inicio = 0;
-    if (fin > (int64_t)t->largo) fin = t->largo;
+    if (fin > (int64_t)caracteres) fin = caracteres;
     if (fin < inicio) fin = inicio;
-    return de_texto(nuevo_texto_largo(t->datos + inicio, (uint32_t)(fin - inicio)));
+    uint32_t desde = utf8_byte_de(t->datos, t->largo, (uint32_t)inicio);
+    uint32_t hasta = utf8_byte_de(t->datos, t->largo, (uint32_t)fin);
+    return de_texto(nuevo_texto_largo(t->datos + desde, hasta - desde));
 }
 
 static Valor nativa_letra(VM *v, int argc, Valor *args) {
@@ -2051,10 +2113,13 @@ static Valor nativa_letra(VM *v, int argc, Valor *args) {
     if (args[1].etiqueta == T_BOOL || !es_numero(args[1]))
         error_en(0, "letra() espera una posición numérica");
     int64_t i = a_entero(args[1]);
-    if (i < 0) i += t->largo;
-    if (i < 0 || i >= (int64_t)t->largo)
-        error_en(0, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, t->largo);
-    return de_texto(nuevo_texto_largo(t->datos + i, 1));
+    uint32_t caracteres = utf8_largo(t->datos, t->largo);
+    if (i < 0) i += caracteres;
+    if (i < 0 || i >= (int64_t)caracteres)
+        error_en(0, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, caracteres);
+    uint32_t inicio = utf8_byte_de(t->datos, t->largo, (uint32_t)i);
+    uint32_t ancho = utf8_ancho((unsigned char)t->datos[inicio]);
+    return de_texto(nuevo_texto_largo(t->datos + inicio, ancho));
 }
 
 static Valor nativa_empezar_con(VM *v, int argc, Valor *args) {
@@ -2084,7 +2149,8 @@ static Valor nativa_buscar(VM *v, int argc, Valor *args) {
     Texto *t = (Texto *)args[0].v.obj, *aguja = (Texto *)args[1].v.obj;
     if (aguja->largo == 0) return de_entero(0);
     for (uint32_t i = 0; i + aguja->largo <= t->largo; i++)
-        if (memcmp(t->datos + i, aguja->datos, aguja->largo) == 0) return de_entero(i);
+        if (memcmp(t->datos + i, aguja->datos, aguja->largo) == 0)
+            return de_entero(utf8_caracter_de(t->datos, i));
     return de_entero(-1);
 }
 
@@ -2115,7 +2181,8 @@ static Valor nativa_indice_de(VM *v, int argc, Valor *args) {
         Texto *t = (Texto *)secuencia.v.obj, *b = (Texto *)valor.v.obj;
         if (b->largo == 0) return de_entero(0);
         for (uint32_t i = 0; i + b->largo <= t->largo; i++)
-            if (memcmp(t->datos + i, b->datos, b->largo) == 0) return de_entero(i);
+            if (memcmp(t->datos + i, b->datos, b->largo) == 0)
+                return de_entero(utf8_caracter_de(t->datos, i));
         return de_entero(-1);
     }
     error_en(0, "indice_de() espera lista o texto");
@@ -3638,10 +3705,12 @@ L_INDICE: {
     }
     if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_TEXTO) {
         Texto *t = (Texto *)objeto.v.obj;
-        int64_t i = indice_normalizado(indice, t->largo, "una cadena", linea);
-        if (i < 0 || i >= (int64_t)t->largo)
-            error_en(linea, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, t->largo);
-        PUSH(de_texto(nuevo_texto_largo(t->datos + i, 1)));
+        uint32_t caracteres = utf8_largo(t->datos, t->largo);
+        int64_t i = indice_normalizado(indice, caracteres, "una cadena", linea);
+        if (i < 0 || i >= (int64_t)caracteres)
+            error_en(linea, "índice fuera de rango: %lld (cadena de %u caracteres)", (long long)i, caracteres);
+        uint32_t desde = utf8_byte_de(t->datos, t->largo, (uint32_t)i);
+        PUSH(de_texto(nuevo_texto_largo(t->datos + desde, utf8_ancho((unsigned char)t->datos[desde]))));
         SIGUIENTE();
     }
     if (objeto.etiqueta == T_OBJ && objeto.v.obj->tipo == O_INSTANCIA) {
@@ -3819,7 +3888,12 @@ L_ITER_INIT: {
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_TEXTO) {
         Texto *t = (Texto *)iterable.v.obj;
         l = nueva_lista(t->largo ? t->largo : 1);
-        for (uint32_t i = 0; i < t->largo; i++) lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, 1)));
+        for (uint32_t i = 0; i < t->largo;) {
+            uint32_t ancho = utf8_ancho((unsigned char)t->datos[i]);
+            if (i + ancho > t->largo) ancho = t->largo - i;
+            lista_agregar(l, de_texto(nuevo_texto_largo(t->datos + i, ancho)));
+            i += ancho;
+        }
     } else if (iterable.etiqueta == T_OBJ && iterable.v.obj->tipo == O_DICTO) {
         Dicto *d = (Dicto *)iterable.v.obj;
         dicto_origen = d;
@@ -4085,6 +4159,833 @@ static void mostrar_info(Funcion *f) {
     }
 }
 
+/* ---------------------------------------------------------------- SVG
+ * Las mismas primitivas que jp/graficos.py: cada svg_* devuelve texto,
+ * crear_svg lo envuelve y guardar_svg lo escribe. Mismo formato de
+ * números (entero si cabe, dos decimales si no) y mismo escapado. */
+
+typedef struct { char *datos; size_t usado, capacidad; } Buf;
+
+static void buf_iniciar(Buf *b) {
+    b->capacidad = 256;
+    b->usado = 0;
+    b->datos = memoria(b->capacidad);
+    b->datos[0] = '\0';
+}
+
+static void buf_bytes(Buf *b, const char *datos, size_t largo) {
+    if (b->usado + largo + 1 > b->capacidad) {
+        while (b->capacidad < b->usado + largo + 1) b->capacidad *= 2;
+        b->datos = realloc(b->datos, b->capacidad);
+    }
+    memcpy(b->datos + b->usado, datos, largo);
+    b->usado += largo;
+    b->datos[b->usado] = '\0';
+}
+
+static void buf_texto(Buf *b, const char *s) { buf_bytes(b, s, strlen(s)); }
+
+static void buf_escapar(Buf *b, const char *datos, size_t largo) {
+    for (size_t i = 0; i < largo; i++) {
+        char c = datos[i];
+        if (c == '&') buf_texto(b, "&amp;");
+        else if (c == '<') buf_texto(b, "&lt;");
+        else if (c == '>') buf_texto(b, "&gt;");
+        else if (c == '"') buf_texto(b, "&quot;");
+        else buf_bytes(b, &c, 1);
+    }
+}
+
+static Valor buf_a_valor(Buf *b) {
+    Texto *t = nuevo_texto_largo(b->datos, (uint32_t)b->usado);
+    free(b->datos);
+    return de_texto(t);
+}
+
+static void svg_num(Valor v, const char *funcion, char *salida, size_t tamano) {
+    if (v.etiqueta == T_BOOL || !es_numero(v))
+        error_en(0, "%s() espera numeros, ej: %s(10, 20)", funcion, funcion);
+    double d = v.etiqueta == T_INT ? (double)v.v.entero : v.v.decimal;
+    if (d == floor(d) && fabs(d) < 1e18) {
+        snprintf(salida, tamano, "%lld", (long long)d);
+        return;
+    }
+    snprintf(salida, tamano, "%.2f", d);
+    char *fin = salida + strlen(salida) - 1;
+    while (fin > salida && *fin == '0') *fin-- = '\0';
+    if (fin > salida && *fin == '.') *fin = '\0';
+}
+
+static Texto *svg_arg_texto(Valor v, const char *funcion, const char *que) {
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_TEXTO)
+        error_en(0, "%s() espera %s como texto", funcion, que);
+    return (Texto *)v.v.obj;
+}
+
+/* El color/relleno opcional: o viene en texto, o se usa el de la casa. */
+static void buf_opcional(Buf *b, int argc, Valor *args, int pos, const char *defecto,
+                         const char *funcion, const char *que) {
+    if (argc > pos) {
+        Texto *t = svg_arg_texto(args[pos], funcion, que);
+        buf_escapar(b, t->datos, t->largo);
+    } else {
+        buf_escapar(b, defecto, strlen(defecto));
+    }
+}
+
+static Valor nativa_svg_linea(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 4) error_en(0, "svg_linea() espera numeros, ej: svg_linea(10, 20)");
+    char x1[64], y1[64], x2[64], y2[64], grosor[64] = "2";
+    svg_num(args[0], "svg_linea", x1, sizeof(x1));
+    svg_num(args[1], "svg_linea", y1, sizeof(y1));
+    svg_num(args[2], "svg_linea", x2, sizeof(x2));
+    svg_num(args[3], "svg_linea", y2, sizeof(y2));
+    if (argc > 5) svg_num(args[5], "svg_linea", grosor, sizeof(grosor));
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<line x1=\""); buf_texto(&b, x1);
+    buf_texto(&b, "\" y1=\""); buf_texto(&b, y1);
+    buf_texto(&b, "\" x2=\""); buf_texto(&b, x2);
+    buf_texto(&b, "\" y2=\""); buf_texto(&b, y2);
+    buf_texto(&b, "\" stroke=\"");
+    buf_opcional(&b, argc, args, 4, "black", "svg_linea", "el color");
+    buf_texto(&b, "\" stroke-width=\""); buf_texto(&b, grosor);
+    buf_texto(&b, "\"/>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_svg_rectangulo(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 4) error_en(0, "svg_rectangulo() espera numeros, ej: svg_rectangulo(10, 20)");
+    char x[64], y[64], ancho[64], alto[64];
+    svg_num(args[0], "svg_rectangulo", x, sizeof(x));
+    svg_num(args[1], "svg_rectangulo", y, sizeof(y));
+    svg_num(args[2], "svg_rectangulo", ancho, sizeof(ancho));
+    svg_num(args[3], "svg_rectangulo", alto, sizeof(alto));
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<rect x=\""); buf_texto(&b, x);
+    buf_texto(&b, "\" y=\""); buf_texto(&b, y);
+    buf_texto(&b, "\" width=\""); buf_texto(&b, ancho);
+    buf_texto(&b, "\" height=\""); buf_texto(&b, alto);
+    buf_texto(&b, "\" fill=\"");
+    buf_opcional(&b, argc, args, 4, "steelblue", "svg_rectangulo", "el relleno");
+    buf_texto(&b, "\"/>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_svg_circulo(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 3) error_en(0, "svg_circulo() espera numeros, ej: svg_circulo(10, 20)");
+    char cx[64], cy[64], radio[64];
+    svg_num(args[0], "svg_circulo", cx, sizeof(cx));
+    svg_num(args[1], "svg_circulo", cy, sizeof(cy));
+    svg_num(args[2], "svg_circulo", radio, sizeof(radio));
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<circle cx=\""); buf_texto(&b, cx);
+    buf_texto(&b, "\" cy=\""); buf_texto(&b, cy);
+    buf_texto(&b, "\" r=\""); buf_texto(&b, radio);
+    buf_texto(&b, "\" fill=\"");
+    buf_opcional(&b, argc, args, 3, "tomato", "svg_circulo", "el relleno");
+    buf_texto(&b, "\"/>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_svg_texto(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 3) error_en(0, "svg_texto() espera numeros, ej: svg_texto(10, 20)");
+    char x[64], y[64], tamano[64] = "14";
+    svg_num(args[0], "svg_texto", x, sizeof(x));
+    svg_num(args[1], "svg_texto", y, sizeof(y));
+    if (argc > 3) svg_num(args[3], "svg_texto", tamano, sizeof(tamano));
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<text x=\""); buf_texto(&b, x);
+    buf_texto(&b, "\" y=\""); buf_texto(&b, y);
+    buf_texto(&b, "\" font-size=\""); buf_texto(&b, tamano);
+    buf_texto(&b, "\" fill=\"");
+    buf_opcional(&b, argc, args, 4, "black", "svg_texto", "el color");
+    buf_texto(&b, "\" font-family=\"sans-serif\">");
+    if (args[2].etiqueta == T_OBJ && args[2].v.obj->tipo == O_TEXTO) {
+        Texto *t = (Texto *)args[2].v.obj;
+        buf_escapar(&b, t->datos, t->largo);
+    } else {
+        char crudo[4096];
+        texto_de(args[2], crudo, sizeof(crudo));
+        buf_escapar(&b, crudo, strlen(crudo));
+    }
+    buf_texto(&b, "</text>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_svg_lineas(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 1 || args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_LISTA ||
+        ((Lista *)args[0].v.obj)->largo == 0)
+        error_en(0, "svg_lineas() espera una lista de puntos [[x, y], ...] con al menos uno");
+    Lista *puntos = (Lista *)args[0].v.obj;
+    char grosor[64] = "2";
+    if (argc > 2) svg_num(args[2], "svg_lineas", grosor, sizeof(grosor));
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<polyline points=\"");
+    for (uint32_t i = 0; i < puntos->largo; i++) {
+        Valor p = puntos->elementos[i];
+        if (p.etiqueta != T_OBJ || p.v.obj->tipo != O_LISTA || ((Lista *)p.v.obj)->largo != 2)
+            error_en(0, "svg_lineas() espera puntos como [x, y]");
+        Lista *par = (Lista *)p.v.obj;
+        char px[64], py[64];
+        svg_num(par->elementos[0], "svg_lineas", px, sizeof(px));
+        svg_num(par->elementos[1], "svg_lineas", py, sizeof(py));
+        if (i) buf_texto(&b, " ");
+        buf_texto(&b, px);
+        buf_texto(&b, ",");
+        buf_texto(&b, py);
+    }
+    buf_texto(&b, "\" fill=\"none\" stroke=\"");
+    buf_opcional(&b, argc, args, 1, "steelblue", "svg_lineas", "el color");
+    buf_texto(&b, "\" stroke-width=\""); buf_texto(&b, grosor);
+    buf_texto(&b, "\"/>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_svg_camino(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 1) error_en(0, "svg_camino() espera el camino como texto");
+    Texto *datos = svg_arg_texto(args[0], "svg_camino", "el camino");
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<path d=\"");
+    buf_escapar(&b, datos->datos, datos->largo);
+    buf_texto(&b, "\" fill=\"");
+    buf_opcional(&b, argc, args, 1, "steelblue", "svg_camino", "el relleno");
+    buf_texto(&b, "\"/>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_crear_svg(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 3 || args[2].etiqueta != T_OBJ || args[2].v.obj->tipo != O_LISTA)
+        error_en(0, "crear_svg() espera la lista de elementos que devuelven las svg_*");
+    Lista *elementos = (Lista *)args[2].v.obj;
+    for (uint32_t i = 0; i < elementos->largo; i++) {
+        Valor e = elementos->elementos[i];
+        if (e.etiqueta != T_OBJ || e.v.obj->tipo != O_TEXTO)
+            error_en(0, "crear_svg() espera la lista de elementos que devuelven las svg_*");
+    }
+    char ancho[64], alto[64];
+    svg_num(args[0], "crear_svg", ancho, sizeof(ancho));
+    svg_num(args[1], "crear_svg", alto, sizeof(alto));
+    Texto *fondo = NULL;
+    const char *fondo_defecto = "#ffffff";
+    if (argc > 3) fondo = svg_arg_texto(args[3], "crear_svg", "el fondo");
+    Buf b;
+    buf_iniciar(&b);
+    buf_texto(&b, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"");
+    buf_texto(&b, ancho);
+    buf_texto(&b, "\" height=\""); buf_texto(&b, alto);
+    buf_texto(&b, "\" viewBox=\"0 0 "); buf_texto(&b, ancho);
+    buf_texto(&b, " "); buf_texto(&b, alto);
+    buf_texto(&b, "\">");
+    if (!fondo || fondo->largo > 0) {
+        buf_texto(&b, "\n<rect width=\""); buf_texto(&b, ancho);
+        buf_texto(&b, "\" height=\""); buf_texto(&b, alto);
+        buf_texto(&b, "\" fill=\"");
+        if (fondo) buf_escapar(&b, fondo->datos, fondo->largo);
+        else buf_escapar(&b, fondo_defecto, strlen(fondo_defecto));
+        buf_texto(&b, "\"/>");
+    }
+    for (uint32_t i = 0; i < elementos->largo; i++) {
+        Texto *e = (Texto *)elementos->elementos[i].v.obj;
+        buf_texto(&b, "\n");
+        buf_bytes(&b, e->datos, e->largo);
+    }
+    buf_texto(&b, "\n</svg>");
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_guardar_svg(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 2) error_en(0, "guardar_svg() espera la ruta como texto");
+    Texto *ruta = svg_arg_texto(args[0], "guardar_svg", "la ruta");
+    Texto *contenido = svg_arg_texto(args[1], "guardar_svg", "el contenido");
+    FILE *a = fopen(ruta->datos, "wb");
+    if (!a) error_en(0, "guardar_svg() no pudo escribir '%s': %s", ruta->datos, strerror(errno));
+    int bien = fwrite(contenido->datos, 1, contenido->largo, a) == contenido->largo;
+    fclose(a);
+    if (!bien) error_en(0, "guardar_svg() no pudo escribir '%s'", ruta->datos);
+    return de_bool(1);
+}
+
+/* ----------------------------------------------------------------- CSV
+ * Lo mismo que jp/tablas.py: leer_csv/leer_csv_texto dan una lista de
+ * diccionarios (la 1ª fila es la cabecera) y escribir_csv/convertir_csv
+ * hacen el camino inverso. Los valores se convierten solos:
+ * "42" -> 42, "3.5" -> 3.5, "verdadero"/"falso" -> booleano, "" -> nulo. */
+
+static Valor csv_convertir(const char *datos, uint32_t largo) {
+    if (largo == 0) return de_nulo();
+    if (largo == 9 && memcmp(datos, "verdadero", 9) == 0) return de_bool(1);
+    if (largo == 5 && memcmp(datos, "falso", 5) == 0) return de_bool(0);
+    char buf[64];
+    if (largo < sizeof(buf)) {
+        memcpy(buf, datos, largo);
+        buf[largo] = '\0';
+        char *fin = NULL;
+        long long entero = strtoll(buf, &fin, 10);
+        if (fin && *fin == '\0' && fin != buf) return de_entero((int64_t)entero);
+        double decimal = strtod(buf, &fin);
+        if (fin && *fin == '\0' && fin != buf) return de_decimal(decimal);
+    }
+    return de_texto(nuevo_texto_largo(datos, largo));
+}
+
+/* Un campo del CSV: respeta las comillas dobles y el "" de dentro. */
+static uint32_t csv_campo(const char *datos, uint32_t largo, uint32_t i, Buf *salida) {
+    buf_iniciar(salida);
+    if (i < largo && datos[i] == '"') {
+        i++;
+        while (i < largo) {
+            if (datos[i] == '"') {
+                if (i + 1 < largo && datos[i + 1] == '"') { buf_bytes(salida, "\"", 1); i += 2; continue; }
+                i++;
+                break;
+            }
+            buf_bytes(salida, datos + i, 1);
+            i++;
+        }
+    } else {
+        while (i < largo && datos[i] != ',' && datos[i] != '\n' && datos[i] != '\r') {
+            buf_bytes(salida, datos + i, 1);
+            i++;
+        }
+    }
+    return i;
+}
+
+static Valor csv_filas_desde(Texto *texto, const char *origen) {
+    const char *datos = texto->datos;
+    uint32_t largo = texto->largo, i = 0;
+    Lista *cabecera = nueva_lista(8);
+    Lista *filas = nueva_lista(8);
+    int primera = 1;
+    while (i <= largo) {
+        Lista *celdas = nueva_lista(8);
+        int vacia = 1;
+        for (;;) {
+            Buf campo;
+            i = csv_campo(datos, largo, i, &campo);
+            if (campo.usado) vacia = 0;
+            lista_agregar(celdas, de_texto(nuevo_texto_largo(campo.datos, (uint32_t)campo.usado)));
+            free(campo.datos);
+            if (i < largo && datos[i] == ',') { i++; vacia = 0; continue; }
+            break;
+        }
+        if (i < largo && datos[i] == '\r') i++;
+        if (i < largo && datos[i] == '\n') i++;
+        else if (i >= largo) i = largo + 1;
+        if (vacia && celdas->largo == 1) continue;  /* línea en blanco: se salta */
+        if (primera) {
+            cabecera = celdas;
+            primera = 0;
+            continue;
+        }
+        Dicto *fila = nuevo_dicto();
+        for (uint32_t k = 0; k < cabecera->largo; k++) {
+            Texto *clave = (Texto *)cabecera->elementos[k].v.obj;
+            if (k < celdas->largo) {
+                Texto *celda = (Texto *)celdas->elementos[k].v.obj;
+                dicto_poner(fila, clave, csv_convertir(celda->datos, celda->largo));
+            } else {
+                dicto_poner(fila, clave, de_nulo());
+            }
+        }
+        lista_agregar(filas, de_objeto((Obj *)fila));
+    }
+    if (primera) error_en(0, "%s: el CSV está vacío", origen);
+    return de_lista(filas);
+}
+
+/* Una celda al escribir: nulo -> "", booleanos en español, lo demás como texto. */
+static void csv_celda(Buf *b, Valor v) {
+    char crudo[4096];
+    const char *datos;
+    uint32_t largo;
+    if (v.etiqueta == T_NULO) { datos = ""; largo = 0; }
+    else if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_TEXTO) {
+        datos = ((Texto *)v.v.obj)->datos;
+        largo = ((Texto *)v.v.obj)->largo;
+    } else {
+        texto_de(v, crudo, sizeof(crudo));
+        datos = crudo;
+        largo = (uint32_t)strlen(crudo);
+    }
+    int comillas = 0;
+    for (uint32_t i = 0; i < largo; i++)
+        if (datos[i] == ',' || datos[i] == '"' || datos[i] == '\n' || datos[i] == '\r') comillas = 1;
+    if (!comillas) { buf_bytes(b, datos, largo); return; }
+    buf_bytes(b, "\"", 1);
+    for (uint32_t i = 0; i < largo; i++) {
+        if (datos[i] == '"') buf_bytes(b, "\"\"", 2);
+        else buf_bytes(b, datos + i, 1);
+    }
+    buf_bytes(b, "\"", 1);
+}
+
+static Valor csv_texto_desde(Valor filas_v, const char *quien) {
+    if (filas_v.etiqueta != T_OBJ || filas_v.v.obj->tipo != O_LISTA ||
+        ((Lista *)filas_v.v.obj)->largo == 0)
+        error_en(0, "%s esperan una lista de diccionarios", quien);
+    Lista *filas = (Lista *)filas_v.v.obj;
+    for (uint32_t i = 0; i < filas->largo; i++)
+        if (filas->elementos[i].etiqueta != T_OBJ || filas->elementos[i].v.obj->tipo != O_DICTO)
+            error_en(0, "%s esperan una lista de diccionarios", quien);
+
+    /* La cabecera es la unión de las claves, en orden de aparición. */
+    Lista *cabecera = nueva_lista(8);
+    for (uint32_t i = 0; i < filas->largo; i++) {
+        Dicto *d = (Dicto *)filas->elementos[i].v.obj;
+        for (uint32_t k = 0; k < d->largo; k++) {
+            Texto *clave = d->entradas[k].clave;
+            int vista = 0;
+            for (uint32_t j = 0; j < cabecera->largo; j++)
+                if (textos_iguales((Texto *)cabecera->elementos[j].v.obj, clave)) vista = 1;
+            if (!vista) lista_agregar(cabecera, de_texto(clave));
+        }
+    }
+    Buf b;
+    buf_iniciar(&b);
+    for (uint32_t k = 0; k < cabecera->largo; k++) {
+        if (k) buf_bytes(&b, ",", 1);
+        csv_celda(&b, cabecera->elementos[k]);
+    }
+    buf_bytes(&b, "\n", 1);
+    for (uint32_t i = 0; i < filas->largo; i++) {
+        Dicto *d = (Dicto *)filas->elementos[i].v.obj;
+        for (uint32_t k = 0; k < cabecera->largo; k++) {
+            if (k) buf_bytes(&b, ",", 1);
+            Valor *guardado = dicto_buscar(d, (Texto *)cabecera->elementos[k].v.obj);
+            csv_celda(&b, guardado ? *guardado : de_nulo());
+        }
+        buf_bytes(&b, "\n", 1);
+    }
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_leer_csv(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Texto *ruta = ruta_de(args[0]);
+    Valor contenido = nativa_leer_archivo(v, 1, args);
+    char origen[512];
+    snprintf(origen, sizeof(origen), "leer_csv('%.*s')", (int)ruta->largo, ruta->datos);
+    return csv_filas_desde((Texto *)contenido.v.obj, origen);
+}
+
+static Valor nativa_leer_csv_texto(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    if (args[0].etiqueta != T_OBJ || args[0].v.obj->tipo != O_TEXTO)
+        error_en(0, "leer_csv_texto() espera el CSV en texto");
+    return csv_filas_desde((Texto *)args[0].v.obj, "leer_csv_texto()");
+}
+
+static Valor nativa_escribir_csv(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    Texto *ruta = ruta_de(args[0]);
+    Valor texto = csv_texto_desde(args[1], "escribir_csv()/convertir_csv()");
+    FILE *a = fopen(ruta->datos, "wb");
+    if (!a) error_en(0, "no se pudo escribir %s: %s", ruta->datos, strerror(errno));
+    Texto *t = (Texto *)texto.v.obj;
+    int bien = fwrite(t->datos, 1, t->largo, a) == t->largo;
+    fclose(a);
+    if (!bien) error_en(0, "no se pudo escribir %s", ruta->datos);
+    return de_bool(1);
+}
+
+static Valor nativa_convertir_csv(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    return csv_texto_desde(args[0], "escribir_csv()/convertir_csv()");
+}
+
+/* plataforma(): como platform.system() de Python. */
+static Valor nativa_plataforma(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc; (void)args;
+#if defined(_WIN32)
+    return de_texto(nuevo_texto("Windows"));
+#elif defined(__APPLE__)
+    return de_texto(nuevo_texto("Darwin"));
+#elif defined(__linux__)
+    return de_texto(nuevo_texto("Linux"));
+#else
+    return de_texto(nuevo_texto(""));
+#endif
+}
+
+/* ----------------------------------------------------- Patrones (regex)
+ * Un motor de retroceso propio, sin dependencias, con el subconjunto que
+ * usa JP: literales, `.`, clases `[a-z0-9_-]` con rangos y negación,
+ * `\d \w \s` (y sus mayúsculas), escapes, grupos `( )` con captura,
+ * alternativas `|`, los cuantificadores codiciosos `* + ?` y los
+ * anclajes `^` y `$`. Mismos nombres y mismos resultados que
+ * jp/patrones.py para estos patrones. */
+
+#define RE_GRUPOS_MAX 9
+
+typedef struct NodoRe NodoRe;
+typedef struct AltRe AltRe;
+
+struct NodoRe {
+    int tipo;                     /* RE_* de abajo */
+    unsigned char conjunto[32];   /* clases y literales: mapa de bits */
+    AltRe *alternativas;          /* RE_GRUPO */
+    int captura;                  /* número de grupo, o -1 */
+    char cuant;                   /* 0, '*', '+', '?' */
+    NodoRe *sig;
+};
+
+enum { RE_CONJUNTO, RE_CUALQUIERA, RE_GRUPO, RE_INICIO, RE_FIN };
+
+struct AltRe {
+    NodoRe **ramas;
+    uint32_t n, capacidad;
+};
+
+typedef struct { const char *p, *fin; int capturas; const char *patron; } LectorRe;
+
+static void re_marcar(unsigned char *c, unsigned char b) { c[b >> 3] |= (unsigned char)(1u << (b & 7)); }
+static int re_tiene(const unsigned char *c, unsigned char b) { return (c[b >> 3] >> (b & 7)) & 1; }
+
+static void re_clase_nombrada(unsigned char *conjunto, char cual) {
+    int invertir = cual == 'D' || cual == 'W' || cual == 'S';
+    char base = invertir ? (char)(cual + 32) : cual;
+    unsigned char temporal[32] = {0};
+    for (int b = 0; b < 256; b++) {
+        int dentro = 0;
+        if (base == 'd') dentro = b >= '0' && b <= '9';
+        else if (base == 'w') dentro = isalnum(b) || b == '_' || b >= 0x80;
+        else if (base == 's') dentro = b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v';
+        if (dentro) re_marcar(temporal, (unsigned char)b);
+    }
+    for (int i = 0; i < 32; i++) conjunto[i] |= invertir ? (unsigned char)~temporal[i] : temporal[i];
+}
+
+static unsigned char re_escape(char c) {
+    switch (c) {
+        case 'n': return '\n';
+        case 't': return '\t';
+        case 'r': return '\r';
+        default: return (unsigned char)c;
+    }
+}
+
+static AltRe *re_alternativas(LectorRe *ps, int dentro);
+
+static NodoRe *re_nuevo(int tipo) {
+    NodoRe *n = memoria(sizeof(NodoRe));
+    memset(n, 0, sizeof(NodoRe));
+    n->tipo = tipo;
+    n->captura = -1;
+    return n;
+}
+
+static NodoRe *re_atomo(LectorRe *ps) {
+    char c = *ps->p;
+    if (c == '(') {
+        ps->p++;
+        NodoRe *n = re_nuevo(RE_GRUPO);
+        if (ps->p + 1 < ps->fin && ps->p[0] == '?' && ps->p[1] == ':') ps->p += 2;
+        else if (ps->capturas < RE_GRUPOS_MAX) n->captura = ps->capturas++;
+        n->alternativas = re_alternativas(ps, 1);
+        if (ps->p >= ps->fin || *ps->p != ')')
+            error_en(0, "patrón no válido: falta un ')' (en '%s')", ps->patron);
+        ps->p++;
+        return n;
+    }
+    if (c == '[') {
+        ps->p++;
+        NodoRe *n = re_nuevo(RE_CONJUNTO);
+        int invertir = 0;
+        if (ps->p < ps->fin && *ps->p == '^') { invertir = 1; ps->p++; }
+        int primero = 1;
+        while (ps->p < ps->fin && (*ps->p != ']' || primero)) {
+            primero = 0;
+            if (*ps->p == '\\' && ps->p + 1 < ps->fin) {
+                char e = ps->p[1];
+                ps->p += 2;
+                if (strchr("dwsDWS", e)) { re_clase_nombrada(n->conjunto, e); continue; }
+                re_marcar(n->conjunto, re_escape(e));
+                continue;
+            }
+            unsigned char desde = (unsigned char)*ps->p++;
+            if (ps->p + 1 < ps->fin && *ps->p == '-' && ps->p[1] != ']') {
+                unsigned char hasta = (unsigned char)ps->p[1];
+                ps->p += 2;
+                for (int b = desde; b <= (int)hasta; b++) re_marcar(n->conjunto, (unsigned char)b);
+                continue;
+            }
+            re_marcar(n->conjunto, desde);
+        }
+        if (ps->p >= ps->fin || *ps->p != ']')
+            error_en(0, "patrón no válido: falta un ']' (en '%s')", ps->patron);
+        ps->p++;
+        if (invertir) for (int i = 0; i < 32; i++) n->conjunto[i] = (unsigned char)~n->conjunto[i];
+        return n;
+    }
+    if (c == '.') { ps->p++; return re_nuevo(RE_CUALQUIERA); }
+    if (c == '^') { ps->p++; return re_nuevo(RE_INICIO); }
+    if (c == '$') { ps->p++; return re_nuevo(RE_FIN); }
+    if (c == '*' || c == '+' || c == '?')
+        error_en(0, "patrón no válido: nothing to repeat (en '%s')", ps->patron);
+    NodoRe *n = re_nuevo(RE_CONJUNTO);
+    if (c == '\\') {
+        if (ps->p + 1 >= ps->fin) error_en(0, "patrón no válido: bad escape (en '%s')", ps->patron);
+        char e = ps->p[1];
+        ps->p += 2;
+        if (strchr("dwsDWS", e)) re_clase_nombrada(n->conjunto, e);
+        else re_marcar(n->conjunto, re_escape(e));
+        return n;
+    }
+    ps->p++;
+    re_marcar(n->conjunto, (unsigned char)c);
+    return n;
+}
+
+static AltRe *re_alternativas(LectorRe *ps, int dentro) {
+    AltRe *alt = memoria(sizeof(AltRe));
+    alt->capacidad = 2;
+    alt->n = 0;
+    alt->ramas = memoria(sizeof(NodoRe *) * alt->capacidad);
+    for (;;) {
+        NodoRe *primera = NULL, *ultima = NULL;
+        while (ps->p < ps->fin && *ps->p != '|' && !(dentro && *ps->p == ')')) {
+            NodoRe *n = re_atomo(ps);
+            if (ps->p < ps->fin && (*ps->p == '*' || *ps->p == '+' || *ps->p == '?')) n->cuant = *ps->p++;
+            if (ultima) ultima->sig = n;
+            else primera = n;
+            ultima = n;
+        }
+        if (alt->n == alt->capacidad) {
+            alt->capacidad *= 2;
+            alt->ramas = realloc(alt->ramas, sizeof(NodoRe *) * alt->capacidad);
+        }
+        alt->ramas[alt->n++] = primera;   /* NULL = rama vacía, coincide sin consumir */
+        if (ps->p < ps->fin && *ps->p == '|') { ps->p++; continue; }
+        break;
+    }
+    return alt;
+}
+
+typedef struct ContRe {
+    NodoRe *nodo;
+    NodoRe *bucle;         /* si no es NULL: este grupo puede dar otra vuelta */
+    uint32_t pos_bucle;
+    int captura;
+    uint32_t pos_captura;
+    struct ContRe *sig;
+} ContRe;
+
+typedef struct {
+    const char *texto;
+    uint32_t largo;
+    uint32_t ini[RE_GRUPOS_MAX], fin[RE_GRUPOS_MAX];
+    int hay[RE_GRUPOS_MAX];
+    int exigir_fin;
+} EstadoRe;
+
+static int re_nodo(NodoRe *n, ContRe *k, uint32_t pos, uint32_t *fin, EstadoRe *e);
+
+/* Una vuelta del grupo: al terminar, el continuador decide si hay otra. */
+static int re_grupo_vuelta(NodoRe *g, ContRe *k, uint32_t pos, uint32_t *fin, EstadoRe *e) {
+    ContRe bucle = {NULL, g, pos, g->captura, pos, k};
+    for (uint32_t i = 0; i < g->alternativas->n; i++)
+        if (re_nodo(g->alternativas->ramas[i], &bucle, pos, fin, e)) return 1;
+    return 0;
+}
+
+/* Un solo carácter del texto contra un nodo simple. */
+static int re_uno(NodoRe *n, uint32_t pos, uint32_t *avance, EstadoRe *e) {
+    if (pos >= e->largo) return 0;
+    unsigned char b = (unsigned char)e->texto[pos];
+    if (n->tipo == RE_CUALQUIERA) {
+        if (b == '\n') return 0;
+        *avance = utf8_ancho(b);
+        if (pos + *avance > e->largo) *avance = 1;
+        return 1;
+    }
+    if (!re_tiene(n->conjunto, b)) return 0;
+    *avance = 1;
+    return 1;
+}
+
+static int re_repetir_simple(NodoRe *n, ContRe *k, uint32_t pos, uint32_t *fin, EstadoRe *e) {
+    uint32_t avance = 0;
+    if (re_uno(n, pos, &avance, e) && re_repetir_simple(n, k, pos + avance, fin, e)) return 1;
+    return re_nodo(n->sig, k, pos, fin, e);
+}
+
+static int re_nodo(NodoRe *n, ContRe *k, uint32_t pos, uint32_t *fin, EstadoRe *e) {
+    if (!n) {
+        if (!k) {
+            if (e->exigir_fin && pos != e->largo) return 0;
+            *fin = pos;
+            return 1;
+        }
+        if (k->captura >= 0) {
+            e->ini[k->captura] = k->pos_captura;
+            e->fin[k->captura] = pos;
+            e->hay[k->captura] = 1;
+        }
+        if (k->bucle) {
+            NodoRe *g = k->bucle;
+            if (pos != k->pos_bucle && re_grupo_vuelta(g, k->sig, pos, fin, e)) return 1;
+            return re_nodo(g->sig, k->sig, pos, fin, e);
+        }
+        return re_nodo(k->nodo, k->sig, pos, fin, e);
+    }
+    if (n->tipo == RE_INICIO) return pos == 0 ? re_nodo(n->sig, k, pos, fin, e) : 0;
+    if (n->tipo == RE_FIN) return pos == e->largo ? re_nodo(n->sig, k, pos, fin, e) : 0;
+    if (n->tipo == RE_GRUPO) {
+        if (n->cuant == '*') {
+            if (re_grupo_vuelta(n, k, pos, fin, e)) return 1;
+            return re_nodo(n->sig, k, pos, fin, e);
+        }
+        if (n->cuant == '+') return re_grupo_vuelta(n, k, pos, fin, e);
+        ContRe seguir = {n->sig, NULL, 0, n->captura, pos, k};
+        for (uint32_t i = 0; i < n->alternativas->n; i++)
+            if (re_nodo(n->alternativas->ramas[i], &seguir, pos, fin, e)) return 1;
+        if (n->cuant == '?') return re_nodo(n->sig, k, pos, fin, e);
+        return 0;
+    }
+    uint32_t avance = 0;
+    if (n->cuant == '*') return re_repetir_simple(n, k, pos, fin, e);
+    if (n->cuant == '+') {
+        if (!re_uno(n, pos, &avance, e)) return 0;
+        return re_repetir_simple(n, k, pos + avance, fin, e);
+    }
+    if (n->cuant == '?') {
+        if (re_uno(n, pos, &avance, e) && re_nodo(n->sig, k, pos + avance, fin, e)) return 1;
+        return re_nodo(n->sig, k, pos, fin, e);
+    }
+    if (!re_uno(n, pos, &avance, e)) return 0;
+    return re_nodo(n->sig, k, pos + avance, fin, e);
+}
+
+static AltRe *re_compilar(Valor v) {
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_TEXTO)
+        error_en(0, "el patrón debe ser texto, ej: '[0-9]+'");
+    Texto *t = (Texto *)v.v.obj;
+    LectorRe ps = {t->datos, t->datos + t->largo, 0, t->datos};
+    AltRe *alt = re_alternativas(&ps, 0);
+    if (ps.p != ps.fin) error_en(0, "patrón no válido: unbalanced parenthesis (en '%s')", t->datos);
+    return alt;
+}
+
+static Texto *re_texto_arg(Valor v, const char *nombre) {
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_TEXTO) error_en(0, "%s espera texto", nombre);
+    return (Texto *)v.v.obj;
+}
+
+/* Busca desde `desde`; devuelve 1 y deja inicio/fin en bytes. */
+static int re_buscar(AltRe *alt, Texto *texto, uint32_t desde, int exigir_fin,
+                     uint32_t *ini_salida, uint32_t *fin_salida, EstadoRe *estado) {
+    for (uint32_t inicio = desde; inicio <= texto->largo; inicio++) {
+        EstadoRe e;
+        memset(&e, 0, sizeof(e));
+        e.texto = texto->datos;
+        e.largo = texto->largo;
+        e.exigir_fin = exigir_fin;
+        uint32_t fin = 0;
+        for (uint32_t i = 0; i < alt->n; i++) {
+            if (re_nodo(alt->ramas[i], NULL, inicio, &fin, &e)) {
+                *ini_salida = inicio;
+                *fin_salida = fin;
+                if (estado) *estado = e;
+                return 1;
+            }
+        }
+        if (exigir_fin) return 0;   /* fullmatch: solo desde el principio */
+    }
+    return 0;
+}
+
+static Valor nativa_buscar_patron(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    AltRe *alt = re_compilar(args[0]);
+    Texto *texto = re_texto_arg(args[1], "buscar_patron()");
+    uint32_t ini = 0, fin = 0;
+    EstadoRe e;
+    if (!re_buscar(alt, texto, 0, 0, &ini, &fin, &e)) return de_nulo();
+    Dicto *d = nuevo_dicto();
+    dicto_poner(d, nuevo_texto("texto"), de_texto(nuevo_texto_largo(texto->datos + ini, fin - ini)));
+    dicto_poner(d, nuevo_texto("inicio"), de_entero(utf8_caracter_de(texto->datos, ini)));
+    dicto_poner(d, nuevo_texto("fin"), de_entero(utf8_caracter_de(texto->datos, fin)));
+    Lista *grupos = nueva_lista(4);
+    for (int g = 0; g < RE_GRUPOS_MAX; g++) {
+        if (!e.hay[g]) continue;
+        lista_agregar(grupos, de_texto(nuevo_texto_largo(texto->datos + e.ini[g], e.fin[g] - e.ini[g])));
+    }
+    dicto_poner(d, nuevo_texto("grupos"), de_lista(grupos));
+    return de_objeto((Obj *)d);
+}
+
+static Valor nativa_coincide_patron(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    AltRe *alt = re_compilar(args[0]);
+    Texto *texto = re_texto_arg(args[1], "coincide_patron()");
+    uint32_t ini = 0, fin = 0;
+    return de_bool(re_buscar(alt, texto, 0, 1, &ini, &fin, NULL));
+}
+
+static Valor nativa_encontrar_patrones(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    AltRe *alt = re_compilar(args[0]);
+    Texto *texto = re_texto_arg(args[1], "encontrar_patrones()");
+    Lista *l = nueva_lista(8);
+    uint32_t desde = 0, ini = 0, fin = 0;
+    while (desde <= texto->largo && re_buscar(alt, texto, desde, 0, &ini, &fin, NULL)) {
+        lista_agregar(l, de_texto(nuevo_texto_largo(texto->datos + ini, fin - ini)));
+        desde = fin > ini ? fin : fin + 1;
+    }
+    return de_lista(l);
+}
+
+static Valor nativa_reemplazar_patron(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    AltRe *alt = re_compilar(args[0]);
+    Texto *texto = re_texto_arg(args[1], "reemplazar_patron()");
+    Texto *cambio = re_texto_arg(args[2], "reemplazar_patron()");
+    Buf b;
+    buf_iniciar(&b);
+    uint32_t desde = 0, ini = 0, fin = 0;
+    while (desde <= texto->largo && re_buscar(alt, texto, desde, 0, &ini, &fin, NULL)) {
+        buf_bytes(&b, texto->datos + desde, ini - desde);
+        buf_bytes(&b, cambio->datos, cambio->largo);
+        if (fin > ini) desde = fin;
+        else {
+            if (ini < texto->largo) buf_bytes(&b, texto->datos + ini, 1);
+            desde = ini + 1;
+        }
+    }
+    if (desde < texto->largo) buf_bytes(&b, texto->datos + desde, texto->largo - desde);
+    return buf_a_valor(&b);
+}
+
+static Valor nativa_separar_patron(VM *v, int argc, Valor *args) {
+    (void)v; (void)argc;
+    AltRe *alt = re_compilar(args[0]);
+    Texto *texto = re_texto_arg(args[1], "separar_patron()");
+    Lista *l = nueva_lista(8);
+    uint32_t desde = 0, cursor = 0, ini = 0, fin = 0;
+    while (cursor <= texto->largo && re_buscar(alt, texto, cursor, 0, &ini, &fin, NULL)) {
+        if (fin == ini) { cursor = ini + 1; continue; }  /* como re.split: ignora los vacíos */
+        lista_agregar(l, de_texto(nuevo_texto_largo(texto->datos + desde, ini - desde)));
+        desde = cursor = fin;
+    }
+    lista_agregar(l, de_texto(nuevo_texto_largo(texto->datos + desde, texto->largo - desde)));
+    return de_lista(l);
+}
+
 /* Un programa compilado a binario puede traer su bytecode pegado dentro:
  * el generador escribe otro .c con estos dos símbolos y se enlaza con este
  * archivo. Si no están, el símbolo queda en NULL y se usa el archivo. */
@@ -4211,6 +5112,24 @@ int main(int argc, char **argv) {
     instalar_nativa("reducir", -1, nativa_reducir);
     instalar_nativa("para_cada", 2, nativa_para_cada);
     instalar_nativa("ordenar", -1, nativa_ordenar);
+    instalar_nativa("svg_linea", -1, nativa_svg_linea);
+    instalar_nativa("svg_rectangulo", -1, nativa_svg_rectangulo);
+    instalar_nativa("svg_circulo", -1, nativa_svg_circulo);
+    instalar_nativa("svg_texto", -1, nativa_svg_texto);
+    instalar_nativa("svg_lineas", -1, nativa_svg_lineas);
+    instalar_nativa("svg_camino", -1, nativa_svg_camino);
+    instalar_nativa("crear_svg", -1, nativa_crear_svg);
+    instalar_nativa("guardar_svg", 2, nativa_guardar_svg);
+    instalar_nativa("leer_csv", 1, nativa_leer_csv);
+    instalar_nativa("leer_csv_texto", 1, nativa_leer_csv_texto);
+    instalar_nativa("escribir_csv", 2, nativa_escribir_csv);
+    instalar_nativa("convertir_csv", 1, nativa_convertir_csv);
+    instalar_nativa("plataforma", 0, nativa_plataforma);
+    instalar_nativa("buscar_patron", 2, nativa_buscar_patron);
+    instalar_nativa("coincide_patron", 2, nativa_coincide_patron);
+    instalar_nativa("encontrar_patrones", 2, nativa_encontrar_patrones);
+    instalar_nativa("reemplazar_patron", 3, nativa_reemplazar_patron);
+    instalar_nativa("separar_patron", 2, nativa_separar_patron);
 
     if (modo_info) {
         mostrar_info(vm->funciones);

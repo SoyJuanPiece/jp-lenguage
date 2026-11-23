@@ -651,9 +651,11 @@ def _modo_binario(ruta: str, salida: str) -> int:
             "const unsigned long jp_chunk_largo = sizeof(jp_chunk_embebido);\n",
             encoding="utf-8",
         )
+        # El motor enlaza también el frontend: el ejecutable sabe compilar .jp.
+        fuentes = [str(recursos.archivo("motor-c", nombre)) for nombre in recursos.FUENTES_MOTOR]
         orden = [
             compilador, "-O2", "-std=c11", "-w",
-            str(recursos.archivo("motor-c", "jpvm.c")), str(embebido), "-o", salida, "-lm",
+            *fuentes, str(embebido), "-o", salida, "-lm",
         ]
         proceso = subprocess.run(orden)
     if proceso.returncode != 0:

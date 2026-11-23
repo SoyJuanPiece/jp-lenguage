@@ -1,5 +1,34 @@
 # Cambios de JP
 
+## 1.32.0 — Instalable de verdad (2026-11-22)
+
+`pip install jp-lang` dejaba un JP a medias: el paquete **ni siquiera se
+construía** (setuptools confundía `ejemplos/`, `pruebas/` o `biblioteca/` con
+paquetes de primer nivel) y, aun construido, la CLI buscaba `motor-c/` y
+`biblioteca/` subiendo dos carpetas desde `jp/`, que en `site-packages` no
+existen. Ahora el wheel es autosuficiente.
+
+- **`jp/recursos.py`**: un único sitio decide dónde están los recursos
+  (`jp/datos/` si está instalado, la raíz del repositorio si no, y `JP_RAIZ`
+  para forzar). `cli.py` ya no calcula rutas a mano.
+- **`setup.py`**: al construir, `biblioteca/` y `motor-c/` se copian dentro de
+  `jp/datos/` (sólo fuentes, nunca binarios de otra máquina). `MANIFEST.in`
+  hace lo mismo para el sdist, así que un wheel construido desde el sdist
+  también sale completo.
+- **`jp --c` sin `make`**: si no hay `jpvm` compilado, se compila la primera
+  vez con `cc`/`gcc`/`clang` y se guarda en la caché del usuario
+  (`~/.cache/jp/jpvm`, `%LOCALAPPDATA%\jp`). Las siguientes ejecuciones no
+  compilan nada.
+- **Arreglo**: `jp --proyecto` creaba los archivos y luego moría con
+  `UnicodeEncodeError` al imprimir el `✔` en una consola Windows (cp1252). La
+  salida se configura en UTF-8 con `errors="replace"`.
+- **Arreglo**: `jp --c` salía con código 65 sin decir por qué. Ahora imprime el
+  motivo (motor ausente, sin compilador, etc.).
+- **CI (`instalar.yml`)**: construye el wheel, lo instala en un entorno limpio
+  y usa `jp`, `jp --proyecto`, sus pruebas y `jp --c` (compilando `jpvm` desde
+  el código que viaja en el wheel).
+- 6 tests nuevos (`tests/test_recursos.py`).
+
 ## 1.31.0 — Editores: gramática tree-sitter y servidor LSP (2026-11-22)
 
 Hasta ahora JP solo existía en una terminal. Un lenguaje se adopta cuando el

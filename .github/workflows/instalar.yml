@@ -1,0 +1,59 @@
+name: Instalar con pip
+
+# Comprueba el artefacto que recibe quien instala JP: construir el wheel,
+# instalarlo en un entorno limpio y usarlo. Es la prueba de que
+# `pip install jp-lang && jp hola.jp` funciona, incluidas la biblioteca
+# (`biblioteca/`) y las fuentes del motor en C (`motor-c/jpvm.c`) que viajan
+# dentro del wheel y se compilan solas la primera vez que se usa `--c`.
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    name: Wheel instalable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Construir el wheel
+        run: |
+          python -m pip install --quiet build
+          python -m build --wheel --sdist
+
+      - name: Instalarlo en un entorno limpio y usarlo
+        run: |
+          python -m venv /tmp/limpio
+          /tmp/limpio/bin/pip install --quiet dist/*.whl
+          cd /tmp
+          export PATH=/tmp/limpio/bin:$PATH
+          jp --version
+          jp -c 'imprime("hola desde un wheel")'
+
+          # Los recursos tienen que estar dentro del paquete instalado.
+          python -c "import jp.recursos as r; print(r.raiz()); assert (r.raiz()/'biblioteca'/'mates.jp').is_file()"
+
+          # Un proyecto nuevo se crea y sus pruebas pasan.
+          jp --proyecto demo
+          cd demo && jp --probar
+
+          # El motor en C se compila solo desde el jpvm.c del wheel (hay gcc).
+          cd /tmp && jp --c demo/principal.jp
+          ls "$HOME/.cache/jp/jpvm"
+
+      - name: Guardar el wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          if-no-files-found: error
+          path: dist/*

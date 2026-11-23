@@ -4,12 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jp-lang"
-version = "1.31.0"
+version = "1.32.0"
 description = "JP — un pequeño lenguaje de programación en español, hecho desde cero"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Tú" }]
 
 [project.scripts]
 jp = "jp.cli:main"
+
+# Sin esto setuptools confunde con paquetes las carpetas `ejemplos/`,
+# `pruebas/`, `biblioteca/`... y el proyecto no se puede instalar.
+[tool.setuptools]
+packages = ["jp"]

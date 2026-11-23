@@ -607,7 +607,8 @@ static int escanear_token(Lexer *lx, const char *bytes) {
             return !lx->fallo;
         }
         return fallar(lx, lx->linea, lx->columna - 1,
-                      "carácter inesperado '?'. ¿Quisiste decir '??' (valor si es nulo) "
+                      /* Partido para que '??' no forme un trígrafo ('^'). */
+                      "carácter inesperado '?'. ¿Quisiste decir '?" "?' (valor si es nulo) "
                       "o '?.' (acceso seguro)?");
     }
 
@@ -725,12 +726,10 @@ static int tokenizar_en(Lexer *lx, const char *bytes, size_t largo) {
         sub.columna_inicial = sub.columna;
         sub.inicio = sub.actual;
         if (!escanear_token(&sub, bytes)) {
-            if (!lx->fallo) {
-                lx->fallo = 1;
-                if (lx->error && lx->error_largo && sub.error) {
-                    snprintf(lx->error, lx->error_largo, "%s", sub.error);
-                }
-            }
+            /* `sub.error` es el MISMO buffer que `lx->error`: el mensaje ya
+             * está escrito, sólo hay que propagar el fallo. Copiarlo sobre sí
+             * mismo era comportamiento indefinido (y con gcc -O2 reventaba). */
+            lx->fallo = 1;
             break;
         }
     }

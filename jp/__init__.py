@@ -10,4 +10,4 @@ Módulos:
     cli          — línea de comandos y REPL
 """
 
-__version__ = "1.32.0"
+__version__ = "1.33.0"

@@ -32,6 +32,12 @@ jobs:
       - name: Compilar el motor
         run: make -C motor-c CC=${{ matrix.cc }}
 
+      - name: Lexer en C igual que el de Python
+        if: matrix.cc == 'gcc'
+        run: |
+          make -C motor-c jptokens
+          python herramientas/lexer_paridad.py
+
       - name: Compilar los binarios independientes de ejemplo
         run: |
           python -m jp --binario ejemplos/hola.jp -o jp-hola

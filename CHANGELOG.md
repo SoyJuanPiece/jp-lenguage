@@ -1,5 +1,25 @@
 # Cambios de JP
 
+## 1.33.0 — Frontend nativo: el lexer en C (2026-11-22)
+
+Primera pieza de N-6, el motor único sin Python. `jpvm` sabía ejecutar `.jpb`,
+pero leer un `.jp` seguía siendo trabajo de Python. Ahora el lexer existe en C,
+con el mismo contrato que el de Python, y una prueba que lo demuestra.
+
+- **`motor-c/lexer.c` y `lexer.h`**: port fiel de `jp/lexer.py` sobre los puntos
+  de código de la fuente, así los acentos no desplazan columnas. Mismos
+  tokens, lexemas, líneas, columnas, literales y mensajes de error, incluida la
+  interpolación de cadenas con sub-lexer anidado.
+- **`motor-c/jptokens.c`**: volcado de tokens en JSON (`jptokens archivo.jp`),
+  para comparar los dos lexers sin adivinar.
+- **`herramientas/lexer_paridad.py`**: tokeniza todos los `.jp` del repositorio
+  con ambos lexers y compara campo por campo. **48/48 archivos idénticos.**
+- **5 tests nuevos** (`tests/test_lexer_c.py`) y paso en el CI que compila
+  `jptokens` y corre la paridad en cada push.
+
+Lo que falta del frontend: el parser y el generador de bytecode (siguiente
+entrega); con los tres, `jpvm archivo.jp` correrá sin Python.
+
 ## 1.32.0 — Instalable de verdad (2026-11-22)
 
 `pip install jp-lang` dejaba un JP a medias: el paquete **ni siquiera se

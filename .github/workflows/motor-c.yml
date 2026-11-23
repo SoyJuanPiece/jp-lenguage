@@ -42,7 +42,7 @@ jobs:
           python herramientas/ast_paridad.py
           python herramientas/jpb_paridad.py
 
-      - name: `jpvm` ejecuta un .jp sin Python
+      - name: jpvm ejecuta un .jp sin Python
         if: matrix.cc == 'gcc'
         run: |
           ./motor-c/jpvm ejemplos/hola.jp

@@ -1,0 +1,38 @@
+{
+  "name": "tree-sitter-jp",
+  "version": "0.1.0",
+  "description": "Gramática tree-sitter del lenguaje JP (resaltado y LSP)",
+  "license": "MIT",
+  "main": "bindings/node",
+  "keywords": [
+    "tree-sitter",
+    "jp",
+    "parser",
+    "español"
+  ],
+  "files": [
+    "grammar.js",
+    "queries",
+    "src"
+  ],
+  "tree-sitter": [
+    {
+      "scope": "source.jp",
+      "file-types": [
+        "jp"
+      ],
+      "highlights": "queries/highlights.scm",
+      "locals": "queries/locals.scm",
+      "folds": "queries/folds.scm",
+      "injection-regex": "^jp$"
+    }
+  ],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10"
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  }
+}

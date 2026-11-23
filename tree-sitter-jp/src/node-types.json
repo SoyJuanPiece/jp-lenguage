@@ -1,0 +1,5282 @@
+[
+  {
+    "type": "argumentos",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argumentos",
+          "named": true
+        },
+        {
+          "type": "booleano",
+          "named": true
+        },
+        {
+          "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "diccionario",
+          "named": true
+        },
+        {
+          "type": "funcion_anonima",
+          "named": true
+        },
+        {
+          "type": "identificador",
+          "named": true
+        },
+        {
+          "type": "lista",
+          "named": true
+        },
+        {
+          "type": "nulo",
+          "named": true
+        },
+        {
+          "type": "numero",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "bloque",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "declaracion_clase",
+          "named": true
+        },
+        {
+          "type": "declaracion_funcion",
+          "named": true
+        },
+        {
+          "type": "declaracion_var",
+          "named": true
+        },
+        {
+          "type": "sentencia_asignacion",
+          "named": true
+        },
+        {
+          "type": "sentencia_continuar",
+          "named": true
+        },
+        {
+          "type": "sentencia_elegir",
+          "named": true
+        },
+        {
+          "type": "sentencia_expresion",
+          "named": true
+        },
+        {
+          "type": "sentencia_importar",
+          "named": true
+        },
+        {
+          "type": "sentencia_intenta",
+          "named": true
+        },
+        {
+          "type": "sentencia_lanzar",
+          "named": true
+        },
+        {
+          "type": "sentencia_mientras",
+          "named": true
+        },
+        {
+          "type": "sentencia_para",
+          "named": true
+        },
+        {
+          "type": "sentencia_retorna",
+          "named": true
+        },
+        {
+          "type": "sentencia_romper",
+          "named": true
+        },
+        {
+          "type": "sentencia_si",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "booleano",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "cadena",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "cadena_interpolada",
+          "named": true
+        },
+        {
+          "type": "cadena_simple",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "caso",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "cuerpo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "valores": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": ",",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "caso_sino",
+    "named": true,
+    "fields": {
+      "cuerpo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "declaracion_clase",
+    "named": true,
+    "fields": {
+      "nombre": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "padre": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "declaracion_funcion",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "declaracion_funcion",
+    "named": true,
+    "fields": {
+      "cuerpo": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bloque",
+            "named": true
+          }
+        ]
+      },
+      "nombre": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "parametros": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parametros",
+            "named": true
+          }
+        ]
+      },
+      "tipo_retorno": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tipo",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "declaracion_var",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "nombre": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          }
+        ]
+      },
+      "tipo": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tipo",
+            "named": true
+          }
+        ]
+      },
+      "valor": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "diccionario",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "par",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fuente",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "declaracion_clase",
+          "named": true
+        },
+        {
+          "type": "declaracion_funcion",
+          "named": true
+        },
+        {
+          "type": "declaracion_var",
+          "named": true
+        },
+        {
+          "type": "sentencia_asignacion",
+          "named": true
+        },
+        {
+          "type": "sentencia_continuar",
+          "named": true
+        },
+        {
+          "type": "sentencia_elegir",
+          "named": true
+        },
+        {
+          "type": "sentencia_expresion",
+          "named": true
+        },
+        {
+          "type": "sentencia_importar",
+          "named": true
+        },
+        {
+          "type": "sentencia_intenta",
+          "named": true
+        },
+        {
+          "type": "sentencia_lanzar",
+          "named": true
+        },
+        {
+          "type": "sentencia_mientras",
+          "named": true
+        },
+        {
+          "type": "sentencia_para",
+          "named": true
+        },
+        {
+          "type": "sentencia_retorna",
+          "named": true
+        },
+        {
+          "type": "sentencia_romper",
+          "named": true
+        },
+        {
+          "type": "sentencia_si",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "funcion_anonima",
+    "named": true,
+    "fields": {
+      "cuerpo": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bloque",
+            "named": true
+          }
+        ]
+      },
+      "parametros": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parametros",
+            "named": true
+          }
+        ]
+      },
+      "tipo_retorno": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tipo",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "lista",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argumentos",
+          "named": true
+        },
+        {
+          "type": "booleano",
+          "named": true
+        },
+        {
+          "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "diccionario",
+          "named": true
+        },
+        {
+          "type": "funcion_anonima",
+          "named": true
+        },
+        {
+          "type": "identificador",
+          "named": true
+        },
+        {
+          "type": "lista",
+          "named": true
+        },
+        {
+          "type": "nulo",
+          "named": true
+        },
+        {
+          "type": "numero",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "nulo",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "par",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "valor": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parametro",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "defecto": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "nombre": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "tipo": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tipo",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parametros",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "parametro",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentencia_asignacion",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "objetivo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "operador": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "%=",
+            "named": false
+          },
+          {
+            "type": "*=",
+            "named": false
+          },
+          {
+            "type": "+=",
+            "named": false
+          },
+          {
+            "type": "-=",
+            "named": false
+          },
+          {
+            "type": "/=",
+            "named": false
+          },
+          {
+            "type": "=",
+            "named": false
+          }
+        ]
+      },
+      "valor": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sentencia_elegir",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "valor": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "caso",
+          "named": true
+        },
+        {
+          "type": "caso_sino",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentencia_expresion",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argumentos",
+          "named": true
+        },
+        {
+          "type": "booleano",
+          "named": true
+        },
+        {
+          "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "diccionario",
+          "named": true
+        },
+        {
+          "type": "funcion_anonima",
+          "named": true
+        },
+        {
+          "type": "identificador",
+          "named": true
+        },
+        {
+          "type": "lista",
+          "named": true
+        },
+        {
+          "type": "nulo",
+          "named": true
+        },
+        {
+          "type": "numero",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentencia_importar",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "ruta": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "cadena",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sentencia_intenta",
+    "named": true,
+    "fields": {
+      "captura": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      },
+      "cuerpo": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bloque",
+            "named": true
+          }
+        ]
+      },
+      "error": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "finalmente": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sentencia_lanzar",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argumentos",
+          "named": true
+        },
+        {
+          "type": "booleano",
+          "named": true
+        },
+        {
+          "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "diccionario",
+          "named": true
+        },
+        {
+          "type": "funcion_anonima",
+          "named": true
+        },
+        {
+          "type": "identificador",
+          "named": true
+        },
+        {
+          "type": "lista",
+          "named": true
+        },
+        {
+          "type": "nulo",
+          "named": true
+        },
+        {
+          "type": "numero",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentencia_mientras",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "condicion": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "cuerpo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sentencia_para",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "cuerpo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "iterable": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "valor": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sentencia_retorna",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argumentos",
+          "named": true
+        },
+        {
+          "type": "booleano",
+          "named": true
+        },
+        {
+          "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "diccionario",
+          "named": true
+        },
+        {
+          "type": "funcion_anonima",
+          "named": true
+        },
+        {
+          "type": "identificador",
+          "named": true
+        },
+        {
+          "type": "lista",
+          "named": true
+        },
+        {
+          "type": "nulo",
+          "named": true
+        },
+        {
+          "type": "numero",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sentencia_si",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "condicion": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "cuerpo": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "sino": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "bloque",
+            "named": true
+          },
+          {
+            "type": "declaracion_clase",
+            "named": true
+          },
+          {
+            "type": "declaracion_funcion",
+            "named": true
+          },
+          {
+            "type": "declaracion_var",
+            "named": true
+          },
+          {
+            "type": "sentencia_asignacion",
+            "named": true
+          },
+          {
+            "type": "sentencia_continuar",
+            "named": true
+          },
+          {
+            "type": "sentencia_elegir",
+            "named": true
+          },
+          {
+            "type": "sentencia_expresion",
+            "named": true
+          },
+          {
+            "type": "sentencia_importar",
+            "named": true
+          },
+          {
+            "type": "sentencia_intenta",
+            "named": true
+          },
+          {
+            "type": "sentencia_lanzar",
+            "named": true
+          },
+          {
+            "type": "sentencia_mientras",
+            "named": true
+          },
+          {
+            "type": "sentencia_para",
+            "named": true
+          },
+          {
+            "type": "sentencia_retorna",
+            "named": true
+          },
+          {
+            "type": "sentencia_romper",
+            "named": true
+          },
+          {
+            "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "sentencia_si",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "tipo",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "%=",
+    "named": false
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "**",
+    "named": false
+  },
+  {
+    "type": "*=",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": "+=",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": "-=",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "..",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": "/=",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "?.",
+    "named": false
+  },
+  {
+    "type": "??",
+    "named": false
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "atrapa",
+    "named": false
+  },
+  {
+    "type": "booleano",
+    "named": false
+  },
+  {
+    "type": "cadena_interpolada",
+    "named": true
+  },
+  {
+    "type": "cadena_simple",
+    "named": true
+  },
+  {
+    "type": "caso",
+    "named": false
+  },
+  {
+    "type": "clase",
+    "named": false
+  },
+  {
+    "type": "comentario",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "como",
+    "named": false
+  },
+  {
+    "type": "cualquiera",
+    "named": false
+  },
+  {
+    "type": "devuelve",
+    "named": false
+  },
+  {
+    "type": "diccionario",
+    "named": false
+  },
+  {
+    "type": "elegir",
+    "named": false
+  },
+  {
+    "type": "en",
+    "named": false
+  },
+  {
+    "type": "entero",
+    "named": false
+  },
+  {
+    "type": "falso",
+    "named": false
+  },
+  {
+    "type": "finalmente",
+    "named": false
+  },
+  {
+    "type": "fun",
+    "named": false
+  },
+  {
+    "type": "funcion",
+    "named": false
+  },
+  {
+    "type": "función",
+    "named": false
+  },
+  {
+    "type": "hereda",
+    "named": false
+  },
+  {
+    "type": "identificador",
+    "named": true
+  },
+  {
+    "type": "importar",
+    "named": false
+  },
+  {
+    "type": "intenta",
+    "named": false
+  },
+  {
+    "type": "lanzar",
+    "named": false
+  },
+  {
+    "type": "lista",
+    "named": false
+  },
+  {
+    "type": "mientras",
+    "named": false
+  },
+  {
+    "type": "no",
+    "named": false
+  },
+  {
+    "type": "nulo",
+    "named": false
+  },
+  {
+    "type": "numero",
+    "named": false
+  },
+  {
+    "type": "numero",
+    "named": true
+  },
+  {
+    "type": "o",
+    "named": false
+  },
+  {
+    "type": "para",
+    "named": false
+  },
+  {
+    "type": "paso",
+    "named": false
+  },
+  {
+    "type": "retorna",
+    "named": false
+  },
+  {
+    "type": "sentencia_continuar",
+    "named": true
+  },
+  {
+    "type": "sentencia_romper",
+    "named": true
+  },
+  {
+    "type": "si",
+    "named": false
+  },
+  {
+    "type": "sino",
+    "named": false
+  },
+  {
+    "type": "texto",
+    "named": false
+  },
+  {
+    "type": "var",
+    "named": false
+  },
+  {
+    "type": "variable",
+    "named": false
+  },
+  {
+    "type": "verdadero",
+    "named": false
+  },
+  {
+    "type": "y",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]

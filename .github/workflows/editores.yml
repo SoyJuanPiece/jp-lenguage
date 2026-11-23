@@ -1,0 +1,57 @@
+name: Editores (tree-sitter y LSP)
+
+# Comprueba el soporte de editores: genera el parser de tree-sitter, valida
+# las queries de resaltado y exige que TODOS los ejemplos de `ejemplos/` se
+# analicen sin nodos ERROR. Además corre las pruebas del servidor LSP.
+#
+# Hace falta un compilador de C para `tree-sitter parse` (compila el parser
+# generado): por eso esto vive en Linux y no en el portátil.
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gramatica:
+    name: Gramática tree-sitter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar la CLI de tree-sitter
+        run: npm install -g tree-sitter-cli@0.25.10
+
+      - name: Generar el parser y comprobar las queries
+        working-directory: tree-sitter-jp
+        run: |
+          tree-sitter generate
+          python3 comprobar_queries.py
+
+      - name: Ningún ejemplo puede dar ERROR
+        working-directory: tree-sitter-jp
+        run: tree-sitter parse ../ejemplos/*.jp --quiet
+
+  lsp:
+    name: Servidor LSP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pruebas del LSP
+        run: python -m unittest tests.test_lsp -v
+
+      - name: Los ejemplos del tutorial se ejecutan
+        run: python herramientas/tutorial.py

@@ -57,6 +57,10 @@ pip install -e .
 jp ejemplos/hola.jp
 ```
 
+📘 **[JP en 20 minutos](docs/jp-en-20-minutos.md)** — tutorial completo, y
+📚 **[referencia de la biblioteca](docs/referencia.md)** — las 149 funciones
+nativas con su firma.
+
 ## El lenguaje
 
 Los ejemplos clásicos con paréntesis y llaves siguen funcionando (compatibilidad
@@ -391,6 +395,41 @@ Error de sintaxis: se esperaba ')' tras los argumentos, pero se encontró '2'
       |                     ^
 ```
 
+## En tu editor
+
+JP trae su propio servidor de lenguaje y una gramática de tree-sitter, así
+que el editor puede avisar de los errores mientras escribes, autocompletar y
+mostrar la ayuda de cada función.
+
+**Servidor LSP** (diagnósticos, autocompletado, ayuda):
+
+```bash
+jp lsp          # o: python -m jp lsp
+```
+
+Habla JSON-RPC por stdio, como cualquier servidor LSP. En VS Code (extensión
+genérica como *GLSP* o *LSP client*) basta apuntar el comando a `jp lsp`; en
+Neovim, `vim.lsp.start({ cmd = { "jp", "lsp" } })`.
+
+**Gramática tree-sitter** (`tree-sitter-jp/`) para resaltado y plegado:
+
+```bash
+cd tree-sitter-jp
+tree-sitter generate     # ya viene generado en src/parser.c
+```
+
+Trae `queries/highlights.scm`, `queries/locals.scm` y `queries/folds.scm`.
+Los editores que ya entienden tree-sitter (Helix, Zed, Neovim, Emacs) solo
+necesitan registrar el directorio como gramática de `source.jp`.
+
+Comprobar que la gramática sigue sana (lo hace CI en Linux, que tiene `gcc`):
+
+```bash
+cd tree-sitter-jp
+tree-sitter parse ../ejemplos/*.jp --quiet   # falla si algún ejemplo da ERROR
+python comprobar_queries.py                  # nodos y campos que existen
+```
+
 ## Estructura del proyecto
 
 ```
@@ -410,12 +449,22 @@ jp-lang/
 │   ├── turbo.py         # evaluación total + cache .jpc
 │   ├── interprete.py    # AST -> ejecución (modo --interprete)
 │   ├── red.py           # HTTP, JSON, bots (urllib estándar)
+│   ├── lsp.py           # servidor LSP: diagnósticos, completado, ayuda
 │   └── cli.py           # CLI + REPL
 ├── tests/
 │   ├── test_jp.py       # lenguaje completo (81 tests)
 │   ├── test_vm.py       # paridad VM vs árbol (32 tests)
 │   ├── test_v13.py      # elegir, intenta, paso, **, += y orden superior (72)
-│   └── test_motor_c.py  # paridad del motor en C con los motores de Python (252 en total)
+│   ├── test_motor_c.py  # paridad del motor en C con los motores de Python (252 en total)
+│   └── test_lsp.py      # el servidor LSP responde a initialize/didOpen/completion/hover
+├── docs/
+│   ├── jp-en-20-minutos.md  # tutorial (sus bloques se ejecutan en CI)
+│   └── referencia.md        # generada por herramientas/referencia.py
+├── tree-sitter-jp/      # gramática + queries + parser generado
+├── herramientas/
+│   ├── paridad.py       # Python vs C sobre todos los ejemplos
+│   ├── referencia.py    # regenera docs/referencia.md
+│   └── tutorial.py      # ejecuta los bloques del tutorial
 ├── ejemplos/            # programas de muestra .jp
 │   ├── funcional.jp     # funciones anónimas y orden superior
 │   ├── seguro.jp        # intenta/atrapa en acción

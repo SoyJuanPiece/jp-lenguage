@@ -66,6 +66,8 @@ su carpeta de pruebas ya conectada.
 📘 **[JP en 20 minutos](docs/jp-en-20-minutos.md)** — tutorial completo, y
 📚 **[referencia de la biblioteca](docs/referencia.md)** — las 149 funciones
 nativas con su firma.
+📊 **[JP frente a Python y otros lenguajes](docs/comparacion.md)** — qué gana,
+qué pierde y con qué números medidos.
 
 ## El lenguaje
 

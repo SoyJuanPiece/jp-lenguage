@@ -76,18 +76,24 @@ def compilador() -> str | None:
     return None
 
 
+# Fuentes del motor: la VM y el frontend (lexer, parser y compilador a .jpb).
+FUENTES_MOTOR = ("jpvm.c", "ast.c", "parser.c", "lexer.c", "compilar.c")
+
+
 def compilar_motor(*, silencioso: bool = True) -> Path | None:
-    """Compila `motor-c/jpvm.c` en la caché si hace falta.
+    """Compila el motor en la caché si hace falta.
 
     Devuelve la ruta del binario, o None si no hay compilador o falla. Sólo
-    recompila cuando el binario no existe o es más viejo que el fuente, así
+    recompila cuando el binario no existe o es más viejo que algún fuente, así
     que las ejecuciones siguientes no pagan nada.
     """
-    fuente = archivo("motor-c", "jpvm.c")
+    fuentes = [archivo("motor-c", nombre) for nombre in FUENTES_MOTOR]
     destino = carpeta_cache() / _nombre_binario()
-    if not fuente.is_file():
+    if not all(fuente.is_file() for fuente in fuentes):
         return None
-    if destino.is_file() and destino.stat().st_mtime >= fuente.stat().st_mtime:
+    if destino.is_file() and all(
+        destino.stat().st_mtime >= fuente.stat().st_mtime for fuente in fuentes
+    ):
         return destino
     compilador_c = compilador()
     if compilador_c is None:
@@ -95,7 +101,8 @@ def compilar_motor(*, silencioso: bool = True) -> Path | None:
     try:
         destino.parent.mkdir(parents=True, exist_ok=True)
         proceso = subprocess.run(
-            [compilador_c, "-O2", "-std=c11", "-w", str(fuente), "-o", str(destino), "-lm"],
+            [compilador_c, "-O2", "-std=c11", "-w", *map(str, fuentes),
+             "-o", str(destino), "-lm"],
             stdout=subprocess.DEVNULL if silencioso else None,
             stderr=subprocess.PIPE,
         )

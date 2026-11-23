@@ -14,7 +14,7 @@
 
 #include "lexer.h"
 
-#define JP_VERSION "1.33.0"
+#define JP_VERSION "1.34.0"
 
 static void imprimir_texto(const char *texto) {
     putchar('"');

@@ -1,5 +1,31 @@
 # Cambios de JP
 
+## 1.34.0 — El motor único sin Python (2026-11-23)
+
+`jpvm programa.jp` compila y ejecuta directamente: lexer, parser y generador
+de bytecode están ahora en C, así que el motor ya no necesita Python para
+entender un `.jp`.
+
+- **`motor-c/parser.c`**: port del parser de Python con sus precedencias, su
+  plegado de constantes (`2 + 3` se guarda como `5`) y sus mismos mensajes de
+  error. **48/48 archivos producen el mismo AST.**
+- **`motor-c/compilar.c`**: port del compilador a `.jpb` — slots, celdas y
+  upvalues de las closures, valores por defecto, tipos, clases, `intenta`,
+  `elegir`, desestructuración y `importar` resueltos en C. **Los 40 archivos
+  que el compilador de Python acepta dan bytecode idéntico, byte a byte.**
+- **`jpvm` lee `.jp`**: si la ruta termina en `.jp`, compila en memoria y
+  ejecuta. Sin Python, sin temporales, sin `make`.
+- Herramientas nuevas: `jpast` (vuelca el AST), `jpcompilar` (genera `.jpb`) y
+  los arneses `herramientas/ast_paridad.py` y `herramientas/jpb_paridad.py`,
+  más 5 tests en `tests/test_frontend_c.py` y sus pasos en el CI.
+- `jp/recursos.py` compila el motor con todas las fuentes del frontend al
+  instalar con pip.
+
+Lo que sigue sin estar en el motor en C son las funciones nativas que sólo
+tiene el motor de Python (`servir`, `http_post`, `abrir_bd`, `telegram_leer`,
+`iniciar_proceso`): los 8 ejemplos que las usan se siguen ejecutando con el
+motor de Python, y `jp --c` avisa en vez de fallar.
+
 ## 1.33.0 — Frontend nativo: el lexer en C (2026-11-22)
 
 Primera pieza de N-6, el motor único sin Python. `jpvm` sabía ejecutar `.jpb`,

@@ -12,4 +12,7 @@ build/
 motor-c/jpvm
 motor-c/jpvm-debug
 motor-c/jpvm-asan
+motor-c/jptokens
+motor-c/jpast
+motor-c/jpcompilar
 *.jpb

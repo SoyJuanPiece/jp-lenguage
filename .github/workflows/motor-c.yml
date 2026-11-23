@@ -29,14 +29,26 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compilar el motor
-        run: make -C motor-c CC=${{ matrix.cc }}
+      - name: Compilar el motor y el frontend
+        run: make -C motor-c CC=${{ matrix.cc }} todo
 
       - name: Lexer en C igual que el de Python
         if: matrix.cc == 'gcc'
+        run: python herramientas/lexer_paridad.py
+
+      - name: Parser y compilador en C iguales a los de Python
+        if: matrix.cc == 'gcc'
         run: |
-          make -C motor-c jptokens
-          python herramientas/lexer_paridad.py
+          python herramientas/ast_paridad.py
+          python herramientas/jpb_paridad.py
+
+      - name: `jpvm` ejecuta un .jp sin Python
+        if: matrix.cc == 'gcc'
+        run: |
+          ./motor-c/jpvm ejemplos/hola.jp
+          ./motor-c/jpvm pruebas/mates_prueba.jp
+          ./motor-c/jpcompilar ejemplos/hola.jp /tmp/hola.jpb
+          ./motor-c/jpvm /tmp/hola.jpb
 
       - name: Compilar los binarios independientes de ejemplo
         run: |

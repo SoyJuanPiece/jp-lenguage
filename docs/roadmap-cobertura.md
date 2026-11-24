@@ -119,6 +119,30 @@ para i, nombre en enumerar(nombres) { imprime(i, nombre) }
 **Puerta:** 30 programas nuevos en `pruebas/` que usan **sólo** sintaxis nueva,
 todos en verde en el motor C, y tree-sitter + LSP reconocen lo nuevo.
 
+**Estado (2026-11-24): a medias.**
+
+- ✅ `argumentos()` y `salir(código)` en los dos motores, con el código de
+  salida pasando por `jp` y por `jp --c`. La puerta de CLI ya pasa: **3/11**
+  dominios cubiertos.
+- ✅ `enumerar(lista, inicio)` y `zip(a, b, ...)`, idénticos en C y Python.
+- ✅ Rebanadas `x[a:b:c]` (partes opcionales, negativos y paso, en listas y
+  textos): el parser las convierte en `rebanada(objeto, inicio, fin, paso)`,
+  así que no hizo falta bytecode nuevo y la paridad AST sigue en 58/58.
+- ✅ `para i, v en ...` ya existía (índice/valor en listas, clave/valor en
+  diccionarios) y se queda como está: cambiarlo rompía `biblioteca/ia.jp`,
+  `biblioteca/graficas.jp` y `ejemplos/ia-perceptron.jp`.
+- ✅ `rango()` daba resultados distintos en C (`rango(3)` empezaba en 1 y con
+  dos números descendía solo); ya es igual que en Python.
+- ⬜ **Falta lo grande: comprensiones de lista y de diccionario con filtro**
+  (`[x * 2 para x en xs si x > 0]`). Necesitan un nodo nuevo en el AST y
+  código propio en los dos compiladores; es el siguiente paso de F1.
+- ⬜ Faltan los 30 programas de la puerta, tree-sitter y LSP.
+
+> Nota de diseño: no hay `lambda`, pero sí funciones anónimas como valor
+> (`variable f = funcion(x) { devuelve x * 2 }`), así que las comprensiones
+> también podrían resolverse como azúcar sobre `mapear`/`filtrar` si el nodo
+> propio resulta demasiado caro.
+
 ### F2 — v1.37 · Generadores e iteradores perezosos (≈3 semanas)
 
 `cede` (equivalente a `yield`), `siguiente(iter)`, funciones generadoras,
@@ -282,4 +306,6 @@ aparece un fallo de diseño en el GC o en el FFI.
 - `PLAN.md` guarda el detalle histórico; este documento manda en el orden.
 - Una fase se tacha **sólo** cuando su puerta corre en CI, no cuando compila.
 - Cada «no» de la tabla es una fila de trabajo: el medidor es también la lista
-  de tareas. Estado al cerrar F0: 2/11 dominios.
+  de tareas. Estado al cerrar F0: 2/11 dominios (datos y cálculo numérico).
+  Con la primera mitad de F1 (argumentos, salir, enumerar, zip y rebanadas):
+  **3/11**, porque la puerta de CLI ya pasa.

@@ -1,0 +1,4 @@
+# F1: comprensión con filtro 'si'.
+variable numeros = [1, 2, 3, 4, 5, 6]
+imprime([n para n en numeros si n % 2 == 0])
+imprime([n * n para n en numeros si n > 3])

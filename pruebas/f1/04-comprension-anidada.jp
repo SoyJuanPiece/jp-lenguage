@@ -1,0 +1,5 @@
+# F1: una comprensión dentro de otra.
+variable filas = [[1, 2], [3, 4]]
+imprime([[n * 2 para n en fila] para fila en filas])
+variable dobles = [[n * 2 para n en fila] para fila en filas]
+imprime([fila[0] para fila en dobles])

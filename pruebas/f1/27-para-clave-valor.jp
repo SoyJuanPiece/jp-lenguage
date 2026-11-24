@@ -1,0 +1,5 @@
+# F1: 'para k, v en diccionario' da clave y valor.
+variable stock = {pan: 3, leche: 5}
+para producto, cantidad en stock {
+    imprime(producto + " = " + texto(cantidad))
+}

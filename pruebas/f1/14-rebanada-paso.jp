@@ -1,0 +1,4 @@
+# F1: rebanada con paso.
+variable numeros = [0, 1, 2, 3, 4, 5]
+imprime(numeros[0:6:2])
+imprime(numeros[1:6:3])

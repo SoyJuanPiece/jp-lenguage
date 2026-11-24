@@ -1,0 +1,5 @@
+# F1: índices negativos en rebanadas.
+variable numeros = [1, 2, 3, 4, 5]
+imprime(numeros[-2:])
+imprime(numeros[:-2])
+imprime(numeros[-4:-1])

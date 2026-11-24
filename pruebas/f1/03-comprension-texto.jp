@@ -1,0 +1,4 @@
+# F1: comprensiones sobre textos y con funciones.
+variable palabras = ["ana", "bo", "carla"]
+imprime([longitud(p) para p en palabras])
+imprime([mayusculas(p) para p en palabras si longitud(p) > 2])

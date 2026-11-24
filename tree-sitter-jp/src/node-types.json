@@ -156,6 +156,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -200,6 +204,10 @@
         },
         {
           "type": "numero",
+          "named": true
+        },
+        {
+          "type": "rebanada",
           "named": true
         }
       ]
@@ -531,6 +539,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -673,6 +685,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -754,6 +770,1218 @@
           },
           {
             "type": "sentencia_si",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "comprension_diccionario",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "condicion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "iterable": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "valor": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "comprension_lista",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "condicion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "elemento": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "iterable": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identificador",
             "named": true
           }
         ]
@@ -999,6 +2227,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -1161,6 +2393,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -1176,6 +2412,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "comprension_diccionario",
+          "named": true
+        },
         {
           "type": "par",
           "named": true
@@ -1448,6 +2688,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -1468,6 +2712,10 @@
         },
         {
           "type": "cadena",
+          "named": true
+        },
+        {
+          "type": "comprension_lista",
           "named": true
         },
         {
@@ -1492,6 +2740,10 @@
         },
         {
           "type": "numero",
+          "named": true
+        },
+        {
+          "type": "rebanada",
           "named": true
         }
       ]
@@ -1663,6 +2915,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -1799,6 +3055,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -1965,6 +3225,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -2103,6 +3367,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -2143,6 +3411,600 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "rebanada",
+    "named": true,
+    "fields": {
+      "argumentos": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argumentos",
+            "named": true
+          }
+        ]
+      },
+      "clave": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identificador",
+            "named": true
+          }
+        ]
+      },
+      "fin": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "funcion": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "inicio": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      },
+      "paso": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "?.",
+            "named": false
+          },
+          {
+            "type": "??",
+            "named": false
+          },
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "argumentos",
+            "named": true
+          },
+          {
+            "type": "booleano",
+            "named": true
+          },
+          {
+            "type": "cadena",
+            "named": true
+          },
+          {
+            "type": "diccionario",
+            "named": true
+          },
+          {
+            "type": "funcion_anonima",
+            "named": true
+          },
+          {
+            "type": "identificador",
+            "named": true
+          },
+          {
+            "type": "lista",
+            "named": true
+          },
+          {
+            "type": "no",
+            "named": false
+          },
+          {
+            "type": "nulo",
+            "named": true
+          },
+          {
+            "type": "numero",
+            "named": true
+          },
+          {
+            "type": "o",
+            "named": false
+          },
+          {
+            "type": "paso",
+            "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
+          },
+          {
+            "type": "y",
+            "named": false
+          }
+        ]
+      }
     }
   },
   {
@@ -2302,6 +4164,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -2438,6 +4304,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -2608,6 +4478,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -2772,6 +4646,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -2908,6 +4786,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -3088,6 +4970,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -3132,6 +5018,10 @@
         },
         {
           "type": "numero",
+          "named": true
+        },
+        {
+          "type": "rebanada",
           "named": true
         }
       ]
@@ -3494,6 +5384,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -3538,6 +5432,10 @@
         },
         {
           "type": "numero",
+          "named": true
+        },
+        {
+          "type": "rebanada",
           "named": true
         }
       ]
@@ -3698,6 +5596,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -3910,6 +5812,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -4150,6 +6056,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -4286,6 +6196,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -4472,6 +6386,10 @@
             "named": false
           },
           {
+            "type": "rebanada",
+            "named": true
+          },
+          {
             "type": "y",
             "named": false
           }
@@ -4516,6 +6434,10 @@
         },
         {
           "type": "numero",
+          "named": true
+        },
+        {
+          "type": "rebanada",
           "named": true
         }
       ]
@@ -4676,6 +6598,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",
@@ -4888,6 +6814,10 @@
           {
             "type": "paso",
             "named": false
+          },
+          {
+            "type": "rebanada",
+            "named": true
           },
           {
             "type": "y",

@@ -691,6 +691,16 @@ class Parser:
             if self._actual().tipo != TToken.CORCHETE_DER:
                 while True:
                     elementos.append(self._expresion())
+                    if self._actual().tipo == TToken.PARA:
+                        if len(elementos) > 1:
+                            raise ErrorSintaxis(
+                                "una comprensión lleva una sola expresión antes de 'para'",
+                                token.linea,
+                                token.columna,
+                            )
+                        comprension = self._comprension(elementos[0], token.linea)
+                        self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras la comprensión")
+                        return comprension
                     if not self._coincide(TToken.COMA):
                         break
             self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras la lista")
@@ -700,7 +710,8 @@ class Parser:
             if self._actual().tipo != TToken.LLAVE_DER:
                 while True:
                     clave_token = self._actual()
-                    if clave_token.tipo in _CLAVES_VALIDAS:
+                    es_nombre_suelto = clave_token.tipo in _CLAVES_VALIDAS
+                    if es_nombre_suelto:
                         self._avanzar()
                         clave = NodoCadena(valor=clave_token.lexema, linea=clave_token.linea)
                     elif clave_token.tipo == TToken.CADENA:
@@ -714,6 +725,25 @@ class Parser:
                         )
                     self._esperar(TToken.DOSPUNTOS, "se esperaba ':' entre la clave y el valor")
                     valor = self._expresion()
+                    if self._actual().tipo == TToken.PARA:
+                        if pares:
+                            raise ErrorSintaxis(
+                                "una comprensión lleva un solo par clave: valor antes de 'para'",
+                                token.linea,
+                                token.columna,
+                            )
+                        # En una comprensión `{x: x * 2 para x en xs}` un nombre
+                        # suelto es la variable, no una clave de texto.
+                        if es_nombre_suelto:
+                            clave = NodoVariable(nombre=clave_token.lexema, linea=clave_token.linea)
+                        par = NodoLista(elementos=[clave, valor], linea=token.linea)
+                        par = self._comprension(par, token.linea)
+                        self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar el diccionario")
+                        return NodoLlamada(
+                            callee=NodoVariable(nombre="a_diccionario", linea=token.linea),
+                            argumentos=[par],
+                            linea=token.linea,
+                        )
                     pares.append((clave, valor))
                     if not self._coincide(TToken.COMA):
                         break
@@ -725,6 +755,46 @@ class Parser:
             return expr
         encontrado = "fin del archivo" if token.tipo == TToken.FIN_DE_ARCHIVO else repr(token.lexema)
         raise ErrorSintaxis(f"se esperaba una expresión, pero se encontró {encontrado}", token.linea, token.columna)
+
+    def _comprension(self, elemento: Nodo, linea: int) -> Nodo:
+        """`EXPR para x en ITER si COND` → mapear(filtrar(ITER, funcion(x) {...}),
+        funcion(x) { devuelve EXPR }), que ya existe en los dos motores.
+
+        Se queda en el parser: no añade nodos ni bytecode, así que la paridad
+        del AST y del bytecode no cambia. Consume hasta el 'si'/']', pero el
+        cierre lo come quien llama.
+        """
+        self._avanzar()  # 'para'
+        variable = self._esperar(
+            TToken.IDENTIFICADOR, "se esperaba el nombre de la variable en la comprensión"
+        )
+        self._esperar(TToken.EN, "se esperaba 'en' tras la variable de la comprensión")
+        iterable = self._expresion()
+        condicion = None
+        if self._coincide(TToken.SI):
+            condicion = self._expresion()
+        if condicion is not None:
+            iterable = NodoLlamada(
+                callee=NodoVariable(nombre="filtrar", linea=linea),
+                argumentos=[iterable, self._funcion_comprension(variable.lexema, condicion, linea)],
+                linea=linea,
+            )
+        return NodoLlamada(
+            callee=NodoVariable(nombre="mapear", linea=linea),
+            argumentos=[iterable, self._funcion_comprension(variable.lexema, elemento, linea)],
+            linea=linea,
+        )
+
+    def _funcion_comprension(self, variable: str, valor: Nodo, linea: int) -> NodoFuncion:
+        """funcion(x) { devuelve EXPR } con la forma exacta que arma el parser C."""
+        return NodoFuncion(
+            nombre="",
+            parametros=[variable],
+            cuerpo=NodoBloque(sentencias=[NodoRetorna(valor=valor, linea=linea)]),
+            linea=linea,
+            defectos=[None],
+            tipos=[None],
+        )
 
     def _interpolacion(self, token: Token) -> Nodo:
         """Convierte CADENA_INI [expr] (CADENA_MEDIO [expr])* CADENA_FIN en

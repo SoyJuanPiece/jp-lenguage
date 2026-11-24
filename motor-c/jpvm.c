@@ -2672,6 +2672,25 @@ static Valor nativa_enumerar(VM *v, int argc, Valor *args) {
     return de_lista(l);
 }
 
+/* a_diccionario([[clave, valor], ...]): lo que hay detrás de las
+ * comprensiones de diccionario {k: v para ...}. */
+static Valor nativa_a_diccionario(VM *v, int argc, Valor *args) {
+    (void)v;
+    (void)argc;
+    uint32_t largo = largo_recorrible(args[0], "a_diccionario");
+    Dicto *d = nuevo_dicto();
+    for (uint32_t i = 0; i < largo; i++) {
+        Valor par = elemento_recorrible(args[0], i);
+        if (par.etiqueta != T_OBJ || par.v.obj->tipo != O_LISTA || ((Lista *)par.v.obj)->largo != 2)
+            error_en(0, "a_diccionario() espera pares [clave, valor]");
+        Lista *l = (Lista *)par.v.obj;
+        if (l->elementos[0].etiqueta != T_OBJ || l->elementos[0].v.obj->tipo != O_TEXTO)
+            error_en(0, "la clave de un diccionario debe ser texto");
+        dicto_poner(d, (Texto *)l->elementos[0].v.obj, l->elementos[1]);
+    }
+    return de_objeto((Obj *)d);
+}
+
 static Valor nativa_zip(VM *v, int argc, Valor *args) {
     (void)v;
     if (argc < 1) error_en(0, "zip() espera al menos un iterable");
@@ -5301,6 +5320,7 @@ int main(int argc, char **argv) {
     instalar_nativa("salir", -1, nativa_salir);
     instalar_nativa("enumerar", -1, nativa_enumerar);
     instalar_nativa("zip", -1, nativa_zip);
+    instalar_nativa("a_diccionario", 1, nativa_a_diccionario);
     instalar_nativa("rebanada", -1, nativa_rebanada);
     instalar_nativa("leer", -1, nativa_leer);
     instalar_nativa("claves", 1, nativa_claves);

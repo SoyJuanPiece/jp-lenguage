@@ -1309,6 +1309,21 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
                 )
         return [list(par) for par in zip(*iterables)]
 
+    def a_diccionario(pares: object) -> dict:
+        """a_diccionario([[clave, valor], ...]) -> diccionario.
+
+        La usan las comprensiones de diccionario `{k: v para ...}`, que el
+        parser convierte en `a_diccionario(mapear(...))`.
+        """
+        resultado: dict = {}
+        for par in _secuencia(pares, "a_diccionario"):
+            if not isinstance(par, (list, tuple)) or len(par) != 2:
+                raise ErrorEjecucion(
+                    f"a_diccionario() espera pares [clave, valor], no {jp_a_texto(par)!r}"
+                )
+            resultado[par[0]] = par[1]
+        return resultado
+
     def rango(*args: object) -> list[int]:
         for a in args:
             if isinstance(a, bool) or not isinstance(a, (int, float)):
@@ -1724,6 +1739,7 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         "salir": FuncionNativa("salir", salir),
         "enumerar": FuncionNativa("enumerar", enumerar),
         "zip": FuncionNativa("zip", emparejar),
+        "a_diccionario": FuncionNativa("a_diccionario", a_diccionario),
         "rebanada": FuncionNativa("rebanada", rebanada),
         "leer": FuncionNativa("leer", leer),
         "azar": FuncionNativa("azar", azar, aridad=1),

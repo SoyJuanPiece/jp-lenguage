@@ -1,0 +1,6 @@
+# F1: enumerar() da pares [índice, valor].
+variable frutas = ["pera", "uva"]
+imprime(enumerar(frutas))
+para indice, fruta en frutas {
+    imprime(texto(indice) + " -> " + fruta)
+}

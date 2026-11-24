@@ -19,3 +19,9 @@
 
 ; ---------- referencias ----------
 (identificador) @local.reference
+
+; ---------- comprensiones (F1) ----------
+(comprension_lista) @local.scope
+(comprension_diccionario) @local.scope
+(comprension_lista variable: (identificador) @local.definition)
+(comprension_diccionario variable: (identificador) @local.definition)

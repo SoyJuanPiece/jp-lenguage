@@ -1,0 +1,2 @@
+# F1: comprensión sobre rango().
+imprime([n * n para n en rango(1, 6)])

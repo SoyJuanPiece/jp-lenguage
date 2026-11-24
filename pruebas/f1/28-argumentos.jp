@@ -1,0 +1,3 @@
+# F1: argumentos() devuelve la lista de argumentos del programa.
+variable extras = argumentos()
+imprime("argumentos: " + texto(longitud(extras)))

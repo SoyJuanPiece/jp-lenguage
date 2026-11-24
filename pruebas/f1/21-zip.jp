@@ -1,0 +1,4 @@
+# F1: zip() corta por la lista más corta.
+variable a = [1, 2, 3]
+variable b = ["x", "y"]
+imprime(zip(a, b))

@@ -1,0 +1,3 @@
+# F1: rango() con paso.
+imprime(rango(0, 10, 3))
+imprime(rango(1, 7, 2))

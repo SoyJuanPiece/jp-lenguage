@@ -1,0 +1,4 @@
+# F1: rebanadas dentro de una comprensión.
+variable tabla = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+imprime([fila[0:2] para fila en tabla])
+imprime([fila[::-1] para fila en tabla])

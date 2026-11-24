@@ -1,0 +1,6 @@
+# F1: rebanadas de texto, contando caracteres y no bytes.
+variable saludo = "hola mundo"
+imprime(saludo[0:4])
+imprime(saludo[5:])
+imprime(saludo[::-1])
+imprime(saludo[::2])

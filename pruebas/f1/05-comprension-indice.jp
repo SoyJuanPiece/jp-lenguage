@@ -1,0 +1,4 @@
+# F1: la expresión de la comprensión puede sacar un índice.
+variable tabla = [[1, 10], [2, 20], [3, 30]]
+imprime([fila[0] para fila en tabla])
+imprime([fila[1] / fila[0] para fila en tabla])

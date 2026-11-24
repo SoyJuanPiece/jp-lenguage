@@ -1,0 +1,3 @@
+# F1: comprensión de diccionario con filtro.
+variable notas = {ana: 8, bo: 4, ce: 9}
+imprime({alumno: notas[alumno] para alumno en notas si notas[alumno] >= 8})

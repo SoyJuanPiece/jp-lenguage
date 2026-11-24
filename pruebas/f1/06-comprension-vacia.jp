@@ -1,0 +1,4 @@
+# F1: si el filtro no deja pasar nada, queda una lista vacía.
+variable numeros = [1, 2, 3]
+imprime([n para n en numeros si n > 99])
+imprime(longitud([n para n en numeros si n > 1]))

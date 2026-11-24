@@ -232,8 +232,18 @@ module.exports = grammar({
       // índice por debajo de la reducción de sentencia, `[a, b] = ...`
       // empieza sentencia nueva y `lista[0]` sigue funcionando.
       prec.left(-1, seq($._expresion, '[', $._expresion, ']')),
+      // Rebanadas: `l[1:3]`, `l[:2]`, `l[3:]`, `l[::2]`, `l[::-1]`. Van antes
+      // del índice normal para que el `:` decida cuál es cuál.
+      prec.left(-1, seq($._expresion, '[', $.rebanada, ']')),
       prec.left(PREC.POSTFIJO, seq($._expresion, choice('.', '?.'), field('clave', $.identificador))),
       $._primario,
+    ),
+
+    rebanada: ($) => seq(
+      optional(field('inicio', $._expresion)),
+      ':',
+      optional(field('fin', $._expresion)),
+      optional(seq(':', optional(field('paso', $._expresion)))),
     ),
 
     argumentos: ($) => seq('(', optional(coma1($._expresion)), ')'),
@@ -258,9 +268,41 @@ module.exports = grammar({
       field('cuerpo', $.bloque),
     ),
 
-    lista: ($) => seq('[', optional(coma1($._expresion)), ']'),
+    // `[1, 2, 3]` y la comprensión `[x * 2 para x en lista si x > 0]`
+    lista: ($) => choice(
+      seq('[', optional(coma1($._expresion)), ']'),
+      $.comprension_lista,
+    ),
 
-    diccionario: ($) => seq('{', optional(coma1($.par)), '}'),
+    // `{a: 1}` y la comprensión `{k: v para k en diccionario}`
+    diccionario: ($) => choice(
+      seq('{', optional(coma1($.par)), '}'),
+      $.comprension_diccionario,
+    ),
+
+    comprension_lista: ($) => seq(
+      '[',
+      field('elemento', $._expresion),
+      'para',
+      field('variable', $.identificador),
+      'en',
+      field('iterable', $._expresion),
+      optional(seq('si', field('condicion', $._expresion))),
+      ']',
+    ),
+
+    comprension_diccionario: ($) => seq(
+      '{',
+      field('clave', choice($.identificador, $.cadena)),
+      ':',
+      field('valor', $._expresion),
+      'para',
+      field('variable', $.identificador),
+      'en',
+      field('iterable', $._expresion),
+      optional(seq('si', field('condicion', $._expresion))),
+      '}',
+    ),
 
     par: ($) => seq(
       field('clave', choice($.identificador, $.cadena)),

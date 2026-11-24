@@ -1,0 +1,4 @@
+# F1: recorrer un diccionario da sus claves, como en Python.
+variable edades = {ana: 30, bo: 25, ce: 41}
+imprime([clave para clave en edades])
+imprime([clave para clave en edades si edades[clave] > 28])

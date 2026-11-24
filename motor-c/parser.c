@@ -331,6 +331,62 @@ static JpNodo *expr_rebanada(Parser *p, JpNodo *objeto, JpNodo *inicio) {
     return n;
 }
 
+/* funcion(x) { devuelve EXPR }: la pieza con la que se arman las
+ * comprensiones, con la misma forma que en jp/parser.py. */
+static JpNodo *funcion_comprension(Parser *p, const char *variable, JpNodo *valor, int linea) {
+    JpNodo *fn = nodo(p, N_FUNCION, linea);
+    if (!fn) return NULL;
+    fn->nombre = copiar(p, "");
+    JpNodo *parametro = nodo(p, N_PARAMETRO, linea);
+    if (!parametro) return NULL;
+    parametro->nombre = copiar(p, variable);
+    jp_nodos_agregar(p->arena, &fn->params, parametro);
+    JpNodo *retorna = nodo(p, N_RETORNA, linea);
+    if (!retorna) return NULL;
+    retorna->valor = valor;
+    JpNodo *cuerpo = nodo(p, N_BLOQUE, 0);
+    if (!cuerpo) return NULL;
+    jp_nodos_agregar(p->arena, &cuerpo->hijos, retorna);
+    fn->cuerpo = cuerpo;
+    return fn;
+}
+
+/* nombre(a, b) */
+static JpNodo *llamada_dos(Parser *p, const char *nombre, JpNodo *a, JpNodo *b, int linea) {
+    JpNodo *n = nodo(p, N_LLAMADA, linea);
+    if (!n) return NULL;
+    n->callee = nodo_variable(p, nombre, linea);
+    if (!n->callee) return NULL;
+    jp_nodos_agregar(p->arena, &n->hijos, a);
+    if (b) jp_nodos_agregar(p->arena, &n->hijos, b);
+    return n;
+}
+
+/* `EXPR para x en ITER [si COND]`, con 'para' por delante. Se queda en el
+ * parser: no añade nodos ni bytecode, igual que en jp/parser.py. */
+static JpNodo *comprension(Parser *p, JpNodo *elemento, int linea) {
+    if (!esperar(p, T_PARA, "se esperaba 'para' en la comprensión")) return NULL;
+    JpToken *token_var = esperar(p, T_IDENTIFICADOR,
+                                 "se esperaba el nombre de la variable en la comprensión");
+    if (!token_var) return NULL;
+    char *variable = copiar(p, token_var->lexema ? token_var->lexema : "");
+    if (!esperar(p, T_EN, "se esperaba 'en' tras la variable de la comprensión")) return NULL;
+    JpNodo *iterable = expresion(p);
+    if (!iterable) return NULL;
+    if (actual(p)->tipo == T_SI) {
+        avanzar(p);
+        JpNodo *condicion = expresion(p);
+        if (!condicion) return NULL;
+        JpNodo *filtro = funcion_comprension(p, variable, condicion, linea);
+        if (!filtro) return NULL;
+        iterable = llamada_dos(p, "filtrar", iterable, filtro, linea);
+        if (!iterable) return NULL;
+    }
+    JpNodo *fn = funcion_comprension(p, variable, elemento, linea);
+    if (!fn) return NULL;
+    return llamada_dos(p, "mapear", iterable, fn, linea);
+}
+
 static int argumentos(Parser *p, JpNodos *destino, int *linea_cierre) {
     if (actual(p)->tipo != T_PAREN_DER) {
         while (1) {
@@ -423,6 +479,18 @@ static JpNodo *primario(Parser *p) {
                 while (1) {
                     JpNodo *elemento = expresion(p);
                     if (!elemento) return NULL;
+                    if (actual(p)->tipo == T_PARA) {
+                        /* [x * 2 para x en xs si x > 0] */
+                        if (n->hijos.n > 0) {
+                            fallar(p, token->linea, token->columna,
+                                   "una comprensión lleva una sola expresión antes de 'para'");
+                            return NULL;
+                        }
+                        JpNodo *comp = comprension(p, elemento, token->linea);
+                        if (!comp) return NULL;
+                        if (!esperar(p, T_CORCHETE_DER, "se esperaba ']' tras la comprensión")) return NULL;
+                        return comp;
+                    }
                     jp_nodos_agregar(p->arena, &n->hijos, elemento);
                     if (!coincide(p, T_COMA)) break;
                 }
@@ -451,6 +519,27 @@ static JpNodo *primario(Parser *p) {
                     if (!esperar(p, T_DOSPUNTOS, "se esperaba ':' entre la clave y el valor")) return NULL;
                     JpNodo *valor = expresion(p);
                     if (!valor) return NULL;
+                    if (actual(p)->tipo == T_PARA) {
+                        /* {x: x * 2 para x en xs}: un nombre suelto es la
+                         * variable, no una clave de texto. */
+                        if (n->hijos.n > 0) {
+                            fallar(p, token->linea, token->columna,
+                                   "una comprensión lleva un solo par clave: valor antes de 'para'");
+                            return NULL;
+                        }
+                        if (es_clave_valida(clave_token->tipo)) {
+                            clave = nodo_variable(p, clave_token->lexema, clave_token->linea);
+                            if (!clave) return NULL;
+                        }
+                        JpNodo *par = nodo(p, N_LISTA, token->linea);
+                        if (!par) return NULL;
+                        jp_nodos_agregar(p->arena, &par->hijos, clave);
+                        jp_nodos_agregar(p->arena, &par->hijos, valor);
+                        JpNodo *comp = comprension(p, par, token->linea);
+                        if (!comp) return NULL;
+                        if (!esperar(p, T_LLAVE_DER, "se esperaba '}' para cerrar el diccionario")) return NULL;
+                        return llamada_dos(p, "a_diccionario", comp, NULL, token->linea);
+                    }
                     jp_nodos_agregar(p->arena, &n->hijos, clave);
                     jp_nodos_agregar(p->arena, &n->hijos, valor);
                     if (!coincide(p, T_COMA)) break;

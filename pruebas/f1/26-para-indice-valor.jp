@@ -1,0 +1,5 @@
+# F1: 'para i, v en lista' da índice y valor.
+variable colores = ["rojo", "verde", "azul"]
+para i, color en colores {
+    imprime(texto(i) + ": " + color)
+}

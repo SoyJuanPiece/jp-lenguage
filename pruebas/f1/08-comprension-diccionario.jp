@@ -1,0 +1,3 @@
+# F1: comprensión de diccionario (las claves son texto, como en todo el lenguaje).
+variable precios = {pan: 2, leche: 3}
+imprime({producto: precios[producto] * 2 para producto en precios})

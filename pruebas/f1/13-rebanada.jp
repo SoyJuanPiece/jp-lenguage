@@ -1,0 +1,5 @@
+# F1: rebanada básica.
+variable letras = ["a", "b", "c", "d", "e"]
+imprime(letras[1:3])
+imprime(letras[:2])
+imprime(letras[3:])

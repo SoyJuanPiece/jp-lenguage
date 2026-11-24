@@ -1,0 +1,3 @@
+# F1: enumerar() puede empezar en otro número.
+variable pasos = ["uno", "dos"]
+imprime(enumerar(pasos, 1))

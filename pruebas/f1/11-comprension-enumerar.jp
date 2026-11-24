@@ -1,0 +1,3 @@
+# F1: comprensión sobre enumerar() para llevar el índice.
+variable letras = ["a", "b", "c"]
+imprime([texto(par[0]) + ":" + par[1] para par en enumerar(letras)])

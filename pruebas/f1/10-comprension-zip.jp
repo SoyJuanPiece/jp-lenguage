@@ -1,0 +1,5 @@
+# F1: comprensión sobre zip() para recorrer dos listas a la vez.
+variable nombres = ["ana", "bo"]
+variable edades = [30, 25]
+variable pares = zip(nombres, edades)
+imprime([par[0] + " tiene " + texto(par[1]) para par en pares])

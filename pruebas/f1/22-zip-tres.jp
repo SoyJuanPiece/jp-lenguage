@@ -1,0 +1,2 @@
+# F1: zip() acepta más de dos listas.
+imprime(zip([1, 2], ["a", "b"], [verdadero, falso]))

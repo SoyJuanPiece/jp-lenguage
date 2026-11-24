@@ -1,0 +1,3 @@
+# F1: rango() desciende sólo con paso negativo.
+imprime(rango(5, 0, -1))
+imprime(rango(10, 0, -3))

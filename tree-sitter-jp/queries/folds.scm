@@ -5,3 +5,7 @@
 (diccionario) @fold
 (lista) @fold
 (argumentos) @fold
+
+; Comprensiones (F1).
+(comprension_lista) @fold
+(comprension_diccionario) @fold

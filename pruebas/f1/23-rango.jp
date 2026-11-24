@@ -1,0 +1,4 @@
+# F1: rango() empieza en 0 cuando se da un solo número, como en Python.
+imprime(rango(3))
+imprime(rango(2, 5))
+imprime(longitud(rango(10)))

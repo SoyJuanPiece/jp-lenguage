@@ -1,0 +1,4 @@
+# F1: l[::-1] invierte, como en Python.
+variable letras = ["a", "b", "c"]
+imprime(letras[::-1])
+imprime(letras[::-2])

@@ -1,5 +1,33 @@
 # Cambios de JP
 
+## 1.36.0 — Ergonomía diaria (F1 del roadmap) (2026-11-24)
+
+Cierra **F1** de [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md): el
+día a día deja de necesitar rodeos. Todo funciona igual en el motor en C y en
+el de Python, y la puerta son 30 programas en `pruebas/f1/`.
+
+- **Comprensiones**: `[x * 2 para x en xs si x > 0]` y
+  `{clave: valor para clave en diccionario}`, anidables. Son azúcar del parser
+  —se convierten en `mapear`/`filtrar` con una `funcion` anónima, y las de
+  diccionario en `a_diccionario(mapear(...))`—, así que no añaden nodos ni
+  bytecode y la paridad no se mueve.
+- **Rebanadas**: `l[1:3]`, `l[:2]`, `l[3:]`, `l[0:6:2]`, `l[::-1]`, también en
+  textos y con índices negativos. Se compilan a `rebanada(obj, inicio, fin,
+  paso)`.
+- **`enumerar(lista, inicio)`** y **`zip(a, b, ...)`**, que devuelven pares.
+- **`rango(a, b, paso)`**: en C `rango(3)` empezaba en 1 y con dos números
+  descendía solo; ahora es idéntico a Python y con paso 0 da error.
+- **`argumentos()`** y **`salir(código)`**: el código de salida llega al shell
+  tanto con `jp` como con `jp --c`.
+- **`a_diccionario(pares)`**: nueva nativa para construir un diccionario desde
+  pares (la usan las comprensiones de diccionario).
+- **`tree-sitter`**: nodos `comprension_lista`, `comprension_diccionario` y
+  `rebanada`; resaltado, plegado y ámbitos para las comprensiones.
+
+Detalles honestos: una comprensión lleva **una** cláusula `para` (no hay
+`para … para …` como en Python), y las claves de diccionario siguen siendo
+texto, también en las comprensiones.
+
 ## 1.35.0 — El medidor de cobertura (2026-11-24)
 
 Arranca el plan de [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md) con

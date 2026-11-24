@@ -124,3 +124,7 @@
 
 ; ---------- genérico (siempre al final) ----------
 (identificador) @variable
+
+; Comprensiones de F1: la variable de la comprensión es un valor, no el índice.
+(comprension_lista variable: (identificador) @variable)
+(comprension_diccionario variable: (identificador) @variable)

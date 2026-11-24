@@ -1,0 +1,11 @@
+# F1: todo lo nuevo junto en un programa de verdad.
+variable ventas = {enero: [10, 20, 30], febrero: [5, 5], marzo: [40, 10]}
+variable meses = claves(ventas)
+variable totales = [reducir(ventas[mes], funcion(a, b) { devuelve a + b }, 0) para mes en meses]
+imprime(meses)
+imprime(totales)
+imprime([par[0] + ": " + texto(par[1]) para par en zip(meses, totales)])
+imprime(totales[::-1])
+imprime([total para total en totales si total > 20])
+variable resumen = {mes: reducir(ventas[mes], funcion(a, b) { devuelve a + b }, 0) para mes en meses}
+imprime(resumen)

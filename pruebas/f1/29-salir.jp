@@ -1,0 +1,4 @@
+# F1: salir(código) termina el programa con ese código.
+imprime("antes de salir")
+salir(7)
+imprime("esto no se imprime")

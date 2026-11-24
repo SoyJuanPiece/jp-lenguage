@@ -1265,6 +1265,50 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             raise ErrorEjecucion("salir() espera un número entero")
         raise SalidaPrograma(int(valor))
 
+    def enumerar(iterable: object, inicio: object = 0) -> list[list]:
+        """enumerar(lista) -> [[0, x], [1, y], ...]; el inicio es opcional."""
+        if not isinstance(iterable, (list, str, dict)):
+            raise ErrorEjecucion(
+                f"enumerar() espera una lista, un texto o un diccionario, no {jp_a_texto(iterable)!r}"
+            )
+        if isinstance(inicio, bool) or not isinstance(inicio, (int, float)):
+            raise ErrorEjecucion("enumerar() espera un número como inicio")
+        return [[i, valor] for i, valor in enumerate(iterable, int(inicio))]
+
+    def rebanada(objeto: object, inicio: object = None, fin: object = None, paso: object = None):
+        """El corte x[a:b:c] de Python: partes opcionales y negativos."""
+        if not isinstance(objeto, (list, str)):
+            raise ErrorEjecucion(
+                f"la rebanada espera una lista o un texto, no {jp_a_texto(objeto)!r}"
+            )
+
+        def como_indice(valor: object, nombre: str) -> int | None:
+            if valor is None:
+                return None
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                raise ErrorEjecucion(f"la rebanada espera un número en '{nombre}'")
+            return int(valor)
+
+        desde = como_indice(inicio, "inicio")
+        hasta = como_indice(fin, "fin")
+        salto = como_indice(paso, "paso")
+        if salto == 0:
+            raise ErrorEjecucion("la rebanada no puede tener paso 0")
+        return objeto[desde:hasta:salto]
+
+    # se llama emparejar y no zip porque dentro de este bloque 'zip' sería
+    # esta misma función y la llamada se volvería recursiva
+    def emparejar(*iterables: object) -> list[list]:
+        """zip(a, b) -> [[a0, b0], [a1, b1], ...] hasta el más corto."""
+        if not iterables:
+            raise ErrorEjecucion("zip() espera al menos un iterable")
+        for uno in iterables:
+            if not isinstance(uno, (list, str, dict)):
+                raise ErrorEjecucion(
+                    f"zip() espera listas, textos o diccionarios, no {jp_a_texto(uno)!r}"
+                )
+        return [list(par) for par in zip(*iterables)]
+
     def rango(*args: object) -> list[int]:
         for a in args:
             if isinstance(a, bool) or not isinstance(a, (int, float)):
@@ -1678,6 +1722,9 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         "rango": FuncionNativa("rango", rango),
         "argumentos": FuncionNativa("argumentos", argumentos, aridad=0),
         "salir": FuncionNativa("salir", salir),
+        "enumerar": FuncionNativa("enumerar", enumerar),
+        "zip": FuncionNativa("zip", emparejar),
+        "rebanada": FuncionNativa("rebanada", rebanada),
         "leer": FuncionNativa("leer", leer),
         "azar": FuncionNativa("azar", azar, aridad=1),
         # texto

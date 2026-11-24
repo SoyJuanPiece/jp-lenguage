@@ -571,6 +571,29 @@ class Parser:
         parentesis = self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los argumentos")
         return argumentos, parentesis.linea
 
+    def _rebanada(self, objeto: Nodo, inicio: Nodo | None = None) -> Nodo:
+        """x[a:b] y x[a:b:c] se convierten en rebanada(x, a, b, c).
+
+        Las tres partes son opcionales: x[:3], x[2:], x[::-1]. Lo que falta
+        viaja como nulo y la nativa decide el valor por defecto (como Python).
+        """
+        linea = self._actual().linea
+        self._esperar(TToken.DOSPUNTOS, "se esperaba ':' en la rebanada")
+        fin = None
+        paso = None
+        if self._actual().tipo not in (TToken.DOSPUNTOS, TToken.CORCHETE_DER):
+            fin = self._expresion()
+        if self._coincide(TToken.DOSPUNTOS) and self._actual().tipo != TToken.CORCHETE_DER:
+            paso = self._expresion()
+        cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras la rebanada")
+        partes = [inicio, fin, paso]
+        argumentos = [objeto, *(parte if parte is not None else NodoNulo(linea=linea) for parte in partes)]
+        return NodoLlamada(
+            callee=NodoVariable(nombre="rebanada", linea=cierre.linea),
+            argumentos=argumentos,
+            linea=cierre.linea,
+        )
+
     def _llamada(self) -> Nodo:
         expr = self._primario()
         # '?.' vuelve segura TODA la cadena que sigue (como en JS/TS):
@@ -611,9 +634,17 @@ class Parser:
             ):
                 break  # '[a, b] = ...' en otra línea es la sentencia siguiente, no un índice
             elif self._coincide(TToken.CORCHETE_IZQ):
-                indice = self._expresion()
-                cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
-                expr = NodoIndice(objeto=expr, indice=indice, linea=cierre.linea, seguro=cadena_segura)
+                if self._actual().tipo == TToken.DOSPUNTOS:
+                    expr = self._rebanada(expr)
+                else:
+                    indice = self._expresion()
+                    if self._actual().tipo == TToken.DOSPUNTOS:
+                        expr = self._rebanada(expr, indice)
+                    else:
+                        cierre = self._esperar(TToken.CORCHETE_DER, "se esperaba ']' tras el índice")
+                        expr = NodoIndice(
+                            objeto=expr, indice=indice, linea=cierre.linea, seguro=cadena_segura
+                        )
             elif self._coincide(TToken.PUNTO):
                 clave = self._avanzar()
                 if clave.tipo not in _CLAVES_VALIDAS:

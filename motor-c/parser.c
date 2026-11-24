@@ -304,6 +304,33 @@ static JpNodo *plegar(Parser *p, const char *operador, JpNodo *izq, JpNodo *der,
 
 static JpNodo *primario(Parser *p);
 
+/* x[a:b] y x[a:b:c] se convierten en rebanada(x, a, b, c): las tres partes
+ * son opcionales y lo que falta viaja como nulo (igual que en jp/parser.py). */
+static JpNodo *expr_rebanada(Parser *p, JpNodo *objeto, JpNodo *inicio) {
+    int linea = actual(p)->linea;
+    if (!esperar(p, T_DOSPUNTOS, "se esperaba ':' en la rebanada")) return NULL;
+    JpNodo *fin = NULL, *paso = NULL;
+    if (actual(p)->tipo != T_DOSPUNTOS && actual(p)->tipo != T_CORCHETE_DER) {
+        fin = expresion(p);
+        if (!fin) return NULL;
+    }
+    if (coincide(p, T_DOSPUNTOS) && actual(p)->tipo != T_CORCHETE_DER) {
+        paso = expresion(p);
+        if (!paso) return NULL;
+    }
+    JpToken *cierre = esperar(p, T_CORCHETE_DER, "se esperaba ']' tras la rebanada");
+    if (!cierre) return NULL;
+    JpNodo *n = nodo(p, N_LLAMADA, cierre->linea);
+    if (!n) return NULL;
+    n->callee = nodo_variable(p, "rebanada", cierre->linea);
+    if (!n->callee) return NULL;
+    jp_nodos_agregar(p->arena, &n->hijos, objeto);
+    jp_nodos_agregar(p->arena, &n->hijos, inicio ? inicio : nodo(p, N_NULO, linea));
+    jp_nodos_agregar(p->arena, &n->hijos, fin ? fin : nodo(p, N_NULO, linea));
+    jp_nodos_agregar(p->arena, &n->hijos, paso ? paso : nodo(p, N_NULO, linea));
+    return n;
+}
+
 static int argumentos(Parser *p, JpNodos *destino, int *linea_cierre) {
     if (actual(p)->tipo != T_PAREN_DER) {
         while (1) {
@@ -523,8 +550,16 @@ static JpNodo *llamada(Parser *p) {
             break; /* '[a, b] = ...' en otra línea es la sentencia siguiente */
         } else if (token->tipo == T_CORCHETE_IZQ) {
             avanzar(p);
-            JpNodo *indice = expresion(p);
-            if (!indice) return NULL;
+            JpNodo *indice = NULL;
+            if (actual(p)->tipo != T_DOSPUNTOS) {
+                indice = expresion(p);
+                if (!indice) return NULL;
+            }
+            if (actual(p)->tipo == T_DOSPUNTOS) {
+                expr = expr_rebanada(p, expr, indice);
+                if (!expr) return NULL;
+                continue;
+            }
             JpToken *cierre = esperar(p, T_CORCHETE_DER, "se esperaba ']' tras el índice");
             if (!cierre) return NULL;
             JpNodo *n = nodo(p, N_INDICE, cierre->linea);

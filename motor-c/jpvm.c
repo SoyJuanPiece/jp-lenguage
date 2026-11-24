@@ -2637,6 +2637,134 @@ static Valor nativa_salir(VM *v, int argc, Valor *args) {
     return de_nulo();
 }
 
+/* Recorrido genérico de lo que acepta 'para': listas, textos (por carácter)
+ * y diccionarios (por clave). Lo usan enumerar() y zip(). */
+static uint32_t largo_recorrible(Valor v, const char *funcion) {
+    if (v.etiqueta == T_OBJ) {
+        if (v.v.obj->tipo == O_LISTA) return ((Lista *)v.v.obj)->largo;
+        if (v.v.obj->tipo == O_TEXTO) return utf8_largo(((Texto *)v.v.obj)->datos, ((Texto *)v.v.obj)->largo);
+        if (v.v.obj->tipo == O_DICTO) return ((Dicto *)v.v.obj)->largo;
+    }
+    error_en(0, "%s() espera una lista, un texto o un diccionario", funcion);
+    return 0;
+}
+
+static Valor elemento_recorrible(Valor v, uint32_t i) {
+    if (v.v.obj->tipo == O_LISTA) return ((Lista *)v.v.obj)->elementos[i];
+    if (v.v.obj->tipo == O_DICTO) return de_texto(((Dicto *)v.v.obj)->entradas[i].clave);
+    Texto *t = (Texto *)v.v.obj;
+    uint32_t desde = utf8_byte_de(t->datos, t->largo, i);
+    uint32_t hasta = utf8_byte_de(t->datos, t->largo, i + 1);
+    return de_texto(nuevo_texto_largo(t->datos + desde, hasta - desde));
+}
+
+static Valor nativa_enumerar(VM *v, int argc, Valor *args) {
+    (void)v;
+    uint32_t largo = largo_recorrible(args[0], "enumerar");
+    int64_t inicio = argc > 1 ? a_entero_estricto(args[1], "enumerar") : 0;
+    Lista *l = nueva_lista(largo ? largo : 1);
+    for (uint32_t i = 0; i < largo; i++) {
+        Lista *par = nueva_lista(2);
+        lista_agregar(par, de_entero(inicio + (int64_t)i));
+        lista_agregar(par, elemento_recorrible(args[0], i));
+        lista_agregar(l, de_lista(par));
+    }
+    return de_lista(l);
+}
+
+static Valor nativa_zip(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 1) error_en(0, "zip() espera al menos un iterable");
+    uint32_t largo = largo_recorrible(args[0], "zip");
+    for (int j = 1; j < argc; j++) {
+        uint32_t otro = largo_recorrible(args[j], "zip");
+        if (otro < largo) largo = otro;
+    }
+    Lista *l = nueva_lista(largo ? largo : 1);
+    for (uint32_t i = 0; i < largo; i++) {
+        Lista *par = nueva_lista((uint32_t)argc);
+        for (int j = 0; j < argc; j++) lista_agregar(par, elemento_recorrible(args[j], i));
+        lista_agregar(l, de_lista(par));
+    }
+    return de_lista(l);
+}
+
+/* --- rebanadas: x[a:b:c] (la azúcar del parser llama a rebanada) --- */
+
+/* Deja (desde, hasta) en índices válidos para un recorrido de 'largo'
+ * elementos con este paso, como hace el corte de Python. */
+static void ajustar_rebanada(int64_t *desde, int64_t *hasta, int64_t paso, int64_t largo) {
+    if (paso > 0) {
+        if (*desde < 0) *desde += largo;
+        if (*hasta < 0) *hasta += largo;
+        if (*desde < 0) *desde = 0;
+        if (*desde > largo) *desde = largo;
+        if (*hasta < 0) *hasta = 0;
+        if (*hasta > largo) *hasta = largo;
+    } else {
+        if (*desde < 0) *desde += largo;
+        if (*desde < -1) *desde = -1;
+        if (*desde > largo - 1) *desde = largo - 1;
+        if (*hasta < -1) *hasta += largo;
+        if (*hasta < -1) *hasta = -1;
+        if (*hasta > largo - 1) *hasta = largo - 1;
+    }
+}
+
+static int64_t indice_de_rebanada(Valor v) {
+    if (v.etiqueta != T_INT && v.etiqueta != T_DBL) error_en(0, "la rebanada espera números");
+    return a_entero(v);
+}
+
+static Valor nativa_rebanada(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (args[0].etiqueta != T_OBJ ||
+        (args[0].v.obj->tipo != O_LISTA && args[0].v.obj->tipo != O_TEXTO))
+        error_en(0, "la rebanada espera una lista o un texto");
+    int es_texto = args[0].v.obj->tipo == O_TEXTO;
+    Lista *l = es_texto ? NULL : (Lista *)args[0].v.obj;
+    Texto *t = es_texto ? (Texto *)args[0].v.obj : NULL;
+    int64_t largo = es_texto ? (int64_t)utf8_largo(t->datos, t->largo) : (int64_t)l->largo;
+
+    int64_t paso = 1;
+    if (args[3].etiqueta != T_NULO) {
+        paso = indice_de_rebanada(args[3]);
+        if (paso == 0) error_en(0, "la rebanada no puede tener paso 0");
+    }
+    int64_t desde = paso > 0 ? 0 : largo - 1;
+    int64_t hasta = paso > 0 ? largo : -1;
+    if (args[1].etiqueta != T_NULO) desde = indice_de_rebanada(args[1]);
+    if (args[2].etiqueta != T_NULO) hasta = indice_de_rebanada(args[2]);
+    ajustar_rebanada(&desde, &hasta, paso, largo);
+
+    if (es_texto) {
+        /* se arma en un búfer porque los caracteres ocupan varios bytes */
+        Buffer b;
+        b.datos = memoria((size_t)t->largo + 1);
+        b.usado = 0;
+        b.capacidad = (size_t)t->largo + 1;
+        b.datos[0] = '\0';
+        for (int64_t i = desde; paso > 0 ? i < hasta : i > hasta; i += paso) {
+            uint32_t inicio = utf8_byte_de(t->datos, t->largo, (uint32_t)i);
+            uint32_t ancho = utf8_ancho((unsigned char)t->datos[inicio]);
+            if (b.usado + ancho + 1 > b.capacidad) {
+                b.capacidad = (b.usado + ancho + 1) * 2;
+                b.datos = realloc(b.datos, b.capacidad);
+            }
+            memcpy(b.datos + b.usado, t->datos + inicio, ancho);
+            b.usado += ancho;
+        }
+        b.datos[b.usado] = '\0';
+        Texto *resultado = nuevo_texto_largo(b.datos, (uint32_t)b.usado);
+        free(b.datos);
+        return de_texto(resultado);
+    }
+    Lista *salida = nueva_lista(8);
+    for (int64_t i = desde; paso > 0 ? i < hasta : i > hasta; i += paso)
+        lista_agregar(salida, l->elementos[i]);
+    return de_lista(salida);
+}
+
 static Valor nativa_rango(VM *v, int argc, Valor *args) {
     (void)v;
     if (argc < 1 || argc > 3) error_en(0, "rango() espera 1, 2 o 3 argumentos");
@@ -5171,6 +5299,9 @@ int main(int argc, char **argv) {
     instalar_nativa("rango", -1, nativa_rango);
     instalar_nativa("argumentos", 0, nativa_argumentos);
     instalar_nativa("salir", -1, nativa_salir);
+    instalar_nativa("enumerar", -1, nativa_enumerar);
+    instalar_nativa("zip", -1, nativa_zip);
+    instalar_nativa("rebanada", -1, nativa_rebanada);
     instalar_nativa("leer", -1, nativa_leer);
     instalar_nativa("claves", 1, nativa_claves);
     instalar_nativa("valores", 1, nativa_valores);

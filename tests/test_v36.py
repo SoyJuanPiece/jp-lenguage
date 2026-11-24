@@ -9,6 +9,7 @@ que la VM de Python.
 from __future__ import annotations
 
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -28,7 +29,19 @@ from jp.lexer import tokenizar  # noqa: E402
 from jp.parser import parsear  # noqa: E402
 from jp.vm import MaquinaVM  # noqa: E402
 
-MOTOR = RAIZ / "motor-c" / "jpvm"
+def _motor_c() -> Path:
+    """El motor en C, del entorno si está compilado fuera del repo."""
+    ruta = os.environ.get("JPVM")
+    if ruta:
+        return Path(ruta)
+    sufijo = ".exe" if os.name == "nt" else ""
+    return RAIZ / "motor-c" / f"jpvm{sufijo}"
+
+
+MOTOR = _motor_c()
+if not MOTOR.is_file():
+    raise unittest.SkipTest("motor en C sin compilar (make -C motor-c)")
+
 
 OK = """
 funcion dividir(a: numero, b: numero = 2): numero {
@@ -73,7 +86,7 @@ class TestTiposEnC(unittest.TestCase):
             MaquinaVM().ejecutar(parsear(tokenizar(OK)), directorio=str(RAIZ))
         resultado = correr_c(OK)
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
-        self.assertEqual(resultado.stdout.decode(), buffer.getvalue())
+        self.assertEqual(resultado.stdout.decode().replace("\r\n", "\n"), buffer.getvalue())
 
     def test_parametro_malo(self):
         r = correr_c('funcion f(a: numero) { devuelve a }\nmuestra(f("x"))\n')

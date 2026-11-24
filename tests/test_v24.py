@@ -74,6 +74,7 @@ class TestAccesoSeguro(unittest.TestCase):
 
     @unittest.skipUnless((RAIZ / "motor-c" / "jpvm").exists(), "motor en C sin compilar")
     def test_motor_c_lo_ejecuta_igual(self):
+        import os
         import subprocess
         import sys
         import tempfile

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -19,8 +20,24 @@ from jp.lexer import tokenizar
 from jp.parser import parsear
 from jp.vm import MaquinaVM
 
+def ruta_jp(ruta) -> str:
+    """Una ruta del sistema dentro de un texto JP: la barra invertida se escapa."""
+    return str(ruta).replace(chr(92), chr(92) * 2)
+
 RAIZ = Path(__file__).resolve().parent.parent
-MOTOR = RAIZ / "motor-c" / "jpvm"
+def _motor_c() -> Path:
+    """El motor en C, del entorno si está compilado fuera del repo."""
+    ruta = os.environ.get("JPVM")
+    if ruta:
+        return Path(ruta)
+    sufijo = ".exe" if os.name == "nt" else ""
+    return RAIZ / "motor-c" / f"jpvm{sufijo}"
+
+
+MOTOR = _motor_c()
+if not MOTOR.is_file():
+    raise unittest.SkipTest("motor en C sin compilar (make -C motor-c)")
+
 
 
 def ejecutar_en(maquina, codigo: str, directorio=None) -> str:
@@ -55,7 +72,7 @@ class TestCSV(unittest.TestCase):
         with tempfile.TemporaryDirectory() as carpeta:
             ruta = Path(carpeta) / "datos.csv"
             ruta.write_text("n\n5\n7\n", encoding="utf-8")
-            codigo = f'variable f = leer_csv("{ruta}")\nmuestra(f[0].n + f[1].n)'
+            codigo = f'variable f = leer_csv("{ruta_jp(ruta)}")\nmuestra(f[0].n + f[1].n)'
             self.assertEqual(paridad(codigo), "12\n")
 
     def test_sublista(self):

@@ -14,6 +14,11 @@ from jp.parser import parsear
 from jp.vm import MaquinaVM
 
 
+def ruta_jp(ruta) -> str:
+    """Una ruta del sistema dentro de un texto JP: la barra invertida se escapa."""
+    return str(ruta).replace(chr(92), chr(92) * 2)
+
+
 def ejecutar_en(maquina, codigo: str) -> str:
     buffer = io.StringIO()
     with redirect_stdout(buffer):
@@ -31,7 +36,7 @@ def paridad(codigo: str) -> str:
 class TestProcesos(unittest.TestCase):
     def test_salida_y_codigo(self):
         codigo = (
-            f'variable p = iniciar_proceso(["{sys.executable}", "-c", "print(40 + 2)"])\n'
+            f'variable p = iniciar_proceso(["{ruta_jp(sys.executable)}", "-c", "print(40 + 2)"])\n'
             "variable r = esperar_proceso(p)\n"
             "muestra(r.codigo, recortar(r.salida), r.terminado)\n"
         )
@@ -41,7 +46,7 @@ class TestProcesos(unittest.TestCase):
         codigo = (
             "variable procesos = []\n"
             "para i en 1..3 {\n"
-            f'    procesos.agregar(iniciar_proceso(["{sys.executable}", "-c", "import time; time.sleep(0.6)"]))\n'
+            f'    procesos.agregar(iniciar_proceso(["{ruta_jp(sys.executable)}", "-c", "import time; time.sleep(0.6)"]))\n'
             "}\n"
             "para p en procesos { esperar_proceso(p) }\n"
             'muestra("listo")\n'
@@ -54,7 +59,7 @@ class TestProcesos(unittest.TestCase):
 
     def test_limite_mata_al_proceso(self):
         codigo = (
-            f'variable p = iniciar_proceso(["{sys.executable}", "-c", "import time; time.sleep(30)"])\n'
+            f'variable p = iniciar_proceso(["{ruta_jp(sys.executable)}", "-c", "import time; time.sleep(30)"])\n'
             "variable r = esperar_proceso(p, 0.2)\n"
             "muestra(r.terminado, r.codigo == nulo)\n"
         )

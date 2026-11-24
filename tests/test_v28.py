@@ -21,6 +21,11 @@ from jp.lexer import tokenizar
 from jp.parser import parsear
 from jp.vm import MaquinaVM
 
+
+def ruta_jp(ruta) -> str:
+    """Una ruta del sistema dentro de un texto JP: se escapa la barra invertida."""
+    return str(ruta).replace(chr(92), chr(92) * 2)
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 
@@ -102,7 +107,7 @@ class TestEstaticoReal(unittest.TestCase):
             (raiz / "publica").mkdir()
             (raiz / "publica" / "estilo.css").write_text("body { color: red; }", encoding="utf-8")
             codigo = (
-                f'importar "{RAIZ}/biblioteca/web.jp" como web\n'
+                f'importar "{ruta_jp(RAIZ)}/biblioteca/web.jp" como web\n'
                 "variable app = web.Aplicacion()\n"
                 f'app.estatico("/static", "{raiz.as_posix()}/publica")\n'
                 f"app.escuchar({puerto})\n"

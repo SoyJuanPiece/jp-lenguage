@@ -13,6 +13,7 @@ from jp.parser import parsear
 from jp.vm import MaquinaVM
 
 
+
 def ejecutar_en(maquina, codigo: str) -> str:
     buffer = io.StringIO()
     with redirect_stdout(buffer):

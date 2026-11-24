@@ -19,6 +19,10 @@ from jp.lexer import tokenizar
 from jp.parser import parsear
 from jp.vm import MaquinaVM
 
+def ruta_jp(ruta) -> str:
+    """Una ruta del sistema dentro de un texto JP: la barra invertida se escapa."""
+    return str(ruta).replace(chr(92), chr(92) * 2)
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 
@@ -88,7 +92,7 @@ class TestFechasSistemaPatrones(unittest.TestCase):
     def test_sistema(self):
         salida = paridad(
             'muestra(unir_ruta("a", "b.txt") == unir_ruta("a", "b.txt"), nombre_base("/x/y.jp"), extension_de("f.png"))\n'
-            f'variable r = ejecutar("{sys.executable} --version")\n'
+            f'variable r = ejecutar("{ruta_jp(sys.executable)} --version")\n'
             'muestra(r.codigo, contiene(r.salida + r.error, "Python"))'
         )
         self.assertEqual(salida, "verdadero y.jp .png\n0 verdadero\n")

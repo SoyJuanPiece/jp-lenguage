@@ -24,6 +24,11 @@ from jp.lexer import tokenizar
 from jp.parser import parsear
 from jp.vm import MaquinaVM
 
+
+def ruta_jp(ruta) -> str:
+    """Una ruta del sistema dentro de un texto JP: se escapa la barra invertida."""
+    return str(ruta).replace(chr(92), chr(92) * 2)
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 
@@ -79,7 +84,7 @@ class TestServidorPro(unittest.TestCase):
         puerto = sock.getsockname()[1]
         sock.close()
         codigo = (
-            f'importar "{RAIZ}/biblioteca/web.jp" como web\n'
+            f'importar "{ruta_jp(RAIZ)}/biblioteca/web.jp" como web\n'
             "variable app = web.Aplicacion()\n"
             'app.post("/api/suma", funcion(p) {\n'
             '    devuelve {cuerpo: {total: p.json.a + p.json.b}, estado: 201, cabeceras: {"X-App": "JP"}}\n'

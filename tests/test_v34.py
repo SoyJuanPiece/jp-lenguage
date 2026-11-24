@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -25,7 +26,19 @@ from jp.lexer import tokenizar  # noqa: E402
 from jp.parser import parsear  # noqa: E402
 from jp.vm import MaquinaVM  # noqa: E402
 
-MOTOR = RAIZ / "motor-c" / "jpvm"
+def _motor_c() -> Path:
+    """El motor en C, del entorno si está compilado fuera del repo."""
+    ruta = os.environ.get("JPVM")
+    if ruta:
+        return Path(ruta)
+    sufijo = ".exe" if os.name == "nt" else ""
+    return RAIZ / "motor-c" / f"jpvm{sufijo}"
+
+
+MOTOR = _motor_c()
+if not MOTOR.is_file():
+    raise unittest.SkipTest("motor en C sin compilar (make -C motor-c)")
+
 
 CLASES = """
 clase Punto {
@@ -103,13 +116,13 @@ class TestMotorCClases(unittest.TestCase):
         esperado = salida_vm(CLASES)
         resultado = salida_c(CLASES)
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
-        self.assertEqual(resultado.stdout.decode(), esperado)
+        self.assertEqual(resultado.stdout.decode().replace("\r\n", "\n"), esperado)
 
     def test_defectos_identicos(self):
         esperado = salida_vm(DEFECTOS)
         resultado = salida_c(DEFECTOS)
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
-        self.assertEqual(resultado.stdout.decode(), esperado)
+        self.assertEqual(resultado.stdout.decode().replace("\r\n", "\n"), esperado)
 
     def test_sin_iniciar_con_argumentos_es_error(self):
         resultado = salida_c("clase Vacia {\n}\nvariable v = Vacia(1)\n")

@@ -80,9 +80,17 @@ def instalar(entorno: Entorno, invocar=None) -> None:
         if not isinstance(comando, str) or not comando.strip():
             raise ErrorEjecucion("ejecutar() espera el comando en texto, ej: ejecutar('jp --version')")
         try:
-            partes = shlex.split(comando)
+            # En Windows `posix=True` se come las barras invertidas de las rutas
+            # (C:\\Users\\... se vuelve C:Users...): ahí se parte en modo no-posix
+            # y se quitan las comillas que ese modo deja puestas.
+            partes = shlex.split(comando, posix=os.name != "nt")
         except ValueError as e:
             raise ErrorEjecucion(f"comando mal formado: {e}") from None
+        if os.name == "nt":
+            partes = [
+                p[1:-1] if len(p) > 1 and p[0] == p[-1] and p[0] in "\"'" else p
+                for p in partes
+            ]
         try:
             proceso = subprocess.run(partes, capture_output=True, text=True, timeout=30)
         except FileNotFoundError:

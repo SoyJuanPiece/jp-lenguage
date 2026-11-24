@@ -8,6 +8,7 @@ con DESESTRUCTURAR (61). Todo coincide con la VM de Python.
 from __future__ import annotations
 
 import subprocess
+import os
 import sys
 import tempfile
 import unittest
@@ -24,7 +25,19 @@ from jp.compilar_nativo import (  # noqa: E402
 from jp.lexer import tokenizar  # noqa: E402
 from jp.parser import parsear  # noqa: E402
 
-MOTOR = RAIZ / "motor-c" / "jpvm"
+def _motor_c() -> Path:
+    """El motor en C, del entorno si está compilado fuera del repo."""
+    ruta = os.environ.get("JPVM")
+    if ruta:
+        return Path(ruta)
+    sufijo = ".exe" if os.name == "nt" else ""
+    return RAIZ / "motor-c" / f"jpvm{sufijo}"
+
+
+MOTOR = _motor_c()
+if not MOTOR.is_file():
+    raise unittest.SkipTest("motor en C sin compilar (make -C motor-c)")
+
 
 PROGRAMA = """
 variable lista = ["a", "b", "c"]
@@ -71,7 +84,7 @@ class TestDesestructurarEnC(unittest.TestCase):
             MaquinaVM().ejecutar(parsear(tokenizar(PROGRAMA)), directorio=str(RAIZ))
         resultado = salida_c(PROGRAMA)
         self.assertEqual(resultado.returncode, 0, resultado.stderr.decode())
-        self.assertEqual(resultado.stdout.decode(), buffer.getvalue())
+        self.assertEqual(resultado.stdout.decode().replace("\r\n", "\n"), buffer.getvalue())
 
     def test_largo_incorrecto_es_error(self):
         resultado = salida_c("variable [a, b] = [1]\n")

@@ -50,7 +50,7 @@ from .arbol import (
     NodoUnario,
     NodoVariable,
 )
-from .errores import ErrorEjecucion, ErrorJP
+from .errores import ErrorEjecucion, ErrorJP, SalidaPrograma
 
 
 # ----------------- Métodos de valor ("texto".mayusculas(), [1, 2].agregar(3), ...) -----------------
@@ -60,6 +60,16 @@ from .errores import ErrorEjecucion, ErrorJP
 # argumentos que recibe funcion (receptor + extras) y None significa varargs.
 # Lo llena _instalar_nativas, así que los métodos siguen a las nativas del módulo que se instale.
 _METODOS_VALOR: dict[type, dict[str, tuple]] = {}
+
+
+# Argumentos de la línea de comandos que verá argumentos() dentro del programa
+# (la CLI pone aquí lo que va después del archivo).
+ARGUMENTOS: list[str] = []
+
+
+def fijar_argumentos(valores: list[str]) -> None:
+    """Cambia lo que devuelve argumentos() dentro del programa."""
+    ARGUMENTOS[:] = list(valores)
 
 
 def _metodo_de_valor(objeto: object, nombre: str) -> object | None:
@@ -1246,6 +1256,15 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
                 raise ErrorEjecucion(f"numero() no puede convertir la cadena {valor!r}")
         raise ErrorEjecucion(f"numero() espera número o cadena, no {jp_a_texto(valor)!r}")
 
+    def argumentos() -> list[str]:
+        return list(ARGUMENTOS)
+
+    def salir(codigo: object = 0) -> None:
+        valor = 0 if codigo is None else codigo
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise ErrorEjecucion("salir() espera un número entero")
+        raise SalidaPrograma(int(valor))
+
     def rango(*args: object) -> list[int]:
         for a in args:
             if isinstance(a, bool) or not isinstance(a, (int, float)):
@@ -1256,6 +1275,8 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         if len(valores) == 2:
             return list(range(valores[0], valores[1]))
         if len(valores) == 3:
+            if valores[2] == 0:
+                raise ErrorEjecucion("rango() espera un paso distinto de 0")
             return list(range(valores[0], valores[1], valores[2]))
         raise ErrorEjecucion("rango() espera 1, 2 o 3 argumentos")
 
@@ -1655,6 +1676,8 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
         "numero": FuncionNativa("numero", numero, aridad=1),
         "texto": FuncionNativa("texto", texto, aridad=1),
         "rango": FuncionNativa("rango", rango),
+        "argumentos": FuncionNativa("argumentos", argumentos, aridad=0),
+        "salir": FuncionNativa("salir", salir),
         "leer": FuncionNativa("leer", leer),
         "azar": FuncionNativa("azar", azar, aridad=1),
         # texto

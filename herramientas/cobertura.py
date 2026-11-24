@@ -261,7 +261,9 @@ def medir(slugs: list[str] | None = None) -> list[Resultado]:
 
 
 def _tabla(resultados: list[Resultado]) -> str:
-    ancho = max(len(r.dominio) for r in resultados) + 2
+    # el ancho incluye la cabecera para que una tabla de un solo dominio
+    # (--solo) siga alineada
+    ancho = max([len("Dominio"), *(len(r.dominio) for r in resultados)]) + 2
     lineas = [f"{'Dominio':<{ancho}}{'Pasa':<8}{'Fase':<7}Motivo", "-" * (ancho + 60)]
     for r in resultados:
         estado = "sí" if r.ok else "no"

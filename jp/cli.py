@@ -16,8 +16,8 @@ import tempfile
 from pathlib import Path
 
 from . import __version__, recursos
-from .errores import ErrorEjecucion, ErrorJP, ErrorLexico, ErrorSintaxis
-from .interprete import Interprete, jp_a_texto
+from .errores import ErrorEjecucion, ErrorJP, ErrorLexico, ErrorSintaxis, SalidaPrograma
+from .interprete import Interprete, fijar_argumentos, jp_a_texto
 from .lexer import tokenizar
 from .parser import parsear
 from .vm import MaquinaVM
@@ -26,6 +26,9 @@ _USA_VM = "--interprete" not in sys.argv[1:]
 _TURBO = "--turbo" in sys.argv[1:]
 _NATIVO = "--nativo" in sys.argv[1:]
 _MOTOR_C = "--c" in sys.argv[1:]
+
+# Lo que va después del archivo en la línea de comandos; lo ve argumentos().
+_ARGS_PROGRAMA: list[str] = []
 
 # Los recursos (biblioteca/, motor-c/) están en la raíz del repositorio, pero
 # un `pip install` solo deja `jp/`: `recursos.raiz()` resuelve los dos casos.
@@ -58,14 +61,16 @@ def _compilar_nativo(fuente: str, ruta: str, codigo: str):
         return error
 
 
-def _ejecutar_motor_c(blob: bytes, aviso: bool = False) -> tuple[bool, str]:
-    """Ejecuta bytecode en el motor nativo. Devuelve (ok, motivo_del_fallo)."""
+def _ejecutar_motor_c(
+    blob: bytes, aviso: bool = False, argumentos_programa: list[str] | None = None
+) -> tuple[int, str]:
+    """Ejecuta bytecode en el motor nativo. Devuelve (código_de_salida, motivo)."""
     motor = recursos.binario_motor()
     if not motor.exists():
         # Instalado con pip no hay `make`: se compila una vez y queda en caché.
         motor = recursos.compilar_motor() or motor
     if not motor.exists():
-        return False, (
+        return 65, (
             f"no encuentro el motor nativo ({motor}).\n"
             "Compílalo una vez con:  make -C motor-c"
             "   (o instala cc/gcc; también se compila solo si hay compilador)"
@@ -74,14 +79,15 @@ def _ejecutar_motor_c(blob: bytes, aviso: bool = False) -> tuple[bool, str]:
         archivo.write(blob)
         ruta_jpb = archivo.name
     try:
-        proceso = subprocess.run([str(motor), ruta_jpb])
+        proceso = subprocess.run([str(motor), ruta_jpb, *(argumentos_programa or [])])
     except OSError as error:
         # Binario de otra plataforma, sin permisos, etc.: se avisa y el
         # programa sigue con los motores de Python en vez de reventar.
-        return False, f"no pude ejecutar el motor nativo ({motor}): {error.strerror or error}"
-    finally:
         os.unlink(ruta_jpb)
-    return proceso.returncode == 0, f"el programa terminó con código {proceso.returncode}"
+        return 65, f"no pude ejecutar el motor nativo ({motor}): {error.strerror or error}"
+    os.unlink(ruta_jpb)
+    # El código de salida es del programa (un salir(3) no es un fallo de jp).
+    return proceso.returncode, ""
 
 _BANNER = r"""
      ██╗██╗
@@ -149,10 +155,10 @@ def _modo_archivo(ruta: str) -> int:
     if _MOTOR_C:
         compilado = _compilar_nativo(fuente, ruta, fuente)
         if isinstance(compilado, bytes):
-            ok, motivo = _ejecutar_motor_c(compilado)
-            if not ok:
+            codigo, motivo = _ejecutar_motor_c(compilado, argumentos_programa=_ARGS_PROGRAMA)
+            if motivo:
                 print(f"jp: {motivo}", file=sys.stderr)
-            return 0 if ok else 65
+            return codigo
         print(
             f"jp: el motor nativo aún no soporta esto: {compilado.que} "
             f"(línea {compilado.linea}). Uso el motor de Python, sin problema.",
@@ -169,6 +175,8 @@ def _modo_archivo(ruta: str) -> int:
     interprete: Interprete | MaquinaVM = MaquinaVM() if _USA_VM else Interprete()
     try:
         ok = ejecutar_fuente(fuente, interprete, ruta)
+    except SalidaPrograma as salida:
+        return salida.codigo
     except KeyboardInterrupt:
         print("\njp: interrumpido", file=sys.stderr)
         return 130
@@ -499,7 +507,10 @@ def _modo_revisar(ruta: str) -> int:
 
 
 def _modo_codigo(codigo: str) -> int:
-    ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
+    try:
+        ok = ejecutar_fuente(codigo, MaquinaVM() if _USA_VM else Interprete())
+    except SalidaPrograma as salida:
+        return salida.codigo
     return 0 if ok else 65
 
 
@@ -550,7 +561,10 @@ def _repl() -> int:
 
         buffer_multilinea.clear()
         numero_linea = 1
-        ok = ejecutar_fuente(fuente, interprete, "<repl>")
+        try:
+            ok = ejecutar_fuente(fuente, interprete, "<repl>")
+        except SalidaPrograma as salida:
+            return salida.codigo
         # En el REPL, el valor de la última expresión se muestra como en Python
         if ok and interprete.ultimo_valor is not None:
             print(f"=> {jp_a_texto(interprete.ultimo_valor)}")
@@ -667,7 +681,7 @@ def _modo_binario(ruta: str, salida: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    global _USA_VM, _TURBO, _NATIVO, _MOTOR_C
+    global _USA_VM, _TURBO, _NATIVO, _MOTOR_C, _ARGS_PROGRAMA
     _salida_utf8()
     argumentos = argv if argv is not None else sys.argv[1:]
     # `jp lsp`: servidor de lenguaje para editores (no es una bandera porque
@@ -685,6 +699,11 @@ def main(argv: list[str] | None = None) -> int:
         description="JP — un pequeño lenguaje de programación en español.",
     )
     parser.add_argument("archivo", nargs="?", help="archivo .jp a ejecutar")
+    parser.add_argument(
+        "resto",
+        nargs="*",
+        help="argumentos para el programa; los devuelve argumentos()",
+    )
     parser.add_argument(
         "--interprete",
         action="store_true",
@@ -788,6 +807,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--salida", help="nombre del archivo de salida")
     parser.add_argument("-V", "--version", action="version", version=f"jp {__version__}")
     args = parser.parse_args(argv)
+    _ARGS_PROGRAMA = list(getattr(args, "resto", []) or [])
+    fijar_argumentos(_ARGS_PROGRAMA)
 
     if args.cobertura:
         if args.archivo is None:

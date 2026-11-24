@@ -13,13 +13,16 @@ Uso:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-MOTOR = RAIZ / "motor-c" / "jpvm"
+# $JPVM permite usar un binario compilado aparte (Windows, zig, un build
+# concreto); si no, el que deja `make -C motor-c`.
+MOTOR = Path(os.environ.get("JPVM") or RAIZ / "motor-c" / "jpvm")
 sys.path.insert(0, str(RAIZ))
 
 from jp.compilar_nativo import NoSoportadoNativo, compilar_a_bytes  # noqa: E402

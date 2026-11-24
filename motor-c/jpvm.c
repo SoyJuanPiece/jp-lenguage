@@ -2614,17 +2614,44 @@ static Valor nativa_json_texto(VM *v, int argc, Valor *args) {
     return de_texto(resultado);
 }
 
+/* Argumentos de la línea de comandos que ve el programa (todo lo que va
+ * después del archivo): los devuelve argumentos(). */
+static int g_nargs = 0;
+static char **g_args = NULL;
+
+static Valor nativa_argumentos(VM *v, int argc, Valor *args) {
+    (void)v;
+    (void)argc;
+    (void)args;
+    Lista *l = nueva_lista(8);
+    for (int i = 0; i < g_nargs; i++)
+        lista_agregar(l, de_texto(nuevo_texto_largo(g_args[i], (uint32_t)strlen(g_args[i]))));
+    return de_lista(l);
+}
+
+static Valor nativa_salir(VM *v, int argc, Valor *args) {
+    (void)v;
+    int codigo = argc > 0 ? (int)a_entero_estricto(args[0], "salir") : 0;
+    fflush(stdout);
+    exit(codigo);
+    return de_nulo();
+}
+
 static Valor nativa_rango(VM *v, int argc, Valor *args) {
     (void)v;
-    int64_t inicio, fin, paso = 1;
-    if (argc == 1) { inicio = 1; fin = a_entero_estricto(args[0], "rango"); }
-    else if (argc == 2) { inicio = a_entero_estricto(args[0], "rango"); fin = a_entero_estricto(args[1], "rango"); }
-    else { inicio = a_entero_estricto(args[0], "rango"); fin = a_entero_estricto(args[1], "rango");
-           paso = a_entero_estricto(args[2], "rango"); }
-    if (paso <= 0) error_en(0, "rango() espera un paso mayor que 0");
+    if (argc < 1 || argc > 3) error_en(0, "rango() espera 1, 2 o 3 argumentos");
+    int64_t inicio = 0, fin, paso = 1;
+    if (argc == 1) {
+        fin = a_entero_estricto(args[0], "rango");
+    } else {
+        inicio = a_entero_estricto(args[0], "rango");
+        fin = a_entero_estricto(args[1], "rango");
+    }
+    if (argc == 3) paso = a_entero_estricto(args[2], "rango");
+    if (paso == 0) error_en(0, "rango() espera un paso distinto de 0");
     Lista *l = nueva_lista(16);
-    if (inicio <= fin) for (int64_t i = inicio; i < fin; i += paso) lista_agregar(l, de_entero(i));
-    else for (int64_t i = inicio; i > fin; i -= paso) lista_agregar(l, de_entero(i));
+    if (paso > 0) for (int64_t i = inicio; i < fin; i += paso) lista_agregar(l, de_entero(i));
+    else for (int64_t i = inicio; i > fin; i += paso) lista_agregar(l, de_entero(i));
     return de_lista(l);
 }
 
@@ -5029,12 +5056,21 @@ static char *leer_fuente(const char *ruta, size_t *largo) {
 int main(int argc, char **argv) {
     const char *ruta = NULL;
     int modo_info = 0;
+    int indice_ruta = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--info") == 0) modo_info = 1;
         else if (strcmp(argv[i], "--version") == 0) {
             printf("jpvm 0.1 (motor nativo de JP)\n");
             return 0;
-        } else ruta = argv[i];
+        } else if (!ruta) {
+            ruta = argv[i];
+            indice_ruta = i;
+        }
+    }
+    /* lo que va después del archivo son argumentos del programa */
+    if (indice_ruta && indice_ruta + 1 < argc) {
+        g_args = argv + indice_ruta + 1;
+        g_nargs = argc - indice_ruta - 1;
     }
     if (!ruta && !(jp_chunk_embebido != NULL)) {
         fprintf(stderr, "uso: jpvm [--info] programa.jpb|programa.jp\n");
@@ -5133,6 +5169,8 @@ int main(int argc, char **argv) {
     instalar_nativa("invertir", 1, nativa_invertir);
     instalar_nativa("unir", -1, nativa_unir);
     instalar_nativa("rango", -1, nativa_rango);
+    instalar_nativa("argumentos", 0, nativa_argumentos);
+    instalar_nativa("salir", -1, nativa_salir);
     instalar_nativa("leer", -1, nativa_leer);
     instalar_nativa("claves", 1, nativa_claves);
     instalar_nativa("valores", 1, nativa_valores);

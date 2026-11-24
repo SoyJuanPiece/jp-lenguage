@@ -1,8 +1,7 @@
 # Puerta · CLI (lo que resuelven Go y Rust con cobra/clap)
 #
 # Subcomandos, ayuda, lectura de argumentos y código de salida propio.
-# Hoy el lenguaje no expone ni los argumentos del proceso (`argumentos`) ni
-# `salir`, así que la puerta falla en la primera línea.
+# Necesita `argumentos()` y `salir(código)`, que llegan en F1.
 #
 #   jpvm pruebas/cobertura/02-cli.jp agregar "leche"
 

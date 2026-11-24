@@ -50,3 +50,11 @@ class ErrorEjecucion(ErrorJP):
     """Error en tiempo de ejecución (tipos incorrectos, división por cero...)."""
 
     titulo = "Error de ejecución"
+
+
+class SalidaPrograma(Exception):
+    """El programa llamó a salir(): se detiene con ese código y no es un error."""
+
+    def __init__(self, codigo: int = 0):
+        super().__init__(codigo)
+        self.codigo = codigo

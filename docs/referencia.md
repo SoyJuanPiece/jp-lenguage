@@ -1,6 +1,6 @@
 # Referencia de la biblioteca estándar de JP
 
-Generado por `herramientas/referencia.py` a partir de las 149 funciones nativas del intérprete (JP 1.31.0).
+Generado por `herramientas/referencia.py` a partir de las 163 funciones nativas del intérprete (JP 1.37.0).
 No se edita a mano: se regenera.
 
 La columna «firma» la rellena el propio registro de nativas; el número de
@@ -91,9 +91,12 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 
 | Firma | Qué hace |
 |---|---|
+| `_externo_llamar(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
+| `a_diccionario(...)` | a_diccionario([[clave, valor], ...]) -> diccionario. |
 | `abrir_bd(...)` | — |
 | `agregar_archivo(a1, a2)` | — |
 | `ahora()` | Segundos desde 1970 (la 'marca de tiempo' de siempre). |
+| `argumentos()` | — |
 | `bd_cerrar(...)` | — |
 | `bd_consultar(...)` | — |
 | `bd_ejecutar(...)` | — |
@@ -116,11 +119,14 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 | `distancia(a1, a2)` | — |
 | `ejecutar(a1)` | Ejecuta un programa y devuelve {codigo, salida, error}. |
 | `encontrar_patrones(a1, a2)` | — |
+| `enumerar(...)` | enumerar(lista) -> [[0, x], [1, y], ...]; el inicio es opcional. |
 | `es_archivo(a1)` | — |
 | `es_carpeta(a1)` | — |
 | `escalar_matriz(a1, a2)` | — |
 | `escribir_archivo(a1, a2)` | — |
 | `escribir_csv(a1, a2)` | — |
+| `escribir_entero(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
+| `escribir_puntero(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
 | `esperar(a1)` | — |
 | `esperar_proceso(...)` | — |
 | `existe_archivo(a1)` | — |
@@ -145,7 +151,11 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 | `leer_archivo(a1)` | — |
 | `leer_csv(a1)` | — |
 | `leer_csv_texto(a1)` | — |
+| `leer_entero(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
 | `leer_entorno(...)` | — |
+| `leer_puntero(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
+| `leer_texto(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
+| `liberar(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
 | `lista_archivos(a1)` | — |
 | `matriz_aplicar(a1, a2)` | — |
 | `matriz_vector(a1, a2)` | — |
@@ -163,10 +173,13 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 | `proceso_en_curso(...)` | — |
 | `producto_punto(a1, a2)` | Suma de a[i]*b[i] de dos listas del mismo largo (nucleo de toda IA). |
 | `promedio(a1)` | — |
+| `rebanada(...)` | El corte x[a:b:c] de Python: partes opcionales y negativos. |
 | `reemplazar_patron(a1, a2, a3)` | — |
+| `reservar(...)` | FFI y memoria de `externo`: sólo en el motor C (`jp --c`). |
 | `restar_matrices(a1, a2)` | — |
 | `restar_vectores(a1, a2)` | — |
 | `resumen(a1)` | — |
+| `salir(...)` | — |
 | `seno(a1)` | — |
 | `separar_patron(a1, a2)` | — |
 | `servir(...)` | servir(puerto, manejador[, anfitrion]): escucha para siempre. |
@@ -191,6 +204,7 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 | `transponer(a1)` | — |
 | `unir_ruta(...)` | — |
 | `varianza(a1)` | Varianza de la población (la de statistics.pvariance). |
+| `zip(...)` | zip(a, b) -> [[a0, b0], [a1, b1], ...] hasta el más corto. |
 
 ## Palabras clave
 
@@ -202,6 +216,7 @@ patrones, tablas, servidor, seguridad, gráficos, base de datos, red).
 | `continuar` | — |
 | `elegir` | — |
 | `en` | — |
+| `externo` | — |
 | `falso` | — |
 | `finalmente` | — |
 | `fun` | funcion, función |

@@ -1,40 +1,73 @@
 # Puerta · FFI y sistemas (lo que en Rust es `extern "C"` y en C++ `dlopen`)
 #
-# Llamar a bibliotecas de C que ya están en la máquina: zlib, curl y sqlite3.
+# Llamar a bibliotecas de C que ya están en la máquina: zlib y sqlite3.
 # El plan la pone como fase F3 porque es el multiplicador: sin escribir nada
 # nuevo, desbloquea TLS, bases de datos, imágenes y compresión.
 #
 #   jpvm pruebas/cobertura/08-ffi.jp
+#
+# `externo "z"` busca libz.so / zlib1.dll; `externo "sqlite3"`, libsqlite3.so /
+# sqlite3.dll. Si la biblioteca no está instalada, el programa lo dice con ese
+# nombre y sale con error, no se cae el motor.
 
-externo "zlib" {
-    funcion comprimir(destino: puntero, largo_destino: puntero, origen: texto, largo: entero) -> entero
+externo "z" {
+    # int compress(Bytef *dest, uLongf *destLen, const Bytef *source, uLong sourceLen)
+    funcion compress(destino: puntero, largo_destino: puntero, origen: texto, largo: entero) -> entero
 }
 
 externo "sqlite3" {
+    # int sqlite3_initialize(void) — algunas compilaciones no arrancan solas
+    funcion sqlite3_initialize() -> entero
+    # int sqlite3_open(const char *filename, sqlite3 **ppDb)
     funcion sqlite3_open(nombre: texto, bd: puntero) -> entero
+    # int sqlite3_exec(sqlite3*, const char *sql, ..., char **errmsg)
     funcion sqlite3_exec(bd: puntero, sql: texto, vuelta: puntero, arg: puntero, error: puntero) -> entero
+    # int sqlite3_close(sqlite3*)
     funcion sqlite3_close(bd: puntero) -> entero
+    # int sqlite3_changes(sqlite3*)
+    funcion sqlite3_changes(bd: puntero) -> entero
 }
 
-externo "curl" {
-    funcion curl_easy_init() -> puntero
-    funcion curl_easy_setopt(curl: puntero, opcion: entero, valor: texto) -> entero
-    funcion curl_easy_perform(curl: puntero) -> entero
-}
-
-variable origen = repetir("juanperez", 10000)
-variable destino = reservar(longitud(origen) * 2)
+# --- zlib: comprimir de verdad, con la memoria reservada desde JP -------------
+variable origen = repetir("juanperez", 1000)
+variable capacidad = longitud(origen) * 2
+variable destino = reservar(capacidad)
 variable largo = reservar(8)
-variable codigo = comprimir(destino, largo, origen, longitud(origen))
-imprime("zlib:", codigo, "| comprimido:", leer_entero(largo), "de", longitud(origen))
+escribir_entero(largo, capacidad)
 
-variable bd = reservar(8)
-si sqlite3_open(":memory:", bd) != 0 {
+variable codigo = compress(destino, largo, origen, longitud(origen))
+si codigo != 0 {
+    lanzar("zlib falló con código " + texto(codigo))
+}
+variable comprimido = leer_entero(largo)
+imprime("zlib:", comprimido < longitud(origen), "|", comprimido, "de", longitud(origen))
+
+# --- sqlite3: abrir, crear tabla, insertar y consultar -----------------------
+si sqlite3_initialize() != 0 {
+    lanzar("SQLite no arrancó")
+}
+variable ranura = reservar(8)
+si sqlite3_open(":memory:", ranura) != 0 {
     lanzar("no se pudo abrir SQLite")
 }
-imprime("sqlite:", sqlite3_exec(leer_puntero(bd), "create table t(x)", nulo, nulo, nulo))
-sqlite3_close(leer_puntero(bd))
+variable bd = leer_puntero(ranura)
 
-variable curl = curl_easy_init()
-curl_easy_setopt(curl, 10002, "https://ejemplo.com")   # CURLOPT_URL
-imprime("curl:", curl_easy_perform(curl))
+variable sql1 = "create table t(x entero)"
+variable sql2 = "insert into t values (1), (2), (3)"
+variable sql3 = "select count(*) from t"
+si sqlite3_exec(bd, sql1, nulo, nulo, nulo) != 0 {
+    lanzar("falló el create")
+}
+si sqlite3_exec(bd, sql2, nulo, nulo, nulo) != 0 {
+    lanzar("falló el insert")
+}
+si sqlite3_exec(bd, sql3, nulo, nulo, nulo) != 0 {
+    lanzar("falló el select")
+}
+imprime("sqlite:", sqlite3_changes(bd))
+imprime("sqlite:", sqlite3_close(bd))
+
+liberar(ranura)
+liberar(largo)
+liberar(destino)
+imprime("ffi: ok")

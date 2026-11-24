@@ -1,0 +1,11 @@
+# 2. Texto de ida y vuelta: strlen() y strcmp() reciben cadenas de JP.
+externo "c" {
+    funcion strlen(s: texto) -> entero
+    funcion strcmp(a: texto, b: texto) -> entero
+}
+
+imprime(strlen("hola"))
+imprime(strlen(""))
+imprime(strlen("Maturín"))
+imprime(strcmp("abc", "abc") == 0)
+imprime(strcmp("abc", "abd") < 0)

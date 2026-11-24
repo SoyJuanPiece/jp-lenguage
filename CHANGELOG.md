@@ -1,5 +1,52 @@
 # Cambios de JP
 
+## 1.37.0 — FFI: llamar a C desde JP (F3, base) (2026-11-24)
+
+Abre **F3** de [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md): JP deja
+de estar encerrado en su biblioteca estándar y llama a las bibliotecas que ya
+están en la máquina, sin escribir una línea de C.
+
+```jp
+externo "z" {
+    funcion compress(destino: puntero, largo_destino: puntero,
+                     origen: texto, largo: entero) -> entero
+}
+```
+
+- **`externo "lib" { funcion f(a: tipo, ...) -> tipo }`**: azúcar del parser,
+  como las comprensiones. Cada función declarada se convierte en una función JP
+  normal que reenvía a `_externo_llamar`; la VM hace el `dlopen`/`LoadLibrary`,
+  el `dlsym`/`GetProcAddress` y el paso de argumentos. **Cero nodos nuevos,
+  cero bytecode nuevo**, y la paridad de AST con el parser de Python se man-
+  tiene (94/94 archivos).
+- **Tipos de la firma**: `entero`, `texto`, `puntero` y `booleano` como
+  argumentos; `entero`, `numero`, `texto`, `puntero`, `booleano` y `nulo` como
+  retorno. Un `texto` viaja como `const char *` UTF-8 terminado en NUL.
+- **`puntero`**: tipo opaco nuevo en el lenguaje. `tipo(p)` dice `"puntero"`,
+  se compara por dirección y nunca se desreferencia solo.
+- **Memoria para C**: `reservar(bytes)`, `liberar(p)`, `leer_entero`,
+  `escribir_entero`, `leer_puntero`, `escribir_puntero` y `leer_texto`. Es lo
+  que hacía falta para las funciones que devuelven por puntero y para que C
+  escriba en memoria de JP.
+- **Errores atrapables**: una biblioteca que no está o un símbolo que no existe
+  son `ErrorEjecucion` de JP, no un choque del motor.
+- **Búsqueda por plataforma**: `externo "c"` es el runtime de C (`libc.so.6` /
+  `msvcrt.dll`), y se prueban los nombres reales de cada biblioteca
+  (`libz.so.N`, `zlib1.dll`, `sqlite3.dll`, `libcurl.dll`...).
+- **El motor de Python entiende la sintaxis pero no la ejecuta**: avisa con un
+  mensaje claro («necesita el motor C: `jp --c`»), para que el LSP y el
+  formateador sigan funcionando sin duplicar el FFI.
+- **Puerta**: 7 programas en `pruebas/f3/` y la puerta del medidor de cobertura
+  pasa de verdad — zlib comprime 9.000 bytes a 53 y sqlite3 crea una tabla,
+  inserta 3 filas y las cuenta. `herramientas/cobertura.py` pasa de **3/11** a
+  **4/11** dominios.
+
+Lo que esta entrega no incluye todavía, dicho claro: los argumentos `numero`
+(`double`) aún no se pasan a C; los *structs* por valor y los *callbacks* de C
+hacia JP no están; y `libcurl` no se pudo probar porque no está instalado en la
+máquina de desarrollo (zlib y sqlite3 sí). El dominio «Red y protocolos» sigue
+siendo F4.
+
 ## 1.36.0 — Ergonomía diaria (F1 del roadmap) (2026-11-24)
 
 Cierra **F1** de [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md): el

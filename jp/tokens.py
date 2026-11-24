@@ -76,6 +76,7 @@ class TToken(Enum):
     IMPORTAR = auto()     # importar
     CLASE = auto()        # clase
     HEREDA = auto()       # hereda
+    EXTERNO = auto()      # externo
 
     # Especiales
     FIN_DE_ARCHIVO = auto()
@@ -120,6 +121,7 @@ PALABRAS_CLAVE: dict[str, TToken] = {
     "importar": TToken.IMPORTAR,
     "clase": TToken.CLASE,
     "hereda": TToken.HEREDA,
+    "externo": TToken.EXTERNO,
 }
 
 NOMBRES_TOKEN: dict[TToken, str] = {
@@ -183,5 +185,6 @@ NOMBRES_TOKEN: dict[TToken, str] = {
     TToken.IMPORTAR: "'importar'",
     TToken.CLASE: "'clase'",
     TToken.HEREDA: "'hereda'",
+    TToken.EXTERNO: "'externo'",
     TToken.FIN_DE_ARCHIVO: "fin del archivo",
 }

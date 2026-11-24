@@ -50,7 +50,7 @@ from .tokens import TToken, Token
 # o después de un punto (ej: d.no), igual que en Python o JavaScript.
 _TIPOS_ANOTABLES = {
     "numero", "entero", "texto", "booleano", "lista", "diccionario",
-    "funcion", "nulo", "cualquiera",
+    "funcion", "nulo", "cualquiera", "puntero",
 }
 
 _CLAVES_VALIDAS = {
@@ -76,6 +76,9 @@ class Parser:
     def __init__(self, tokens: list[Token]):
         self.tokens = tokens
         self.pos = 0
+        # Sentencias extra que una producción debe emitir: `externo` declara N
+        # funciones donde va una sola sentencia (igual que en el parser C).
+        self._pendientes: list[Nodo] = []
 
     # ---------- helpers ----------
 
@@ -109,6 +112,8 @@ class Parser:
         sentencias: list[Nodo] = []
         while self._actual().tipo != TToken.FIN_DE_ARCHIVO:
             sentencias.append(self._sentencia())
+            sentencias.extend(self._pendientes)
+            self._pendientes = []
         return NodoPrograma(sentencias=sentencias)
 
 
@@ -142,6 +147,8 @@ class Parser:
                 return self._sentencia_mientras()
             if self._coincide(TToken.PARA):
                 return self._sentencia_para()
+            if self._coincide(TToken.EXTERNO):
+                return self._sentencia_externo()
             if self._coincide(TToken.LLAVE_IZQ):
                 return self._bloque()
             if self._actual().tipo == TToken.CORCHETE_IZQ and self._es_patron_desestructuracion():
@@ -250,13 +257,14 @@ class Parser:
         """Lee ': tipo' ya consumido el ':' y valida el nombre del tipo."""
         token = self._esperar(
             TToken.IDENTIFICADOR,
-            "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, funcion, nulo o cualquiera",
+            "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, "
+            "funcion, nulo, puntero o cualquiera",
         )
         tipo = token.lexema.replace("número", "numero")
         if tipo not in _TIPOS_ANOTABLES:
             raise ErrorSintaxis(
                 f"tipo desconocido '{token.lexema}': usa numero, entero, texto, booleano, "
-                "lista, diccionario, funcion, nulo o cualquiera",
+                "lista, diccionario, funcion, nulo, puntero o cualquiera",
                 token.linea, token.columna,
             )
         return tipo
@@ -422,9 +430,90 @@ class Parser:
         sentencias: list[Nodo] = []
         while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
             sentencias.append(self._sentencia())
+            sentencias.extend(self._pendientes)
+            self._pendientes = []
         self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar el bloque")
         declara = any(isinstance(s, (NodoDeclaracionVar, NodoDeclaracionLista, NodoImportar, NodoFuncion)) for s in sentencias)
         return NodoBloque(sentencias=sentencias, declara=declara)
+
+    def _sentencia_externo(self) -> Nodo:
+        """`externo "libz" { funcion f(a: entero) -> entero }`.
+
+        Es azúcar del parser, igual que en motor-c/parser.c: cada función
+        declarada se convierte en una función JP normal que reenvía a
+        `_externo_llamar` con la firma como texto. No añade nodos ni bytecode.
+        """
+        biblioteca = self._esperar(
+            TToken.CADENA,
+            'se esperaba el nombre de la biblioteca entre comillas: externo "libz" { ... }',
+        )
+        self._esperar(TToken.LLAVE_IZQ, "se esperaba '{' tras el nombre de la biblioteca")
+        funciones: list[Nodo] = []
+        while self._actual().tipo not in (TToken.LLAVE_DER, TToken.FIN_DE_ARCHIVO):
+            while self._coincide(TToken.PUNTO_Y_COMA):
+                pass
+            if self._actual().tipo == TToken.LLAVE_DER:
+                break
+            if not self._coincide(TToken.FUN):
+                raise self._error(
+                    "dentro de 'externo' sólo van funciones: funcion nombre(a: tipo) -> tipo"
+                )
+            nombre = self._esperar(TToken.IDENTIFICADOR, "se esperaba el nombre de la función externa")
+            self._esperar(TToken.PAREN_IZQ, "se esperaba '(' tras el nombre de la función externa")
+            parametros: list[str] = []
+            tipos: list[str] = []
+            if self._actual().tipo != TToken.PAREN_DER:
+                while True:
+                    parametro = self._esperar(TToken.IDENTIFICADOR, "se esperaba un nombre de parámetro")
+                    self._esperar(
+                        TToken.DOSPUNTOS,
+                        "cada parámetro externo necesita su tipo C: nombre: entero",
+                    )
+                    tipos.append(self._tipo_anotado())
+                    parametros.append(parametro.lexema)
+                    if not self._coincide(TToken.COMA):
+                        break
+            self._esperar(TToken.PAREN_DER, "se esperaba ')' tras los parámetros externos")
+            tipo_retorno = None
+            if self._coincide(TToken.MENOS):
+                self._esperar(TToken.MAYOR, "se esperaba '>' en '-> tipo'")
+                tipo_retorno = self._tipo_anotado()
+            elif self._coincide(TToken.DOSPUNTOS):
+                tipo_retorno = self._tipo_anotado()
+            linea = nombre.linea
+            argumentos: list[Nodo] = [
+                NodoCadena(valor=biblioteca.literal, linea=linea),
+                NodoCadena(valor=nombre.lexema, linea=linea),
+                NodoCadena(valor=tipo_retorno or "nulo", linea=linea),
+                NodoCadena(valor=",".join(tipos), linea=linea),
+            ]
+            argumentos.extend(NodoVariable(nombre=p, linea=linea) for p in parametros)
+            llamada = NodoLlamada(
+                callee=NodoVariable(nombre="_externo_llamar", linea=linea),
+                argumentos=argumentos,
+                linea=linea,
+            )
+            funciones.append(
+                NodoFuncion(
+                    nombre=nombre.lexema,
+                    parametros=parametros,
+                    cuerpo=NodoBloque(
+                        sentencias=[NodoRetorna(valor=llamada, linea=linea)], declara=False
+                    ),
+                    linea=linea,
+                    defectos=[None] * len(parametros),
+                    tipos=list(tipos),
+                )
+            )
+        self._esperar(TToken.LLAVE_DER, "se esperaba '}' para cerrar el bloque 'externo'")
+        if not funciones:
+            raise ErrorSintaxis(
+                "el bloque 'externo' no declara ninguna función",
+                biblioteca.linea,
+                biblioteca.columna,
+            )
+        self._pendientes.extend(funciones[1:])
+        return funciones[0]
 
     def _sentencia_expresion(self) -> Nodo:
         token = self._actual()

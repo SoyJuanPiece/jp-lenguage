@@ -1324,6 +1324,18 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
             resultado[par[0]] = par[1]
         return resultado
 
+    def externo_sin_motor_c(*_argumentos: object) -> object:
+        """FFI y memoria de `externo`: sólo en el motor C (`jp --c`).
+
+        El parser entiende la sintaxis en los dos motores (el LSP y el
+        formateador la necesitan), pero el enlace con bibliotecas de C y el
+        acceso a punteros viven sólo en jpvm: dos implementaciones del FFI
+        serían el doble de superficie para la misma funcionalidad.
+        """
+        raise ErrorEjecucion(
+            "el bloque 'externo' (FFI) necesita el motor C: ejecuta con 'jp --c archivo.jp'"
+        )
+
     def rango(*args: object) -> list[int]:
         for a in args:
             if isinstance(a, bool) or not isinstance(a, (int, float)):
@@ -1728,6 +1740,15 @@ def _instalar_nativas(entorno: Entorno, invocar=None) -> None:
     }
 
     nativas = {
+        "_externo_llamar": FuncionNativa("_externo_llamar", externo_sin_motor_c),
+        # Memoria para el FFI: también es del motor C.
+        "reservar": FuncionNativa("reservar", externo_sin_motor_c),
+        "liberar": FuncionNativa("liberar", externo_sin_motor_c),
+        "leer_entero": FuncionNativa("leer_entero", externo_sin_motor_c),
+        "escribir_entero": FuncionNativa("escribir_entero", externo_sin_motor_c),
+        "leer_puntero": FuncionNativa("leer_puntero", externo_sin_motor_c),
+        "escribir_puntero": FuncionNativa("escribir_puntero", externo_sin_motor_c),
+        "leer_texto": FuncionNativa("leer_texto", externo_sin_motor_c),
         "muestra": FuncionNativa("muestra", muestra),
         "imprime": FuncionNativa("imprime", muestra),  # alias en español
         "longitud": FuncionNativa("longitud", longitud, aridad=1),

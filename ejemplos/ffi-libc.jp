@@ -1,0 +1,47 @@
+# FFI: llamar a funciones de C desde JP, sin escribir C.
+#
+# `externo "c"` enlaza con el runtime de C de la plataforma (libc.so.6 en
+# Linux, msvcrt.dll en Windows). Los tipos de la firma son los de C:
+#
+#   entero   -> int / long (64 bits)
+#   numero   -> double
+#   texto    -> const char * (cadena UTF-8 terminada en NUL)
+#   puntero  -> void * (opaco: JP no puede desreferenciarlo solo)
+#
+# Para leer y escribir en un puntero están reservar(), liberar(),
+# leer_entero(), escribir_entero(), leer_puntero() y leer_texto().
+#
+#   jp --c ejemplos/ffi-libc.jp
+
+externo "c" {
+    funcion abs(n: entero) -> entero
+    funcion strlen(s: texto) -> entero
+    funcion getenv(nombre: texto) -> texto
+    funcion time(reloj: puntero) -> entero
+    funcion strcpy(destino: puntero, origen: texto) -> puntero
+}
+
+imprime("abs(-7) =", abs(-7))
+imprime("strlen(\"Maturín\") =", strlen("Maturín"))
+
+variable casa = getenv("HOME")
+si casa == nulo {
+    casa = getenv("USERPROFILE")
+}
+si casa == nulo {
+    casa = "(sin variable de casa)"
+}
+imprime("casa =", casa)
+
+# Un puntero que escribe C y lee JP.
+variable texto = reservar(64)
+strcpy(texto, "escrito por C")
+imprime("memoria =", leer_texto(texto))
+liberar(texto)
+
+# Una función de C que devuelve por puntero: time(&t).
+variable reloj = reservar(8)
+variable ahora = time(reloj)
+imprime("time() =", ahora, "| coincide:", leer_entero(reloj) == ahora)
+imprime("año aproximado =", 1970 + entero(ahora / 31536000))
+liberar(reloj)

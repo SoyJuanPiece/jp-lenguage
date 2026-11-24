@@ -24,6 +24,9 @@ typedef struct {
     size_t pos;
     char *error;
     size_t error_largo;
+    /* Sentencias adicionales que una sola producción debe emitir: es lo que
+     * necesita `externo`, que declara N funciones donde va una sentencia. */
+    JpNodos pendientes;
 } Parser;
 
 /* ---------------------------------------------------------- utilidades */
@@ -938,11 +941,12 @@ static JpNodo *bloque(Parser *p);
 static int tipo_anotado(Parser *p, char **destino) {
     static const char *TIPOS[] = {
         "numero", "entero", "texto", "booleano", "lista", "diccionario",
-        "funcion", "nulo", "cualquiera",
+        "funcion", "nulo", "cualquiera", "puntero",
     };
     JpToken *token = esperar(
         p, T_IDENTIFICADOR,
-        "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, funcion, nulo o cualquiera");
+        "se esperaba un tipo: numero, entero, texto, booleano, lista, diccionario, "
+        "funcion, nulo, puntero o cualquiera");
     if (!token) return 0;
     char normalizado[64];
     snprintf(normalizado, sizeof normalizado, "%s", token->lexema ? token->lexema : "");
@@ -955,7 +959,7 @@ static int tipo_anotado(Parser *p, char **destino) {
     }
     fallar(p, token->linea, token->columna,
            "tipo desconocido '%s': usa numero, entero, texto, booleano, "
-           "lista, diccionario, funcion, nulo o cualquiera",
+           "lista, diccionario, funcion, nulo, puntero o cualquiera",
            token->lexema ? token->lexema : "");
     return 0;
 }
@@ -1290,6 +1294,141 @@ static JpNodo *sentencia_desestructuracion(Parser *p) {
     return envoltorio;
 }
 
+/* ---------- externo: FFI como azúcar del parser ---------- */
+
+/* `externo "libz" { funcion crc32(datos: puntero, n: entero) -> entero }`
+ *
+ * Cada función declarada se convierte en una función JP normal que reenvía a
+ * la nativa `_externo_llamar`, con la firma como texto:
+ *
+ *   funcion crc32(datos, n) { retorna _externo_llamar("libz", "crc32",
+ *                                                     "entero", "puntero,entero",
+ *                                                     datos, n) }
+ *
+ * No añade nodos ni bytecode: el enlace de verdad (dlopen/LoadLibrary) vive en
+ * la VM. Es el mismo patrón que las comprensiones y las rebanadas.
+ */
+static JpNodo *sentencia_externo(Parser *p) {
+    JpToken *biblioteca = esperar(
+        p, T_CADENA,
+        "se esperaba el nombre de la biblioteca entre comillas: externo \"libz\" { ... }");
+    if (!biblioteca) return NULL;
+    int linea = biblioteca->linea;
+    if (!esperar(p, T_LLAVE_IZQ, "se esperaba '{' tras el nombre de la biblioteca")) return NULL;
+
+    JpNodos funciones = {0};
+
+    while (actual(p)->tipo != T_LLAVE_DER && actual(p)->tipo != T_FIN_DE_ARCHIVO) {
+        while (coincide(p, T_PUNTO_Y_COMA)) {
+        }
+        if (actual(p)->tipo == T_LLAVE_DER) break;
+        if (!coincide(p, T_FUN)) {
+            fallar_aqui(p, "dentro de 'externo' sólo van funciones: "
+                           "funcion nombre(a: tipo) -> tipo");
+            return NULL;
+        }
+        JpToken *nombre = esperar(p, T_IDENTIFICADOR,
+                                  "se esperaba el nombre de la función externa");
+        if (!nombre) return NULL;
+        JpNodo *funcion = nodo(p, N_FUNCION, nombre->linea);
+        if (!funcion) return NULL;
+        funcion->nombre = copiar(p, nombre->lexema);
+
+        char tipos[512];
+        size_t usado_tipos = 0;
+        tipos[0] = '\0';
+        if (!esperar(p, T_PAREN_IZQ, "se esperaba '(' tras el nombre de la función externa")) {
+            return NULL;
+        }
+        if (actual(p)->tipo != T_PAREN_DER) {
+            while (1) {
+                JpToken *parametro = esperar(p, T_IDENTIFICADOR,
+                                             "se esperaba un nombre de parámetro");
+                if (!parametro) return NULL;
+                JpNodo *n = nodo(p, N_PARAMETRO, funcion->linea);
+                if (!n) return NULL;
+                n->nombre = copiar(p, parametro->lexema);
+                if (!esperar(p, T_DOSPUNTOS,
+                             "cada parámetro externo necesita su tipo C: nombre: entero")) {
+                    return NULL;
+                }
+                char *tipo = NULL;
+                if (!tipo_anotado(p, &tipo)) return NULL;
+                n->tipo_anotado = tipo;
+                jp_nodos_agregar(p->arena, &funcion->params, n);
+                int escrito = snprintf(tipos + usado_tipos, sizeof tipos - usado_tipos,
+                                       "%s%s", usado_tipos ? "," : "", tipo);
+                if (escrito <= 0 || (size_t)escrito >= sizeof tipos - usado_tipos) {
+                    fallar(p, parametro->linea, parametro->columna,
+                           "demasiados parámetros en la función externa '%s'",
+                           nombre->lexema ? nombre->lexema : "");
+                    return NULL;
+                }
+                usado_tipos += (size_t)escrito;
+                if (!coincide(p, T_COMA)) break;
+            }
+        }
+        if (!esperar(p, T_PAREN_DER, "se esperaba ')' tras los parámetros externos")) {
+            return NULL;
+        }
+
+        /* El tipo de retorno NO se anota en la función JP: una función de C
+         * puede devolver nulo (getenv, malloc) y la anotación lo rechazaría.
+         * El tipo C viaja en el texto de la firma, que es lo que usa la VM. */
+        const char *retorno = "nulo";
+        char *anotado = NULL;
+        if (coincide(p, T_MENOS)) {
+            if (!esperar(p, T_MAYOR, "se esperaba '>' en '-> tipo'")) return NULL;
+            if (!tipo_anotado(p, &anotado)) return NULL;
+            retorno = anotado;
+        } else if (coincide(p, T_DOSPUNTOS)) {
+            if (!tipo_anotado(p, &anotado)) return NULL;
+            retorno = anotado;
+        }
+
+        /* cuerpo: retorna _externo_llamar("lib", "f", "retorno", "tipos", a, b) */
+        JpNodo *llamada = nodo(p, N_LLAMADA, funcion->linea);
+        if (!llamada) return NULL;
+        llamada->callee = nodo_variable(p, "_externo_llamar", funcion->linea);
+        if (!llamada->callee) return NULL;
+        jp_nodos_agregar(p->arena, &llamada->hijos,
+                         nodo_cadena(p, biblioteca->literal, funcion->linea));
+        jp_nodos_agregar(p->arena, &llamada->hijos,
+                         nodo_cadena(p, nombre->lexema, funcion->linea));
+        jp_nodos_agregar(p->arena, &llamada->hijos,
+                         nodo_cadena(p, retorno, funcion->linea));
+        jp_nodos_agregar(p->arena, &llamada->hijos,
+                         nodo_cadena(p, tipos, funcion->linea));
+        for (int i = 0; i < funcion->params.n; i++) {
+            JpNodo *parametro = funcion->params.datos[i];
+            jp_nodos_agregar(p->arena, &llamada->hijos,
+                             nodo_variable(p, parametro->nombre, funcion->linea));
+        }
+        JpNodo *retorna = nodo(p, N_RETORNA, funcion->linea);
+        if (!retorna) return NULL;
+        retorna->valor = llamada;
+        JpNodo *cuerpo = nodo(p, N_BLOQUE, 0);
+        if (!cuerpo) return NULL;
+        jp_nodos_agregar(p->arena, &cuerpo->hijos, retorna);
+        funcion->cuerpo = cuerpo;
+
+        jp_nodos_agregar(p->arena, &funciones, funcion);
+    }
+    if (!esperar(p, T_LLAVE_DER, "se esperaba '}' para cerrar el bloque 'externo'")) {
+        return NULL;
+    }
+    if (funciones.n == 0) {
+        fallar(p, linea, 0, "el bloque 'externo' no declara ninguna función");
+        return NULL;
+    }
+    /* La primera función es la sentencia; el resto va a la lista de
+     * pendientes para que queden como hermanas y no dentro de un ámbito. */
+    for (int i = 1; i < funciones.n; i++) {
+        jp_nodos_agregar(p->arena, &p->pendientes, funciones.datos[i]);
+    }
+    return funciones.datos[0];
+}
+
 static JpNodo *sentencia_expresion(Parser *p) {
     JpToken *token = actual(p);
     JpNodo *n = nodo(p, N_EXPRESION, token->linea);
@@ -1328,6 +1467,8 @@ static JpNodo *sentencia(Parser *p) {
         resultado = sentencia_mientras(p);
     } else if (coincide(p, T_PARA)) {
         resultado = sentencia_para(p);
+    } else if (coincide(p, T_EXTERNO)) {
+        resultado = sentencia_externo(p);
     } else if (coincide(p, T_LLAVE_IZQ)) {
         resultado = bloque(p);
     } else if (actual(p)->tipo == T_CORCHETE_IZQ && es_patron_desestructuracion(p)) {
@@ -1349,6 +1490,9 @@ static JpNodo *bloque(Parser *p) {
         JpNodo *hijo = sentencia(p);
         if (!hijo) return NULL;
         jp_nodos_agregar(p->arena, &n->hijos, hijo);
+        for (int i = 0; i < p->pendientes.n; i++)
+            jp_nodos_agregar(p->arena, &n->hijos, p->pendientes.datos[i]);
+        p->pendientes.n = 0;
     }
     if (!esperar(p, T_LLAVE_DER, "se esperaba '}' para cerrar el bloque")) return NULL;
     return n;
@@ -1361,6 +1505,9 @@ static JpNodo *parsear(Parser *p) {
         JpNodo *hijo = sentencia(p);
         if (!hijo) return NULL;
         jp_nodos_agregar(p->arena, &programa->hijos, hijo);
+        for (int i = 0; i < p->pendientes.n; i++)
+            jp_nodos_agregar(p->arena, &programa->hijos, p->pendientes.datos[i]);
+        p->pendientes.n = 0;
     }
     return programa;
 }

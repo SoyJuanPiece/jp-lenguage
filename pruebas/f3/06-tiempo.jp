@@ -1,0 +1,9 @@
+# 6. Uso real: time() de la libc con el puntero nulo.
+externo "c" {
+    funcion time(reloj: puntero) -> entero
+}
+
+variable ahora = time(nulo)
+imprime(tipo(ahora))
+imprime(ahora > 1700000000)
+imprime(time(nulo) >= ahora)

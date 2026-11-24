@@ -1,0 +1,14 @@
+# 3. Punteros opacos: malloc/free/memset, sin desreferenciar en JP.
+externo "c" {
+    funcion malloc(n: entero) -> puntero
+    funcion memset(p: puntero, v: entero, n: entero) -> puntero
+    funcion free(p: puntero)
+}
+
+variable bloque = malloc(32)
+imprime(tipo(bloque))
+imprime(bloque != nulo)
+imprime(memset(bloque, 0, 32) == bloque)
+free(bloque)
+free(nulo)
+imprime("fin")

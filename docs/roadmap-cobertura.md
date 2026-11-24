@@ -148,7 +148,11 @@ todos en verde en el motor C, y tree-sitter + LSP reconocen lo nuevo.
   LSP no necesitó cambios: usa el mismo parser y saca las nativas de la tabla
   del intérprete, así que `a_diccionario` aparece sola.
 
-### F2 — v1.37 · Generadores e iteradores perezosos (≈3 semanas)
+### F2 — v1.38 · Generadores e iteradores perezosos (≈3 semanas)
+
+> Se adelantó F3 a 1.37: el §4 pone el FFI como el número 1 por impacto ÷
+esfuerzo, y sin él ni la red ni SQLite ni las imágenes se pueden usar. Los
+generadores no cambian qué se puede hacer, sólo cuánto ocupa hacerlo.
 
 `cede` (equivalente a `yield`), `siguiente(iter)`, funciones generadoras,
 `para` sobre generador, `mapa`/`filtro` perezosos.
@@ -156,7 +160,7 @@ todos en verde en el motor C, y tree-sitter + LSP reconocen lo nuevo.
 **Puerta:** `para x en contador(10_000_000)` con memoria constante (medida con
 `plataforma()` y el contador del GC); `siguiente()` manual; 3 ejemplos nuevos.
 
-### F3 — v1.38 · FFI: el multiplicador (≈4 semanas)
+### F3 — v1.37 · FFI: el multiplicador (≈4 semanas) — base hecha
 
 `dlopen`/`dlsym`, declaración de funciones externas con tipos C, cadenas,
 enteros, punteros opacos, *structs* por valor y **callbacks de C a JP**.
@@ -170,6 +174,26 @@ externo "libz" {
 **Puerta:** llamar a `libz`, a `libcurl` y a `sqlite3` desde JP en Linux y
 Windows; un callback de C que invoque una función JP; 3 ejemplos nuevos.
 Esta fase es la que convierte "no tengo numpy" en "uso numpy".
+
+**Estado (2026-11-24): base hecha en 1.37.0.** El dominio «Sistemas / FFI» ya
+pasa en el medidor: `externo` enlaza bibliotecas de verdad y zlib comprime
+9.000 bytes a 53 desde JP, y sqlite3 abre en memoria, crea una tabla e inserta
+3 filas. Lo que hay:
+
+- ✅ `externo "lib" { funcion f(a: tipo, ...) -> tipo }` como azúcar del parser
+  (cero nodos, cero bytecode), con `dlopen`/`LoadLibrary` en la VM.
+- ✅ `entero`, `texto`, `puntero` y `booleano` como argumentos; `entero`,
+  `numero`, `texto`, `puntero`, `booleano` y `nulo` como retorno.
+- ✅ Tipo `puntero` opaco, `reservar`/`liberar`/`leer_*`/`escribir_*` para las
+  funciones que devuelven por puntero, y errores atrapables.
+- ✅ Búsqueda de la biblioteca por nombres reales (`libz.so.N`, `zlib1.dll`,
+  `sqlite3.dll`, ...), con `externo "c"` para el runtime de C.
+- ✅ 7 programas en `pruebas/f3/` y un ejemplo (`ejemplos/ffi-libc.jp`).
+
+Lo que falta para tacharla del todo: argumentos `numero` (`double`), *structs*
+por valor, **callbacks de C a JP** (el camino inverso), `libcurl` probado en CI
+y los 3 ejemplos del plan. Mientras eso no esté, la fase no se tacha: la base
+corre, la puerta entera no.
 
 ### F4 — v1.39 · Red de verdad en C (≈4 semanas)
 
@@ -312,4 +336,5 @@ aparece un fallo de diseño en el GC o en el FFI.
 - Una fase se tacha **sólo** cuando su puerta corre en CI, no cuando compila.
 - Cada «no» de la tabla es una fila de trabajo: el medidor es también la lista
   de tareas. Estado al cerrar F0: 2/11 dominios (datos y cálculo numérico).
-  Al cerrar F1: **3/11**, porque la puerta de CLI ya pasa.
+  Al cerrar F1: **3/11**, porque la puerta de CLI ya pasa. Con la base de F3:
+  **4/11** (Sistemas / FFI), medido con zlib y sqlite3 instalados.

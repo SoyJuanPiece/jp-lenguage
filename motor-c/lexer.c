@@ -27,7 +27,7 @@ static const char *const NOMBRES[] = {
     "VAR", "FUN", "RETORNA", "SI", "SINO", "MIENTRAS", "PARA", "EN",
     "VERDADERO", "FALSO", "NULO", "Y", "O", "NO", "ROMPER", "CONTINUAR",
     "ELEGIR", "CASO", "INTENTA", "ATRAPA", "FINALMENTE", "LANZAR",
-    "IMPORTAR", "CLASE", "HEREDA",
+    "IMPORTAR", "CLASE", "HEREDA", "EXTERNO",
     "FIN_DE_ARCHIVO",
 };
 
@@ -50,7 +50,7 @@ static const PalabraClave CLAVES[] = {
     {"continuar", T_CONTINUAR}, {"elegir", T_ELEGIR}, {"caso", T_CASO},
     {"intenta", T_INTENTA}, {"atrapa", T_ATRAPA}, {"finalmente", T_FINALMENTE},
     {"lanzar", T_LANZAR}, {"importar", T_IMPORTAR}, {"clase", T_CLASE},
-    {"hereda", T_HEREDA},
+    {"hereda", T_HEREDA}, {"externo", T_EXTERNO},
 };
 
 /* ---------- estado del lexer ---------- */

@@ -64,6 +64,13 @@
 #include "compilar.h"
 #include <unistd.h>
 
+/* FFI (F3): bibliotecas compartidas del sistema, para el bloque `externo`. */
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 /* ---------------------------------------------------------------- valores */
 
 typedef enum { T_NULO = 0, T_BOOL, T_INT, T_DBL, T_OBJ } Etiqueta;
@@ -80,7 +87,7 @@ typedef struct {
 
 typedef enum {
     O_TEXTO = 1, O_LISTA, O_FUNCION, O_NATIVA, O_CELDA, O_ITER, O_DICTO, O_LIGADA,
-    O_CLASE, O_INSTANCIA, O_METODO
+    O_CLASE, O_INSTANCIA, O_METODO, O_PUNTERO
 } TipoObj;
 
 struct Obj {
@@ -197,6 +204,13 @@ typedef struct {
     Clase *clase;
     Dicto *campos;
 } Instancia;
+
+/* Puntero opaco del FFI: una dirección de C que JP puede guardar, pasar y
+ * comparar, pero nunca desreferenciar sola. */
+typedef struct {
+    Obj cabecera;
+    void *direccion;
+} Puntero;
 
 /* Un método ya ligado a su objeto: punto.mover (sin llamar todavía). */
 typedef struct {
@@ -665,6 +679,10 @@ static void texto_de(Valor v, char *salida, size_t tamano) {
         case O_NATIVA:
             snprintf(salida, tamano, "<nativa %s>", ((Nativa *)obj)->nombre);
             return;
+        case O_PUNTERO:
+            snprintf(salida, tamano, "<puntero 0x%llx>",
+                     (unsigned long long)(uintptr_t)((Puntero *)obj)->direccion);
+            return;
         case O_CLASE:
             snprintf(salida, tamano, "<clase %.*s>",
                      (int)((Clase *)obj)->nombre->largo, ((Clase *)obj)->nombre->datos);
@@ -854,6 +872,8 @@ static int cumple_tipo(Valor v, Texto *tipo) {
     if (!strcmp(t, "booleano")) return v.etiqueta == T_BOOL;
     if (!strcmp(t, "lista")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_LISTA;
     if (!strcmp(t, "diccionario")) return v.etiqueta == T_OBJ && v.v.obj->tipo == O_DICTO;
+    if (!strcmp(t, "puntero"))
+        return (v.etiqueta == T_OBJ && v.v.obj->tipo == O_PUNTERO) || v.etiqueta == T_NULO;
     if (!strcmp(t, "funcion") || !strcmp(t, "función")) {
         if (v.etiqueta != T_OBJ) return 0;
         uint8_t k = v.v.obj->tipo;
@@ -874,6 +894,7 @@ static const char *nombre_tipo_jp(Valor v) {
         case O_TEXTO: return "texto";
         case O_LISTA: return "lista";
         case O_DICTO: return "diccionario";
+        case O_PUNTERO: return "puntero";
         case O_INSTANCIA: return "objeto";
         case O_CLASE: return "clase";
         case O_FUNCION:
@@ -928,6 +949,8 @@ static int iguales(Valor a, Valor b) {
             }
             return 1;
         }
+        if (oa->tipo == O_PUNTERO)
+            return ((Puntero *)oa)->direccion == ((Puntero *)ob)->direccion;
         return oa == ob; /* funciones y celdas: identidad */
     }
     return 0;
@@ -1201,6 +1224,7 @@ static Valor nativa_tipo(VM *v, int argc, Valor *args) {
         case O_LIGADA: return de_texto(nuevo_texto("función"));
         case O_CLASE: return de_texto(nuevo_texto("clase"));
         case O_INSTANCIA: return de_texto(nuevo_texto("objeto"));
+        case O_PUNTERO: return de_texto(nuevo_texto("puntero"));
         default: return de_texto(nuevo_texto("valor"));
     }
 }
@@ -2689,6 +2713,294 @@ static Valor nativa_a_diccionario(VM *v, int argc, Valor *args) {
         dicto_poner(d, (Texto *)l->elementos[0].v.obj, l->elementos[1]);
     }
     return de_objeto((Obj *)d);
+}
+
+/* ------------------------------------------------- FFI: bloque `externo` */
+
+/* El parser convierte cada declaración de `externo "lib" { ... }` en una
+ * función JP normal que llama aquí con la firma como texto:
+ *
+ *   _externo_llamar("libz", "crc32", "entero", "entero,puntero,entero", a, b, c)
+ *
+ * De ahí salen el dlopen/LoadLibrary, la búsqueda del símbolo y el paso de
+ * argumentos. El tipo `puntero` es un objeto opaco (O_PUNTERO).
+ */
+
+#define BIBLIOTECAS_MAX 32
+#define ARGS_EXTERNOS_MAX 6
+
+typedef struct {
+    char nombre[128];
+    void *manejador;
+} BibliotecaFFI;
+
+static BibliotecaFFI bibliotecas_ffi[BIBLIOTECAS_MAX];
+static int n_bibliotecas_ffi;
+
+static void *intentar_cargar(const char *ruta) {
+#if defined(_WIN32)
+    return (void *)LoadLibraryA(ruta);
+#else
+    return dlopen(ruta, RTLD_NOW | RTLD_GLOBAL);
+#endif
+}
+
+static void *abrir_biblioteca(const char *nombre) {
+    char ruta[512];
+    void *manejador = NULL;
+    /* "c" es el runtime de C de la plataforma: lo que hace falta el 90% de
+     * las veces (strlen, abs, malloc, getenv...). */
+    if (!strcmp(nombre, "c") || !strcmp(nombre, "libc")) {
+#if defined(_WIN32)
+        return intentar_cargar("msvcrt.dll");
+#else
+        manejador = intentar_cargar("libc.so.6");
+        return manejador ? manejador : intentar_cargar("libc.so");
+#endif
+    }
+    manejador = intentar_cargar(nombre);
+    if (manejador) return manejador;
+#if defined(_WIN32)
+    /* zlib se llama zlib1.dll, sqlite3.dll, libcurl.dll... según el paquete. */
+    if (!strchr(nombre, '.')) {
+        static const char *const PATRONES[] = {
+            "%s.dll", "lib%s.dll", "%s1.dll", "lib%s1.dll", "%slib.dll", "%slib1.dll",
+        };
+        for (size_t i = 0; i < sizeof PATRONES / sizeof PATRONES[0]; i++) {
+            snprintf(ruta, sizeof ruta, PATRONES[i], nombre);
+            manejador = intentar_cargar(ruta);
+            if (manejador) return manejador;
+        }
+    }
+    return NULL;
+#else
+    /* libz.so.1, libsqlite3.so.0, libcurl.so.4... el número es parte del nombre. */
+    if (!strchr(nombre, '/')) {
+        snprintf(ruta, sizeof ruta, "lib%s.so", nombre);
+        manejador = intentar_cargar(ruta);
+        if (manejador) return manejador;
+        for (int version = 6; version >= 0; version--) {
+            snprintf(ruta, sizeof ruta, "lib%s.so.%d", nombre, version);
+            manejador = intentar_cargar(ruta);
+            if (manejador) return manejador;
+        }
+    }
+    return NULL;
+#endif
+}
+
+static void *biblioteca_ffi(const char *nombre) {
+    for (int i = 0; i < n_bibliotecas_ffi; i++) {
+        if (!strcmp(bibliotecas_ffi[i].nombre, nombre)) return bibliotecas_ffi[i].manejador;
+    }
+    void *manejador = abrir_biblioteca(nombre);
+    if (!manejador) error_en(0, "no se pudo cargar la biblioteca '%s'", nombre);
+    if (n_bibliotecas_ffi < BIBLIOTECAS_MAX) {
+        snprintf(bibliotecas_ffi[n_bibliotecas_ffi].nombre,
+                 sizeof bibliotecas_ffi[0].nombre, "%s", nombre);
+        bibliotecas_ffi[n_bibliotecas_ffi].manejador = manejador;
+        n_bibliotecas_ffi += 1;
+    }
+    return manejador;
+}
+
+static void *simbolo_ffi(void *manejador, const char *simbolo, const char *biblioteca) {
+#if defined(_WIN32)
+    void *direccion = (void *)GetProcAddress((HMODULE)manejador, simbolo);
+#else
+    void *direccion = dlsym(manejador, simbolo);
+#endif
+    if (!direccion) error_en(0, "la biblioteca '%s' no exporta '%s'", biblioteca, simbolo);
+    return direccion;
+}
+
+static Texto *texto_argumento(Valor v, const char *que) {
+    if (v.etiqueta != T_OBJ || v.v.obj->tipo != O_TEXTO)
+        error_en(0, "%s espera texto", que);
+    return (Texto *)v.v.obj;
+}
+
+static Valor nuevo_puntero(void *direccion) {
+    Puntero *p = (Puntero *)nuevo_objeto(sizeof(Puntero), O_PUNTERO);
+    p->direccion = direccion;
+    return de_objeto((Obj *)p);
+}
+
+/* Un tipo de la firma dentro de "entero,puntero,texto". */
+static int leer_tipo(const char **cursor, char *salida, size_t tamano) {
+    const char *p = *cursor;
+    if (!*p) return 0;
+    size_t usado = 0;
+    while (*p && *p != ',') {
+        if (usado + 1 < tamano) salida[usado++] = *p;
+        p += 1;
+    }
+    salida[usado] = '\0';
+    if (*p == ',') p += 1;
+    *cursor = p;
+    return 1;
+}
+
+static int64_t argumento_entero(Valor v, const char *tipo, const char *funcion) {
+    if (!strcmp(tipo, "entero")) {
+        if (v.etiqueta != T_INT)
+            error_en(0, "%s espera un entero en un argumento externo", funcion);
+        return v.v.entero;
+    }
+    if (!strcmp(tipo, "booleano")) {
+        if (v.etiqueta != T_BOOL)
+            error_en(0, "%s espera un booleano en un argumento externo", funcion);
+        return v.v.entero;
+    }
+    if (!strcmp(tipo, "texto")) return (int64_t)(intptr_t)texto_argumento(v, funcion)->datos;
+    if (!strcmp(tipo, "puntero")) {
+        if (v.etiqueta == T_NULO) return 0;
+        if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_PUNTERO)
+            return (int64_t)(intptr_t)((Puntero *)v.v.obj)->direccion;
+        error_en(0, "%s espera un puntero en un argumento externo", funcion);
+    }
+    error_en(0, "%s: el tipo '%s' no se puede pasar a una función externa", funcion, tipo);
+    return 0;
+}
+
+/* Todos los tipos que se pasan ocupan una palabra entera en los registros, así
+ * que la llamada se hace con una firma de int64_t y el ABI cuadra. */
+typedef int64_t (*FnEntera)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
+typedef double (*FnDecimal)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
+
+static Valor nativa_externo_llamar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc < 4)
+        error_en(0, "_externo_llamar espera biblioteca, símbolo, tipo de retorno y tipos");
+    Texto *biblioteca = texto_argumento(args[0], "_externo_llamar");
+    Texto *simbolo = texto_argumento(args[1], "_externo_llamar");
+    Texto *retorno = texto_argumento(args[2], "_externo_llamar");
+    Texto *tipos = texto_argumento(args[3], "_externo_llamar");
+    int n_args = argc - 4;
+    if (n_args > ARGS_EXTERNOS_MAX)
+        error_en(0, "%s: una función externa admite como mucho %d argumentos",
+                 simbolo->datos, ARGS_EXTERNOS_MAX);
+
+    int64_t paso[ARGS_EXTERNOS_MAX] = {0};
+    const char *cursor = tipos->datos;
+    char tipo[32];
+    for (int i = 0; i < n_args; i++) {
+        if (!leer_tipo(&cursor, tipo, sizeof tipo))
+            error_en(0, "%s: faltan tipos para sus argumentos", simbolo->datos);
+        if (!strcmp(tipo, "numero"))
+            error_en(0, "%s: los argumentos 'numero' de una función externa aún no se "
+                         "pasan; usa entero, texto o puntero", simbolo->datos);
+        paso[i] = argumento_entero(args[4 + i], tipo, simbolo->datos);
+    }
+
+    void *manejador = biblioteca_ffi(biblioteca->datos);
+    void *direccion = simbolo_ffi(manejador, simbolo->datos, biblioteca->datos);
+#ifdef JP_DEBUG_FFI
+    fprintf(stderr, "[ffi] %s.%s n=%d tipos=%s ret=%s\n", biblioteca->datos,
+            simbolo->datos, n_args, tipos->datos, retorno->datos);
+    for (int i = 0; i < n_args; i++)
+        fprintf(stderr, "[ffi]   arg%d = %lld\n", i, (long long)paso[i]);
+    fflush(stderr);
+#endif
+    FnEntera f = (FnEntera)direccion;
+
+    int es_decimal = !strcmp(retorno->datos, "numero");
+    int64_t entero_resultado = 0;
+    double decimal_resultado = 0;
+    if (es_decimal) {
+        decimal_resultado = ((FnDecimal)direccion)(paso[0], paso[1], paso[2], paso[3], paso[4], paso[5]);
+    } else {
+        entero_resultado = f(paso[0], paso[1], paso[2], paso[3], paso[4], paso[5]);
+    }
+
+    const char *t = retorno->datos;
+    if (!strcmp(t, "numero")) return de_decimal(decimal_resultado);
+    if (!strcmp(t, "nulo")) return de_nulo();
+    if (!strcmp(t, "booleano")) return de_bool(entero_resultado != 0);
+    if (!strcmp(t, "entero")) return de_entero(entero_resultado);
+    if (!strcmp(t, "puntero")) return nuevo_puntero((void *)(intptr_t)entero_resultado);
+    if (!strcmp(t, "texto")) {
+        if (!entero_resultado) return de_nulo();
+        return de_texto(nuevo_texto((const char *)(intptr_t)entero_resultado));
+    }
+    error_en(0, "%s: el tipo de retorno '%s' no se sabe convertir", simbolo->datos, t);
+    return de_nulo();
+}
+
+/* ---- memoria para el FFI: punteros que JP puede reservar y leer ----
+ *
+ * Sin esto, una función de C que devuelve por puntero (sqlite3_open, zlib
+ * compress) no se puede usar: no hay forma de reservar un hueco ni de leer lo
+ * que C escribió en él.
+ */
+
+static void *direccion_puntero(Valor v, const char *nativa) {
+    if (v.etiqueta == T_NULO) return NULL;
+    if (v.etiqueta == T_OBJ && v.v.obj->tipo == O_PUNTERO)
+        return ((Puntero *)v.v.obj)->direccion;
+    error_en(0, "%s espera un puntero", nativa);
+    return NULL;
+}
+
+static int64_t *hueco_entero(Valor p, const char *nativa) {
+    int64_t *hueco = (int64_t *)direccion_puntero(p, nativa);
+    if (!hueco) error_en(0, "%s sobre el puntero nulo", nativa);
+    return hueco;
+}
+
+static Valor nativa_reservar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1) error_en(0, "reservar() espera 1 argumento: cuántos bytes");
+    if (args[0].etiqueta != T_INT || args[0].v.entero <= 0)
+        error_en(0, "reservar() espera un número de bytes mayor que 0");
+    int64_t bytes = args[0].v.entero;
+    void *memoria_reservada = malloc((size_t)bytes);
+    if (!memoria_reservada) error_en(0, "reservar(%lld) sin memoria", (long long)bytes);
+    memset(memoria_reservada, 0, (size_t)bytes);
+    return nuevo_puntero(memoria_reservada);
+}
+
+static Valor nativa_liberar(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1) error_en(0, "liberar() espera 1 argumento");
+    free(direccion_puntero(args[0], "liberar()"));
+    return de_nulo();
+}
+
+static Valor nativa_leer_entero(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1) error_en(0, "leer_entero() espera 1 argumento");
+    return de_entero(*hueco_entero(args[0], "leer_entero()"));
+}
+
+static Valor nativa_escribir_entero(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 2) error_en(0, "escribir_entero() espera 2 argumentos");
+    if (args[1].etiqueta != T_INT) error_en(0, "escribir_entero() espera un entero");
+    *hueco_entero(args[0], "escribir_entero()") = args[1].v.entero;
+    return de_nulo();
+}
+
+static Valor nativa_leer_puntero(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1) error_en(0, "leer_puntero() espera 1 argumento");
+    return nuevo_puntero((void *)(intptr_t)*hueco_entero(args[0], "leer_puntero()"));
+}
+
+static Valor nativa_escribir_puntero(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 2) error_en(0, "escribir_puntero() espera 2 argumentos");
+    *hueco_entero(args[0], "escribir_puntero()") =
+        (int64_t)(intptr_t)direccion_puntero(args[1], "escribir_puntero()");
+    return de_nulo();
+}
+
+static Valor nativa_leer_texto(VM *v, int argc, Valor *args) {
+    (void)v;
+    if (argc != 1) error_en(0, "leer_texto() espera 1 argumento");
+    const char *texto = (const char *)direccion_puntero(args[0], "leer_texto()");
+    if (!texto) return de_nulo();
+    return de_texto(nuevo_texto(texto));
 }
 
 static Valor nativa_zip(VM *v, int argc, Valor *args) {
@@ -5321,6 +5633,14 @@ int main(int argc, char **argv) {
     instalar_nativa("enumerar", -1, nativa_enumerar);
     instalar_nativa("zip", -1, nativa_zip);
     instalar_nativa("a_diccionario", 1, nativa_a_diccionario);
+    instalar_nativa("_externo_llamar", -1, nativa_externo_llamar);
+    instalar_nativa("reservar", 1, nativa_reservar);
+    instalar_nativa("liberar", 1, nativa_liberar);
+    instalar_nativa("leer_entero", 1, nativa_leer_entero);
+    instalar_nativa("escribir_entero", 2, nativa_escribir_entero);
+    instalar_nativa("leer_puntero", 1, nativa_leer_puntero);
+    instalar_nativa("escribir_puntero", 2, nativa_escribir_puntero);
+    instalar_nativa("leer_texto", 1, nativa_leer_texto);
     instalar_nativa("rebanada", -1, nativa_rebanada);
     instalar_nativa("leer", -1, nativa_leer);
     instalar_nativa("claves", 1, nativa_claves);

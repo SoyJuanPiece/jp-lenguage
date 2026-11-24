@@ -1,0 +1,22 @@
+# 5. Lo que no existe es un error de JP, atrapable, no un choque del motor.
+externo "c" {
+    funcion no_exporta_esto(n: entero) -> entero
+}
+
+intenta {
+    imprime(no_exporta_esto(1))
+} atrapa e {
+    imprime("atrapado")
+}
+
+externo "biblioteca-que-no-existe" {
+    funcion cualquiera() -> entero
+}
+
+intenta {
+    imprime(cualquiera())
+} atrapa e {
+    imprime("atrapado")
+}
+
+imprime("sigue vivo")

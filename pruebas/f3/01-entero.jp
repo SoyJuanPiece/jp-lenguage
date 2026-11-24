@@ -1,0 +1,8 @@
+# 1. Un entero que entra y sale: abs() del runtime de C.
+externo "c" {
+    funcion abs(n: entero) -> entero
+}
+
+imprime(abs(-42))
+imprime(abs(42))
+imprime(abs(0))

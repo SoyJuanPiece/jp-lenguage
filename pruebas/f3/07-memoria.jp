@@ -1,0 +1,19 @@
+# 7. Memoria de ida y vuelta: C escribe en lo que JP reservó y JP lo lee.
+externo "c" {
+    funcion strcpy(destino: puntero, origen: texto) -> puntero
+    funcion time(reloj: puntero) -> entero
+}
+
+variable hueco = reservar(64)
+strcpy(hueco, "hola desde C")
+imprime(leer_texto(hueco))
+imprime(longitud(leer_texto(hueco)))
+
+variable reloj = reservar(8)
+variable ahora = time(reloj)
+imprime(leer_entero(reloj) == ahora)
+imprime(leer_entero(reloj) > 1700000000)
+
+liberar(reloj)
+liberar(hueco)
+imprime("liberado")

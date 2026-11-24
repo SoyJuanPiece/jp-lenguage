@@ -13,6 +13,13 @@ CC      ?= cc
 CFLAGS  ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing
 LDFLAGS ?= -lm
 
+# dlopen/dlsym para el bloque `externo` (F3). En glibc reciente ya está en la
+# libc, pero -ldl no estorba y en sistemas viejos es obligatorio.
+UNAME_S := $(shell uname -s 2>/dev/null)
+ifneq ($(filter Linux Darwin,$(UNAME_S)),)
+LDFLAGS += -ldl
+endif
+
 BIN = jpvm
 TOKENS = jptokens
 JPAST = jpast

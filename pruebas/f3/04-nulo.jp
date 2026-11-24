@@ -1,0 +1,11 @@
+# 4. Un texto que puede no existir: getenv() devuelve nulo.
+externo "c" {
+    funcion getenv(nombre: texto) -> texto
+}
+
+variable ruta = getenv("PATH")
+imprime(tipo(ruta))
+imprime(ruta != nulo)
+
+variable faltante = getenv("JP_VARIABLE_QUE_NO_EXISTE_12345")
+imprime(faltante == nulo)

@@ -16,3 +16,7 @@ motor-c/jptokens
 motor-c/jpast
 motor-c/jpcompilar
 *.jpb
+
+# Temporales de desarrollo y salida del medidor de cobertura
+.codebuff_tmp/
+pruebas/cobertura/.salida/

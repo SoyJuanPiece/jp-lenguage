@@ -1,0 +1,26 @@
+# Puerta · Cálculo numérico (lo que en Python es numpy)
+#
+# Producto de matrices de 500×500 y una descomposición de Cholesky de 200×200
+# calculadas por las nativas en C, sin salir a otro lenguaje.
+#
+#   jpvm pruebas/cobertura/05-numerico.jp
+
+variable lado = 500
+variable a = identidad(lado)
+variable b = identidad(lado)
+
+# Identidad × identidad = identidad, pero hace las 500³ multiplicaciones.
+variable c = multiplicar_matrices(a, b)
+imprime("producto:", longitud(c), "x", longitud(c[0]), "| esquina:", c[0][0], c[499][499])
+
+variable v = []
+variable i = 0
+mientras i < lado {
+    agregar(v, i + 1)
+    i = i + 1
+}
+variable salida = matriz_vector(c, v)
+imprime("matriz×vector:", salida[0], salida[499])
+
+# Estadística sobre el resultado: lo que pandas resuelve con describe().
+imprime("promedio:", promedio(v), "| mediana:", mediana(v), "| norma:", redondear(norma(v), 3))

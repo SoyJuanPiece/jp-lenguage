@@ -1,0 +1,43 @@
+# Puerta · Concurrencia (lo que en Go son goroutines y canales)
+#
+# Diez tareas en cuatro hilos con una cola y cancelación. El modelo elegido en
+# el plan es "hilos con cerrojo global", sin async/await: fase F5.
+#
+#   jpvm pruebas/cobertura/06-concurrencia.jp
+
+variable cola = canal(100)
+variable total = 0
+
+funcion trabajador(id) {
+    variable hecho = 0
+    mientras verdadero {
+        variable trabajo = recibir(cola)
+        si trabajo == nulo { romper }
+        hecho = hecho + trabajo
+    }
+    devuelve hecho
+}
+
+variable tareas = []
+variable i = 1
+mientras i <= 10 {
+    agregar(tareas, tarea(trabajador, i))
+    i = i + 1
+}
+
+variable n = 1
+mientras n <= 1000 {
+    enviar(cola, n)
+    n = n + 1
+}
+
+para t en tareas {
+    enviar(cola, nulo)          # señal de fin
+}
+para t en tareas {
+    total = total + esperar(t)
+}
+imprime("suma de 1..1000 en 10 tareas:", total)
+si total != 500500 {
+    lanzar("las tareas se pisaron el contador")
+}

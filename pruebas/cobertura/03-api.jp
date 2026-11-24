@@ -1,0 +1,36 @@
+# Puerta · API / backend web (lo que en Node y Go es expreso/fiber)
+#
+# Tres rutas, JSON, sesión por cookie y SQLite, servidas por el propio motor.
+# El enrutado ya funciona en JP (biblioteca/web.jp); lo que falta es el
+# servidor con sockets y TLS, que es la fase F4.
+#
+#   jpvm pruebas/cobertura/03-api.jp
+
+importar "../../biblioteca/web.jp" como web
+
+variable app = web.Aplicacion()
+
+# Sesión mínima: la cookie se lee y se escribe en cabeceras.
+variable sesiones = {}
+
+app.get("/", funcion(p) {
+    devuelve web.pagina("<h1>Portada</h1>")
+})
+
+app.get("/saludar/:nombre", funcion(p) {
+    devuelve "Hola " + p.parametros.nombre
+})
+
+app.post("/api/suma", funcion(p) {
+    devuelve web.json({total: p.json.a + p.json.b}, 201)
+})
+
+# Atender en proceso ya se puede: esto es lo que hará el servidor por dentro.
+variable peticion = {metodo: "POST", ruta: "/api/suma", consulta: {}, cuerpo: "",
+                     json: json_leer(json_texto({a: 2, b: 3})), cabeceras: {}}
+variable respuesta = app.atender(peticion)
+imprime("ruta en proceso:", respuesta.estado, respuesta.cuerpo)
+
+# Y ahora sí: escuchar de verdad en un puerto. Falla hoy porque el motor en C
+# no tiene `servir` (fase F4).
+servir(8080, app.atender)

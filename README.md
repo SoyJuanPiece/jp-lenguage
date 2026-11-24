@@ -68,6 +68,9 @@ su carpeta de pruebas ya conectada.
 nativas con su firma.
 📊 **[JP frente a Python y otros lenguajes](docs/comparacion.md)** — qué gana,
 qué pierde y con qué números medidos.
+🗺️ **[Plan de cobertura total](docs/roadmap-cobertura.md)** — cómo JP llega a
+servir para lo que sirven Python, Node, C++, Go y Rust, fase por fase y con
+una puerta medible en cada una.
 
 ## El lenguaje
 
@@ -466,10 +469,15 @@ jp-lang/
 │   ├── test_motor_c.py  # paridad del motor en C con los motores de Python (252 en total)
 │   └── test_lsp.py      # el servidor LSP responde a initialize/didOpen/completion/hover
 ├── docs/
-│   ├── jp-en-20-minutos.md  # tutorial (sus bloques se ejecutan en CI)
-│   └── referencia.md        # generada por herramientas/referencia.py
+│   ├── jp-en-20-minutos.md   # tutorial (sus bloques se ejecutan en CI)
+│   ├── comparacion.md        # JP frente a otros lenguajes, con números
+│   ├── roadmap-cobertura.md  # plan por fases para cubrir otros dominios
+│   └── referencia.md         # generada por herramientas/referencia.py
 ├── tree-sitter-jp/      # gramática + queries + parser generado
+├── pruebas/cobertura/   # un programa-puerta por dominio (ver roadmap-cobertura.md)
 ├── herramientas/
+│   ├── cobertura.py     # qué dominios corren de verdad, con el motivo de los que no
+│   ├── benchmark.py     # rendimiento contra la línea base (10% de margen)
 │   ├── paridad.py       # Python vs C sobre todos los ejemplos
 │   ├── referencia.py    # regenera docs/referencia.md
 │   └── tutorial.py      # ejecuta los bloques del tutorial

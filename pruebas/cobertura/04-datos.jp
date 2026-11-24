@@ -1,0 +1,33 @@
+# Puerta · Datos y estadística (lo que en Python es pandas)
+#
+# Un millón de filas agrupadas y promediadas sin cargar el millón en memoria:
+# se acumula sobre cien claves mientras se generan las filas.
+#
+#   jpvm pruebas/cobertura/04-datos.jp
+
+variable claves = 100
+variable filas = 1000000
+variable sumas = {}
+variable cuentas = {}
+
+variable i = 0
+mientras i < filas {
+    variable clave = texto(i % claves)
+    si no sumas.tiene(clave) {
+        sumas[clave] = 0
+        cuentas[clave] = 0
+    }
+    sumas[clave] = sumas[clave] + (i % 97)
+    cuentas[clave] = cuentas[clave] + 1
+    i = i + 1
+}
+
+variable mayor = 0
+para clave, suma en sumas {
+    si suma > mayor { mayor = suma }
+}
+
+imprime("filas:", filas, "grupos:", longitud(sumas), "mayor suma:", mayor)
+si longitud(sumas) != claves {
+    lanzar("se perdieron grupos al agrupar")
+}

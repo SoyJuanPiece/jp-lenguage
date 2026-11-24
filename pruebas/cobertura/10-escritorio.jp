@@ -1,0 +1,28 @@
+# Puerta · Escritorio y 2D (lo que en Rust es egui y en C++ SDL)
+#
+# Ventana con botón, teclado y bucle de dibujo a 60 fps, envolviendo SDL por
+# FFI en vez de escribir un toolkit propio (fase F9).
+#
+#   jpvm pruebas/cobertura/10-escritorio.jp
+
+variable v = ventana("JP escritorio", 800, 600)
+variable pulsaciones = 0
+
+boton(v, "Pulsar", 20, 20, 120, 40, funcion() {
+    pulsaciones = pulsaciones + 1
+    imprime("pulsado", pulsaciones, "veces")
+})
+
+variable x = 0
+mientras abierta(v) {
+    color(v, 20, 24, 32)
+    limpiar(v)
+    circulo(v, x, 300, 40, 240, 180, 60)
+    x = x + 2
+    si x > 800 { x = 0 }
+    si tecla_pulsada(v, "escape") { romper }
+    refrescar(v)
+}
+
+cerrar(v)
+imprime("cerrada tras", pulsaciones, "pulsaciones")

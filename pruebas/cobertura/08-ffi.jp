@@ -1,0 +1,40 @@
+# Puerta · FFI y sistemas (lo que en Rust es `extern "C"` y en C++ `dlopen`)
+#
+# Llamar a bibliotecas de C que ya están en la máquina: zlib, curl y sqlite3.
+# El plan la pone como fase F3 porque es el multiplicador: sin escribir nada
+# nuevo, desbloquea TLS, bases de datos, imágenes y compresión.
+#
+#   jpvm pruebas/cobertura/08-ffi.jp
+
+externo "zlib" {
+    funcion comprimir(destino: puntero, largo_destino: puntero, origen: texto, largo: entero) -> entero
+}
+
+externo "sqlite3" {
+    funcion sqlite3_open(nombre: texto, bd: puntero) -> entero
+    funcion sqlite3_exec(bd: puntero, sql: texto, vuelta: puntero, arg: puntero, error: puntero) -> entero
+    funcion sqlite3_close(bd: puntero) -> entero
+}
+
+externo "curl" {
+    funcion curl_easy_init() -> puntero
+    funcion curl_easy_setopt(curl: puntero, opcion: entero, valor: texto) -> entero
+    funcion curl_easy_perform(curl: puntero) -> entero
+}
+
+variable origen = repetir("juanperez", 10000)
+variable destino = reservar(longitud(origen) * 2)
+variable largo = reservar(8)
+variable codigo = comprimir(destino, largo, origen, longitud(origen))
+imprime("zlib:", codigo, "| comprimido:", leer_entero(largo), "de", longitud(origen))
+
+variable bd = reservar(8)
+si sqlite3_open(":memory:", bd) != 0 {
+    lanzar("no se pudo abrir SQLite")
+}
+imprime("sqlite:", sqlite3_exec(leer_puntero(bd), "create table t(x)", nulo, nulo, nulo))
+sqlite3_close(leer_puntero(bd))
+
+variable curl = curl_easy_init()
+curl_easy_setopt(curl, 10002, "https://ejemplo.com")   # CURLOPT_URL
+imprime("curl:", curl_easy_perform(curl))

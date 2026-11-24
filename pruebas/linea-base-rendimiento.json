@@ -1,0 +1,8 @@
+{
+  "win32-amd64": {
+    "fecha": "2026-11-24",
+    "motor": "jpvm (C11)",
+    "ms": 98.1,
+    "programa": "benchmark.jp"
+  }
+}

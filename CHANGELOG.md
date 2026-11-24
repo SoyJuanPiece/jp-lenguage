@@ -1,5 +1,28 @@
 # Cambios de JP
 
+## 1.35.0 — El medidor de cobertura (2026-11-24)
+
+Arranca el plan de [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md) con
+la pieza que lo hace medible: un tablero que dice, dominio por dominio, qué
+corre de verdad en el motor en C y por qué no lo demás.
+
+- **`herramientas/cobertura.py`**: ejecuta un programa-puerta de los 11 dominios
+  (scripts, CLI, API, datos, numérico, concurrencia, red, FFI, rendimiento,
+  escritorio y paquetes) y tabula `dominio · pasa · fase · motivo`. Hoy pasan
+  2 de 11: datos y cálculo numérico.
+- **`pruebas/cobertura/`**: las puertas son programas reales, no listas de
+  deseos; cada una es el contrato de una fase futura. `correo` es F4,
+  `argumentos`/`salir` F1, `canal` F5, `externo` F3, `ventana` F9 y las
+  versiones de `paquete.json` F6.
+- **`herramientas/benchmark.py`**: mide `ejemplos/benchmark.jp` con el motor en
+  C (mediana de 5), guarda la línea base por plataforma en
+  `pruebas/linea-base-rendimiento.json` y falla si el CI se pone un 10% más
+  lento.
+- El dominio «rendimiento» compara `fib(35)` con `fib(35)` en C `-O2`, el mismo
+  termómetro que pide la fase F8: hoy está 13x por encima del objetivo de 3x.
+- `.codebuff_tmp/` fuera de git, ramas fusionadas borradas y el plan enlazado
+  desde el README y `PLAN.md`.
+
 ## 1.34.0 — El motor único sin Python (2026-11-23)
 
 `jpvm programa.jp` compila y ejecuta directamente: lexer, parser y generador

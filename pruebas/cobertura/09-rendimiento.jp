@@ -1,0 +1,13 @@
+# Puerta · Rendimiento (lo que en C++ y Rust es `-O2`)
+#
+# El mismo fib(35) que la línea base en C: el medidor compara el tiempo de este
+# programa contra el binario C y exige estar dentro de 3x (fase F8).
+#
+#   jpvm pruebas/cobertura/09-rendimiento.jp
+
+funcion fib(n) {
+    si n <= 1 { devuelve n }
+    devuelve fib(n - 1) + fib(n - 2)
+}
+
+imprime("fib(35):", fib(35))

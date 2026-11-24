@@ -1,0 +1,17 @@
+# Puerta · Red y protocolos (lo que en Node es fetch + ws)
+#
+# Cliente HTTPS con certificado real, JSON de vuelta y WebSocket. El motor en C
+# no tiene ni `http_get`: la fase F4 la añade (TLS por FFI).
+#
+#   jpvm pruebas/cobertura/07-red.jp
+#
+# (Cuando exista F4 esta puerta hablará con un servidor local del propio
+#  repositorio para no depender de internet en el CI.)
+
+variable datos = json_leer(http_get("https://api.github.com/repos/rocun/JP-lenguage"))
+imprime("estrellas:", datos.stargazers_count, "| lenguaje:", datos.language)
+
+variable ws = websocket("wss://eco.ejemplo.com/hola")
+enviar_ws(ws, "hola")
+imprime("eco:", recibir_ws(ws))
+cerrar_ws(ws)

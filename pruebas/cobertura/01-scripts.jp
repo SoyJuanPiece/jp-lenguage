@@ -1,0 +1,31 @@
+# Puerta · Scripts y automatización (lo que en Python es un script de 20 líneas)
+#
+# Lee un CSV, agrupa por ciudad, escribe un informe y lo avisa por correo.
+# Pasa del todo cuando exista `correo` (fase F4: es SMTP, o sea red).
+#
+#   jpvm pruebas/cobertura/01-scripts.jp
+
+variable filas = leer_csv("ejemplos/ventas.csv")
+variable por_ciudad = {}
+variable total = 0
+
+para fila en filas {
+    si no por_ciudad.tiene(fila.ciudad) {
+        por_ciudad[fila.ciudad] = 0
+    }
+    por_ciudad[fila.ciudad] = por_ciudad[fila.ciudad] + fila.total
+    total = total + fila.total
+}
+
+variable informe = "Ventas por ciudad\n"
+para ciudad, suma en por_ciudad {
+    informe = informe + ciudad + ": " + texto(suma) + "\n"
+}
+informe = informe + "Total: " + texto(total) + "\n"
+
+escribir_archivo("pruebas/cobertura/.salida/informe.txt", informe)
+imprime("informe escrito con", longitud(por_ciudad), "ciudades y total", total)
+
+# Avisar por correo: esto es red, así que llega con la fase F4.
+correo("equipo@ejemplo.com", "Ventas del día", informe)
+imprime("correo enviado")

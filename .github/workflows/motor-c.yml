@@ -61,6 +61,14 @@ jobs:
         if: matrix.cc == 'gcc'
         run: python -m unittest discover -s tests
 
+      - name: Cobertura por dominios (la tabla del plan)
+        if: matrix.cc == 'gcc'
+        run: python herramientas/cobertura.py
+
+      - name: Rendimiento sin regresión (límite 10%)
+        if: matrix.cc == 'gcc'
+        run: python herramientas/benchmark.py
+
       - name: Paridad de todos los ejemplos (Python vs C)
         if: matrix.cc == 'gcc'
         run: python herramientas/paridad.py

@@ -5,6 +5,10 @@
 > sección 1 se puede reproducir con los comandos del [anexo](#anexo--reproducir-la-evidencia).
 > Si algo de este plan no se puede medir, no entra al plan.
 
+> 📍 **El orden vigente manda en [`docs/roadmap-cobertura.md`](docs/roadmap-cobertura.md)**:
+> plan por fases para cubrir los dominios de Python, Node, C++, Go y Rust.
+> Este documento guarda el detalle histórico y las tareas T-​/N- de cada versión.
+
 ---
 
 ## ⚡ NUEVO RUMBO (2026-10-12): un motor propio, independiente y rápido

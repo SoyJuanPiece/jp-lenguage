@@ -1,0 +1,31 @@
+# Puerta · CLI (lo que resuelven Go y Rust con cobra/clap)
+#
+# Subcomandos, ayuda, lectura de argumentos y código de salida propio.
+# Hoy el lenguaje no expone ni los argumentos del proceso (`argumentos`) ni
+# `salir`, así que la puerta falla en la primera línea.
+#
+#   jpvm pruebas/cobertura/02-cli.jp agregar "leche"
+
+variable args = argumentos()
+variable orden = "ayuda"
+si longitud(args) > 0 {
+    orden = args[0]
+}
+
+si orden == "agregar" {
+    si longitud(args) < 2 {
+        imprime("falta el nombre de la tarea")
+        salir(2)
+    }
+    variable archivo = "pruebas/cobertura/.salida/tareas.txt"
+    agregar_archivo(archivo, args[1] + "\n")
+    imprime("agregada:", args[1])
+    salir(0)
+} sino si orden == "listar" {
+    variable texto_tareas = leer_archivo("pruebas/cobertura/.salida/tareas.txt")
+    imprime(texto_tareas)
+    salir(0)
+} sino {
+    imprime("uso: tarea [agregar|listar] <nombre>")
+    salir(0)
+}

@@ -92,7 +92,7 @@ precisión arbitraria) — nunca hay números distintos en silencio.
 | N-10 | **Texto Unicode en el motor en C** (contar caracteres, no bytes) | `longitud("Maturín")` = 7 y `mayusculas("ñandú")` = `ÑANDÚ` en los tres motores | M | ✅ **hecho** (v1.30) |
 | N-11 | **Patrones nativos** (motor de retroceso propio para las 5 `*_patron`) | `biblioteca.jp` idéntico; patrón inválido avisa | M | ✅ **hecho** (v1.30) |
 | N-5 | **`mapear/filtrar/reducir/para_cada/ordenar`** (nativas de orden superior, que ya saben llamar a un cierre desde el motor) | `funcional.jp` con paridad | M | ✅ **hecho** |
-| N-6 | **Frontend propio** (lexer+parser en C, o bootstrap del compilador en JP) | `jpvm` compila y ejecuta un `.jp` **sin Python**; `jp` queda como comando de conveniencia | L |
+| N-6 | **Frontend propio** (lexer+parser en C, o bootstrap del compilador en JP) | `jpvm` compila y ejecuta un `.jp` **sin Python**; `jp` queda como comando de conveniencia | L | ✅ **hecho** (v1.34): lexer, parser y compilador en C; 48/48 AST idénticos y 40/40 `.jpb` byte a byte. `jpvm programa.jp` corre sin Python |
 | N-7 | **Tier de compilación a máquina** dentro del motor C (AOT por función numérica, como el JIT actual pero sin Python) | superar al JIT en `benchmark-nativo.jp` y acercarse a C puro | L |
 | N-8 | **Extras de tipo**: bignums (o error claro), GC generacional, cache de métodos, superinstrucciones | 500+ tests verdes y menos tiempo por despacho | L |
 | N-9 | **Distribución**: `make install`, binarios para Linux/macOS/Windows, wheels en PyPI con el binario dentro | `pipx install jp-lang && jp --c hola.jp` en una máquina limpia | M |

@@ -1,5 +1,80 @@
 # Cambios de JP
 
+## 1.34.0 — El motor único sin Python (2026-11-23)
+
+`jpvm programa.jp` compila y ejecuta directamente: lexer, parser y generador
+de bytecode están ahora en C, así que el motor ya no necesita Python para
+entender un `.jp`.
+
+- **`motor-c/parser.c`**: port del parser de Python con sus precedencias, su
+  plegado de constantes (`2 + 3` se guarda como `5`) y sus mismos mensajes de
+  error. **48/48 archivos producen el mismo AST.**
+- **`motor-c/compilar.c`**: port del compilador a `.jpb` — slots, celdas y
+  upvalues de las closures, valores por defecto, tipos, clases, `intenta`,
+  `elegir`, desestructuración y `importar` resueltos en C. **Los 40 archivos
+  que el compilador de Python acepta dan bytecode idéntico, byte a byte.**
+- **`jpvm` lee `.jp`**: si la ruta termina en `.jp`, compila en memoria y
+  ejecuta. Sin Python, sin temporales, sin `make`.
+- Herramientas nuevas: `jpast` (vuelca el AST), `jpcompilar` (genera `.jpb`) y
+  los arneses `herramientas/ast_paridad.py` y `herramientas/jpb_paridad.py`,
+  más 5 tests en `tests/test_frontend_c.py` y sus pasos en el CI.
+- `jp/recursos.py` compila el motor con todas las fuentes del frontend al
+  instalar con pip.
+
+Lo que sigue sin estar en el motor en C son las funciones nativas que sólo
+tiene el motor de Python (`servir`, `http_post`, `abrir_bd`, `telegram_leer`,
+`iniciar_proceso`): los 8 ejemplos que las usan se siguen ejecutando con el
+motor de Python, y `jp --c` avisa en vez de fallar.
+
+## 1.33.0 — Frontend nativo: el lexer en C (2026-11-22)
+
+Primera pieza de N-6, el motor único sin Python. `jpvm` sabía ejecutar `.jpb`,
+pero leer un `.jp` seguía siendo trabajo de Python. Ahora el lexer existe en C,
+con el mismo contrato que el de Python, y una prueba que lo demuestra.
+
+- **`motor-c/lexer.c` y `lexer.h`**: port fiel de `jp/lexer.py` sobre los puntos
+  de código de la fuente, así los acentos no desplazan columnas. Mismos
+  tokens, lexemas, líneas, columnas, literales y mensajes de error, incluida la
+  interpolación de cadenas con sub-lexer anidado.
+- **`motor-c/jptokens.c`**: volcado de tokens en JSON (`jptokens archivo.jp`),
+  para comparar los dos lexers sin adivinar.
+- **`herramientas/lexer_paridad.py`**: tokeniza todos los `.jp` del repositorio
+  con ambos lexers y compara campo por campo. **48/48 archivos idénticos.**
+- **5 tests nuevos** (`tests/test_lexer_c.py`) y paso en el CI que compila
+  `jptokens` y corre la paridad en cada push.
+
+Lo que falta del frontend: el parser y el generador de bytecode (siguiente
+entrega); con los tres, `jpvm archivo.jp` correrá sin Python.
+
+## 1.32.0 — Instalable de verdad (2026-11-22)
+
+`pip install jp-lang` dejaba un JP a medias: el paquete **ni siquiera se
+construía** (setuptools confundía `ejemplos/`, `pruebas/` o `biblioteca/` con
+paquetes de primer nivel) y, aun construido, la CLI buscaba `motor-c/` y
+`biblioteca/` subiendo dos carpetas desde `jp/`, que en `site-packages` no
+existen. Ahora el wheel es autosuficiente.
+
+- **`jp/recursos.py`**: un único sitio decide dónde están los recursos
+  (`jp/datos/` si está instalado, la raíz del repositorio si no, y `JP_RAIZ`
+  para forzar). `cli.py` ya no calcula rutas a mano.
+- **`setup.py`**: al construir, `biblioteca/` y `motor-c/` se copian dentro de
+  `jp/datos/` (sólo fuentes, nunca binarios de otra máquina). `MANIFEST.in`
+  hace lo mismo para el sdist, así que un wheel construido desde el sdist
+  también sale completo.
+- **`jp --c` sin `make`**: si no hay `jpvm` compilado, se compila la primera
+  vez con `cc`/`gcc`/`clang` y se guarda en la caché del usuario
+  (`~/.cache/jp/jpvm`, `%LOCALAPPDATA%\jp`). Las siguientes ejecuciones no
+  compilan nada.
+- **Arreglo**: `jp --proyecto` creaba los archivos y luego moría con
+  `UnicodeEncodeError` al imprimir el `✔` en una consola Windows (cp1252). La
+  salida se configura en UTF-8 con `errors="replace"`.
+- **Arreglo**: `jp --c` salía con código 65 sin decir por qué. Ahora imprime el
+  motivo (motor ausente, sin compilador, etc.).
+- **CI (`instalar.yml`)**: construye el wheel, lo instala en un entorno limpio
+  y usa `jp`, `jp --proyecto`, sus pruebas y `jp --c` (compilando `jpvm` desde
+  el código que viaja en el wheel).
+- 6 tests nuevos (`tests/test_recursos.py`).
+
 ## 1.31.0 — Editores: gramática tree-sitter y servidor LSP (2026-11-22)
 
 Hasta ahora JP solo existía en una terminal. Un lenguaje se adopta cuando el

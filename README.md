@@ -53,13 +53,21 @@ python -m jp --turbo ejemplos/benchmark-grande.jp
 O instálalo como comando global:
 
 ```bash
-pip install -e .
+pip install .          # o pip install -e . para trabajar en el lenguaje
 jp ejemplos/hola.jp
 ```
+
+El paquete incluye la biblioteca (`biblioteca/`) y las fuentes del motor en C
+dentro del wheel, así que un `pip install` deja un JP completo: `jp --c`
+compila el motor la primera vez que se usa (necesita `cc`/`gcc`, una vez) y
+lo guarda en la caché del usuario. `jp --proyecto nombre` crea un proyecto con
+su carpeta de pruebas ya conectada.
 
 📘 **[JP en 20 minutos](docs/jp-en-20-minutos.md)** — tutorial completo, y
 📚 **[referencia de la biblioteca](docs/referencia.md)** — las 149 funciones
 nativas con su firma.
+📊 **[JP frente a Python y otros lenguajes](docs/comparacion.md)** — qué gana,
+qué pierde y con qué números medidos.
 
 ## El lenguaje
 

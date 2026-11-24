@@ -59,6 +59,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+
+/* Frontend en C: permite ejecutar un .jp directamente (jpvm programa.jp). */
+#include "compilar.h"
 #include <unistd.h>
 
 /* ---------------------------------------------------------------- valores */
@@ -4992,6 +4995,37 @@ static Valor nativa_separar_patron(VM *v, int argc, Valor *args) {
 extern const unsigned char jp_chunk_embebido[] __attribute__((weak));
 extern const unsigned long jp_chunk_largo __attribute__((weak));
 
+/* ¿La ruta es código fuente JP (se compila aquí mismo) o bytecode .jpb? */
+static int es_fuente_jp(const char *ruta) {
+    size_t largo = strlen(ruta);
+    return largo >= 3 && strcmp(ruta + largo - 3, ".jp") == 0;
+}
+
+static char *leer_fuente(const char *ruta, size_t *largo) {
+    FILE *archivo = fopen(ruta, "rb");
+    if (!archivo) return NULL;
+    if (fseek(archivo, 0, SEEK_END) != 0) {
+        fclose(archivo);
+        return NULL;
+    }
+    long tamano = ftell(archivo);
+    if (tamano < 0) {
+        fclose(archivo);
+        return NULL;
+    }
+    rewind(archivo);
+    char *datos = (char *)malloc((size_t)tamano + 1);
+    if (!datos) {
+        fclose(archivo);
+        return NULL;
+    }
+    size_t leidos = fread(datos, 1, (size_t)tamano, archivo);
+    fclose(archivo);
+    datos[leidos] = '\0';
+    *largo = leidos;
+    return datos;
+}
+
 int main(int argc, char **argv) {
     const char *ruta = NULL;
     int modo_info = 0;
@@ -5003,7 +5037,7 @@ int main(int argc, char **argv) {
         } else ruta = argv[i];
     }
     if (!ruta && !(jp_chunk_embebido != NULL)) {
-        fprintf(stderr, "uso: jpvm [--info] programa.jpb\n");
+        fprintf(stderr, "uso: jpvm [--info] programa.jpb|programa.jp\n");
         return 64;
     }
 
@@ -5016,7 +5050,26 @@ int main(int argc, char **argv) {
 
     uint8_t *blob = NULL;
     size_t largo = 0;
-    if (!ruta) {
+    if (ruta && es_fuente_jp(ruta)) {
+        /* .jp: el frontend en C lo compila aquí mismo, sin Python */
+        size_t largo_fuente = 0;
+        char *fuente = leer_fuente(ruta, &largo_fuente);
+        if (!fuente) {
+            fprintf(stderr, "jpvm: no se pudo leer '%s'\n", ruta);
+            return 66;
+        }
+        JpBlob compilado = {0};
+        char error[512];
+        if (!jp_compilar(fuente, largo_fuente, ruta, &compilado, error, sizeof error)) {
+            fflush(stdout);
+            fprintf(stderr, "jp: %s\n", error);
+            free(fuente);
+            return 65;
+        }
+        free(fuente);
+        blob = compilado.datos;
+        largo = compilado.largo;
+    } else if (!ruta) {
         /* binario independiente: el bytecode viene embebido en el ejecutable */
         blob = (uint8_t *)jp_chunk_embebido;
         largo = (size_t)jp_chunk_largo;

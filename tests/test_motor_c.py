@@ -322,9 +322,12 @@ class TestParidadMotorC(unittest.TestCase):
                 encoding="utf-8",
             )
             salida = Path(carpeta) / "programa"
+            # El motor enlaza también el frontend (jpvm sabe compilar .jp).
+            fuentes = [str(RAIZ / "motor-c" / nombre) for nombre in
+                       ("jpvm.c", "ast.c", "parser.c", "lexer.c", "compilar.c")]
             proceso = subprocess.run(
-                ["cc", "-O2", "-std=c11", "-w", str(RAIZ / "motor-c" / "jpvm.c"),
-                 str(chunk), "-o", str(salida), "-lm"],
+                ["cc", "-O2", "-std=c11", "-w", *fuentes, str(chunk),
+                 "-o", str(salida), "-lm"],
                 capture_output=True, text=True,
             )
             self.assertEqual(proceso.returncode, 0, proceso.stderr)

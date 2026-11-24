@@ -15,7 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__
+from . import __version__, recursos
 from .errores import ErrorEjecucion, ErrorJP, ErrorLexico, ErrorSintaxis
 from .interprete import Interprete, jp_a_texto
 from .lexer import tokenizar
@@ -27,8 +27,24 @@ _TURBO = "--turbo" in sys.argv[1:]
 _NATIVO = "--nativo" in sys.argv[1:]
 _MOTOR_C = "--c" in sys.argv[1:]
 
-RAIZ = Path(__file__).resolve().parent.parent
-MOTOR_C = RAIZ / "motor-c" / "jpvm"
+# Los recursos (biblioteca/, motor-c/) están en la raíz del repositorio, pero
+# un `pip install` solo deja `jp/`: `recursos.raiz()` resuelve los dos casos.
+RAIZ = recursos.raiz()
+
+
+def _salida_utf8() -> None:
+    """Consola en UTF-8.
+
+    En Windows la salida por defecto es cp1252: imprimir el ✔ de
+    `jp --proyecto` lanzaba UnicodeEncodeError y mataba el comando después de
+    haber creado los archivos. Con `errors="replace"` como mucho se pierde
+    un símbolo, nunca el programa.
+    """
+    for flujo in (sys.stdout, sys.stderr):
+        try:
+            flujo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
 
 
 def _compilar_nativo(fuente: str, ruta: str, codigo: str):
@@ -44,16 +60,25 @@ def _compilar_nativo(fuente: str, ruta: str, codigo: str):
 
 def _ejecutar_motor_c(blob: bytes, aviso: bool = False) -> tuple[bool, str]:
     """Ejecuta bytecode en el motor nativo. Devuelve (ok, motivo_del_fallo)."""
-    if not MOTOR_C.exists():
+    motor = recursos.binario_motor()
+    if not motor.exists():
+        # Instalado con pip no hay `make`: se compila una vez y queda en caché.
+        motor = recursos.compilar_motor() or motor
+    if not motor.exists():
         return False, (
-            f"no encuentro el motor nativo ({MOTOR_C}).\n"
+            f"no encuentro el motor nativo ({motor}).\n"
             "Compílalo una vez con:  make -C motor-c"
+            "   (o instala cc/gcc; también se compila solo si hay compilador)"
         )
     with tempfile.NamedTemporaryFile(suffix=".jpb", delete=False) as archivo:
         archivo.write(blob)
         ruta_jpb = archivo.name
     try:
-        proceso = subprocess.run([str(MOTOR_C), ruta_jpb])
+        proceso = subprocess.run([str(motor), ruta_jpb])
+    except OSError as error:
+        # Binario de otra plataforma, sin permisos, etc.: se avisa y el
+        # programa sigue con los motores de Python en vez de reventar.
+        return False, f"no pude ejecutar el motor nativo ({motor}): {error.strerror or error}"
     finally:
         os.unlink(ruta_jpb)
     return proceso.returncode == 0, f"el programa terminó con código {proceso.returncode}"
@@ -125,6 +150,8 @@ def _modo_archivo(ruta: str) -> int:
         compilado = _compilar_nativo(fuente, ruta, fuente)
         if isinstance(compilado, bytes):
             ok, motivo = _ejecutar_motor_c(compilado)
+            if not ok:
+                print(f"jp: {motivo}", file=sys.stderr)
             return 0 if ok else 65
         print(
             f"jp: el motor nativo aún no soporta esto: {compilado.que} "
@@ -359,7 +386,7 @@ def _modo_proyecto(nombre: str) -> int:
             _PLANTILLA_PRUEBA, encoding="utf-8")
         # La mini-biblioteca de pruebas viaja con el proyecto.
         (destino / "pruebas" / "pruebas.jp").write_text(
-            (RAIZ / "biblioteca" / "pruebas.jp").read_text(encoding="utf-8"),
+            recursos.archivo("biblioteca", "pruebas.jp").read_text(encoding="utf-8"),
             encoding="utf-8")
     except OSError as error:
         print(f"jp: no pude crear el proyecto: {error}", file=sys.stderr)
@@ -624,9 +651,11 @@ def _modo_binario(ruta: str, salida: str) -> int:
             "const unsigned long jp_chunk_largo = sizeof(jp_chunk_embebido);\n",
             encoding="utf-8",
         )
+        # El motor enlaza también el frontend: el ejecutable sabe compilar .jp.
+        fuentes = [str(recursos.archivo("motor-c", nombre)) for nombre in recursos.FUENTES_MOTOR]
         orden = [
             compilador, "-O2", "-std=c11", "-w",
-            str(RAIZ / "motor-c" / "jpvm.c"), str(embebido), "-o", salida, "-lm",
+            *fuentes, str(embebido), "-o", salida, "-lm",
         ]
         proceso = subprocess.run(orden)
     if proceso.returncode != 0:
@@ -639,6 +668,7 @@ def _modo_binario(ruta: str, salida: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     global _USA_VM, _TURBO, _NATIVO, _MOTOR_C
+    _salida_utf8()
     argumentos = argv if argv is not None else sys.argv[1:]
     # `jp lsp`: servidor de lenguaje para editores (no es una bandera porque
     # se queda escuchando en stdio hasta que el editor lo cierra).
